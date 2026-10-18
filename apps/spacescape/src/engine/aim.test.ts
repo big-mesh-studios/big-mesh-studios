@@ -11,7 +11,7 @@
  * distance only for the step; this is the application-level proof.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import { DEFAULT_PLANET } from "@big-mesh-studios/csg";
@@ -79,7 +79,13 @@ const build = () => {
     game.tick(1 / 60);
   };
 
-  return { game, sculpt, settle, hold };
+  /** Presses an action for one frame and leaves it held, for a test that acts mid-stroke. */
+  const press = (action: Partial<InputSnapshot>): void => {
+    held = snapshot(action);
+    game.tick(1 / 60);
+  };
+
+  return { game, sculpt, settle, hold, press };
 };
 
 describe("the crosshair's aim", () => {
@@ -118,5 +124,43 @@ describe("the crosshair's aim", () => {
       dab.origin.z - player.z,
     );
     expect(away).toBeGreaterThan(10);
+  });
+
+  it("digs and places nothing while the place says editing is off", () => {
+    const { game, sculpt, settle, hold } = build();
+    settle();
+    game.setEditing(false);
+
+    hold({ primaryHeld: true });
+    hold({ secondaryHeld: true });
+
+    expect(sculpt.document.list).toHaveLength(0);
+  });
+
+  it("digs and places again once the lock is lifted", () => {
+    const { game, sculpt, settle, hold } = build();
+    settle();
+
+    game.setEditing(false);
+    hold({ primaryHeld: true });
+    expect(sculpt.document.list).toHaveLength(0);
+
+    game.setEditing(true);
+    hold({ primaryHeld: true });
+    expect(sculpt.document.list).toHaveLength(1);
+  });
+
+  it("ends a stroke the moment the lock arrives, rather than on release", () => {
+    const { game, sculpt, settle, press } = build();
+    settle();
+
+    press({ primaryHeld: true });
+    // **Spied rather than read from the document**, because the document is written when the
+    // stroke is committed and both a lock and a release commit it. What this test exists to
+    // separate is *when*: the lock has to take the stroke away itself, or a button still held
+    // when a place loads would commit one last shape on release.
+    const end = vi.spyOn(sculpt, "endAim");
+    game.setEditing(false);
+    expect(end).toHaveBeenCalledTimes(1);
   });
 });

@@ -424,6 +424,37 @@ describe("the manifest fields and the file tabs", () => {
     container.remove();
   });
 
+  it("locks the place through its editing field", () => {
+    const editor = editorOver();
+    const { container, dispose } = mount(editor);
+    const select = [
+      ...container.querySelectorAll<HTMLLabelElement>("label.place-field"),
+    ]
+      .find(
+        (label) =>
+          label.querySelector("span")?.textContent?.trim() === "editing",
+      )!
+      .querySelector("select")!;
+    const choose = (value: "on" | "off"): void => {
+      select.value = value;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      flush();
+    };
+
+    choose("off");
+    expect(editor.project().manifest.editable).toBe(false);
+
+    // **Unlocking says nothing**, the same rule the spawn and world fields follow, so a place
+    // that was never locked reads as one that never chose.
+    choose("on");
+    expect(editor.project().manifest.editable).toBeUndefined();
+    expect(Object.hasOwn(editor.project().manifest, "editable")).toBe(false);
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
   it("renames a file when its tab is double-clicked", () => {
     const editor = editorOver();
     editor.addScript("span.ts");

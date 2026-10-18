@@ -402,6 +402,28 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
               <option value="flat">flat</option>
             </select>
           </label>
+          {/*
+            **A two-state `<select>` rather than a checkbox, because both answers are named.**
+            "off" is the place's own statement and reads as one; an unticked box would leave a
+            person working out whether they had unticked it or never ticked it. Choosing "on"
+            deletes the field — see `setEditable` — so an unlocked place says nothing rather
+            than claiming a choice nobody made.
+          */}
+          <label class="place-field">
+            <span>editing</span>
+            <select
+              title="off stops players digging or placing in this place"
+              value={
+                props.state.project().manifest.editable === false ? "off" : "on"
+              }
+              onInput={(event) =>
+                props.state.setEditable(event.currentTarget.value !== "off")
+              }
+            >
+              <option value="on">on</option>
+              <option value="off">off</option>
+            </select>
+          </label>
         </div>
         <div class="place-actions">
           {/* **Said rather than not shown.** A person who is relying on a draft surviving a

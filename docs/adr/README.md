@@ -71,6 +71,7 @@ recorded cost is a decision nobody thought about.
 | [0051](0051-a-level-shape-carries-its-turn.md)                           | A level shape carries its turn, and its box is oriented                                | accepted                     |
 | [0052](0052-a-shape-may-write-its-own-width.md)                          | A shape may write its own width, and the file format is version 5                      | accepted                     |
 | [0053](0053-a-floor-is-a-shape-not-a-level-kind.md)                      | A floor is a `Polygon` shape, not a fourth kind of level item                          | accepted                     |
+| [0054](0054-a-place-may-say-it-is-not-editable.md)                       | A place may say it is not editable, and that is one bit of a mode                      | accepted                     |
 
 ## What is decided so far
 

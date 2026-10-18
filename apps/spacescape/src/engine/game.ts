@@ -167,6 +167,16 @@ export class Game {
   /** The aim action currently held, so a stroke is begun and ended once. */
   private aim: "dig" | "place" | undefined;
   /**
+   * Whether the player's own dig and place are allowed.
+   *
+   * **True until a place says otherwise**, so a world with no place in it — and every place
+   * written before `editable` existed — behaves exactly as it always has. A locked place turns
+   * it off while it runs and `dropPlace` turns it back on, which is why the state lives here
+   * rather than being an option to the constructor: one `Game` outlives every place loaded into
+   * it.
+   */
+  private editing = true;
+  /**
    * Where a place has pointed the camera, and the field of view it asked for.
    *
    * **`undefined` for both is the normal state** — the camera is the player's eye and nothing
@@ -296,11 +306,16 @@ export class Game {
    * again starts a new stroke rather than extending the last.
    */
   private updateAim(input: InputSnapshot): void {
-    const wanted: "dig" | "place" | undefined = input.primaryHeld
-      ? "dig"
-      : input.secondaryHeld
-        ? "place"
-        : undefined;
+    // **A locked place makes the crosshair a view, not a tool.** The wanted action is decided
+    // here rather than checked after the fact so a stroke never begins: the transition below is
+    // the only thing that starts one, and `undefined` cannot be a transition to a stroke.
+    const wanted: "dig" | "place" | undefined = !this.editing
+      ? undefined
+      : input.primaryHeld
+        ? "dig"
+        : input.secondaryHeld
+          ? "place"
+          : undefined;
 
     if (wanted !== this.aim) {
       if (this.aim !== undefined) this.sculpt.endAim();
@@ -313,6 +328,27 @@ export class Game {
     }
 
     if (this.aim !== undefined) this.sculpt.updateAim(this.camera());
+  }
+
+  /**
+   * Turns the player's own dig and place on or off.
+   *
+   * **A place's `editable: false` is the caller**, and it arrives after the host has loaded
+   * rather than through the constructor because a `Game` outlives every place loaded into it.
+   *
+   * **Turning it off ends a stroke already underway**, rather than waiting for the next frame's
+   * transition: a button still held when the lock arrives should not commit one last shape on
+   * release. Releasing an aim is `sculpt.endAim`, which is the same path a normal release takes.
+   *
+   * **Scripts are not the player.** A place building through its host is the place's content and
+   * never reaches this path, so a locked place can still put geometry in the world.
+   */
+  setEditing(allowed: boolean): void {
+    this.editing = allowed;
+    if (!allowed && this.aim !== undefined) {
+      this.sculpt.endAim();
+      this.aim = undefined;
+    }
   }
 
   /* ------------------------------------------------- what a place can ask for */

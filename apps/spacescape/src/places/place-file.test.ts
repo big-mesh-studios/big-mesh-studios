@@ -126,6 +126,11 @@ const refuses: readonly (readonly [string, unknown])[] = [
   ["a world that is not one of the two", { ...good(), world: "terrain" }],
   ["a world that is a boolean", { ...good(), world: true }],
   ["a world that is a number", { ...good(), world: 1 }],
+  // The edit lock is a boolean rather than a word, so a tool that wrote `"false"` is refused
+  // rather than read as one — the same rule the seed and spawn follow.
+  ["an edit lock that is a string", { ...good(), editable: "false" }],
+  ["an edit lock that is a number", { ...good(), editable: 0 }],
+  ["an edit lock that is null", { ...good(), editable: null }],
   [
     "a name claimed by both the scripts and the attachments",
     // **A zip holds one file per path**, so two claims to it is a place whose contents cannot be
@@ -227,6 +232,15 @@ describe("a manifest this can open", () => {
     for (const world of WORLD_SHAPES) {
       expect(isPlaceManifest({ ...good(), world }), world).toBe(true);
     }
+  });
+
+  it("accepts an edit lock, and a place that says nothing about one", () => {
+    // **Three spellings, two meanings.** Absent and `true` are both "the player may dig and
+    // place"; `false` is the place saying it is a view. All three are valid manifests, because a
+    // place written before the field existed must keep opening.
+    expect(isPlaceManifest({ ...good() })).toBe(true);
+    expect(isPlaceManifest({ ...good(), editable: true })).toBe(true);
+    expect(isPlaceManifest({ ...good(), editable: false })).toBe(true);
   });
 
   it("names the file and the type it agrees with the reference on", () => {

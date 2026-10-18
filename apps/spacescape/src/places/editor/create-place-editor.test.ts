@@ -144,6 +144,24 @@ describe("the manifest a person can change", () => {
     expect(Object.hasOwn(editor.project().manifest, "spawn")).toBe(false);
     expect(isPlaceProject(editor.project())).toBe(true);
   });
+
+  it("locks and unlocks editing, writing the field only when locked", () => {
+    // **Unlocking deletes rather than writing `true`**, because absent is what a place written
+    // before the field existed says and the two mean the same thing. The project stays coherent
+    // either way, which is what `edit` exists to guarantee.
+    const editor = createPlaceEditor();
+
+    editor.setEditable(false);
+    flush();
+    expect(editor.project().manifest.editable).toBe(false);
+    expect(isPlaceProject(editor.project())).toBe(true);
+
+    editor.setEditable(true);
+    flush();
+    expect(editor.project().manifest.editable).toBeUndefined();
+    expect(Object.hasOwn(editor.project().manifest, "editable")).toBe(false);
+    expect(isPlaceProject(editor.project())).toBe(true);
+  });
 });
 
 describe("adding a file", () => {

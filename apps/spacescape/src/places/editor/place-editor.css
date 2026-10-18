@@ -404,12 +404,12 @@
     gap: 5px;
   }
 
-  /* One row, five shares: the name takes two so it is not clipped beside the others, and seed,
-     spawn and world take one each. The controls are not shrunk below the touch target — they just
-     stop each taking a column of their own. */
+  /* One row, six shares: the name takes two so it is not clipped beside the others, and seed,
+     spawn, world and editing take one each. The controls are not shrunk below the touch target —
+     they just stop each taking a column of their own. */
   .place-fields {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 4px 6px;
   }
 

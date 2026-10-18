@@ -196,6 +196,16 @@ describe("the record a place is published as", () => {
     expect(isPlaceRecord(record({ somethingNew: true }))).toBe(true);
   });
 
+  it("accepts an edit lock, and refuses one that is not a boolean", () => {
+    // **The lock goes through `isPlaceManifest`, exactly as a zip's manifest does**, so a record
+    // and a zip cannot disagree about what `editable` may be. `false` is the one value that means
+    // the place is read-only; `true` and absent are the same answer.
+    expect(isPlaceRecord(record({ editable: false }))).toBe(true);
+    expect(isPlaceRecord(record({ editable: true }))).toBe(true);
+    expect(isPlaceRecord(record({ editable: "false" }))).toBe(false);
+    expect(isPlaceRecord(record({ editable: 0 }))).toBe(false);
+  });
+
   it("has its world fields checked by the manifest's own rules", () => {
     // **The claim the rest of the format rests on.** These four refusals are `isPlaceManifest`'s,
     // reached rather than restated — and they are written here so that replacing the call with a

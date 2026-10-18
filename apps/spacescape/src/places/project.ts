@@ -310,6 +310,10 @@ export const makePlaceRecord = (
     // than written as a default, so a record written from a place that never chose looks
     // exactly like one written before the field existed.
     ...(manifest.world !== undefined ? { world: manifest.world } : {}),
+    // **The lock, and only when it is on.** `true` and absent mean the same thing, and writing
+    // `true` would make a record say a thing it has not been asked to say — the same rule `spawn`
+    // and `world` follow for their defaults.
+    ...(manifest.editable === false ? { editable: false } : {}),
     entry: manifest.entry,
     createdAt,
     scripts: Object.keys(project.scripts)
@@ -363,6 +367,10 @@ export const projectFromRecord = (value: unknown): PlaceProject | null => {
       // a spherical one — which moves the ground out from under everything it built rather than
       // refusing to open it.
       ...(value.world !== undefined ? { world: value.world } : {}),
+      // **The lock rides back in, or republishing would silently unlock the place.** A record
+      // read into a project and written out again is the path a fork takes, and a fork that
+      // lost `editable: false` would be a place whose author's choice disappeared in transit.
+      ...(value.editable !== undefined ? { editable: value.editable } : {}),
       entry: value.entry,
       scripts: Object.keys(scripts).sort(),
     },

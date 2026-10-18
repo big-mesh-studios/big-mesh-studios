@@ -16,21 +16,21 @@
  *
  * ## What this takes from the reference, and what it leaves
  *
- * voxelscape's `PlaceManifest` has four fields this does not copy:
+ * voxelscape's `PlaceManifest` has one field this does not copy:
  *
- * - **`levels`** — `.json` level plans, read by its `onPlan` handler. A smooth-landscape engine
- *   has no levels and no plan handler, and a manifest naming one would be naming a file nothing
- *   opens.
- * - **`mode`** — `solo` / `multi` / `:edit`, which decides whether a place starts multiplayer.
- *   Multiplayer is not built (see the README's remaining work), and a manifest that could
- *   switch it on would be a switch wired to nothing.
+ * - **`mode`** — `solo` / `multi` / `:edit`, which decides both whether a place starts
+ *   multiplayer and whether its blocks may be edited. Multiplayer is not built (see the README's
+ *   remaining work), so two of the four values would be switches wired to nothing.
  *
- * They are **omitted rather than accepted and ignored**, which is the difference that matters:
- * a field this accepts is a promise, and a promise about a mode is one nothing here keeps. Each
- * is one line to add when the thing it names exists.
+ * **What this has instead is `editable`**, the half of `mode` that means something here: one
+ * boolean saying whether the player may dig and place while the place runs. A place that says
+ * nothing stays editable, so every place written before the field existed keeps working — and a
+ * place that says `false` is locked without claiming anything about multiplayer.
  *
- * `levels` was the odd one: it is now here, and the promise is kept — see `load-place.ts` for
- * the one line that decides whether a declared level is actually read or silently dropped.
+ * A field this did not enforce would be **a promise nothing keeps**, which is why the validator
+ * below refuses a non-boolean rather than coercing it. `levels` was the other half of this
+ * story: it is here now, and the promise is kept — see `load-place.ts` for the one line that
+ * decides whether a declared level is actually read or silently dropped.
  *
  * ## And the one field this has that the reference does not, and the one it has differently
  *
@@ -191,6 +191,20 @@ export interface PlaceManifest {
    * ground out from under published bridges without a word in the zip saying so.
    */
   readonly world?: WorldShape;
+  /**
+   * Whether the player may dig and place while this place runs.
+   *
+   * **Absent means editable**, which is every place written before this field existed, so the
+   * two states are "says nothing" and "says false" — there is no `true` a publisher has to
+   * remember to write. `false` stops the player's own aim in `Game`; it does not stop the
+   * place's script from building, because a script is the place's content rather than a player
+   * changing it.
+   *
+   * **The narrower cousin of voxelscape's `mode`.** There, the `:edit` half of four values
+   * decides the same question; here multiplayer does not exist, so a mode would carry two
+   * values wired to nothing. This is the one bit of it that is true today.
+   */
+  readonly editable?: boolean;
   /** The file that runs, relative to the zip's root. Must be one of `scripts`. */
   readonly entry: string;
   /**
@@ -253,6 +267,11 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
 
   if (record.spawn !== undefined && !isSpawn(record.spawn)) return false;
   if (record.world !== undefined && !isWorldShape(record.world)) return false;
+  // **A boolean and nothing else.** `"false"` is a manifest written by a tool that guessed at
+  // the type, and coercing it here would make the two spellings mean the same thing while a
+  // third — whatever else that tool writes next — means something nobody chose.
+  if (record.editable !== undefined && typeof record.editable !== "boolean")
+    return false;
 
   if (!isFileList(record.scripts)) return false;
   if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;

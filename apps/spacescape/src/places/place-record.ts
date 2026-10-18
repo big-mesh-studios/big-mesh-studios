@@ -39,6 +39,12 @@
  *
  * **No levels and no mode.** Same reasoning and the same source: voxelscape's manifest carries
  * both, and `place-file.ts` records why this engine's does not.
+ *
+ * **What it does carry is `editable`**, the one bit of voxelscape's mode that is true here:
+ * whether the player may dig and place while the place runs. A record is where a published
+ * place's lock has to live, because a shared address is the only thing a future player has — a
+ * zip could carry the same field, and does, but a record is how a place travels to somebody who
+ * does not already have it.
  */
 
 import {
@@ -95,6 +101,14 @@ export type PlaceRecord = {
    * public and a wrong `version` orphans every record already in it (ADR 0044).
    */
   world?: WorldShape;
+  /**
+   * Whether players may dig and place in this place. See `PlaceManifest.editable`.
+   *
+   * **Optional and omitted rather than written as `true`**, for the reason `spawn` and `world`
+   * are: a place that has not locked itself should read exactly as a record written before the
+   * field existed. A record carrying `false` is a place whose address says it is read-only.
+   */
+  editable?: boolean;
   entry: string;
   createdAt: string;
   scripts: readonly PlaceScriptRecord[];
@@ -162,6 +176,10 @@ export const isPlaceRecord = (value: unknown): value is PlaceRecord => {
     name: record.name,
     seed: record.seed,
     spawn: record.spawn,
+    // **The edit lock goes through `isPlaceManifest`**, which is the reason `isPlaceRecord`
+    // passes it rather than checking a boolean here: a record and a zip should disagree about
+    // what a manifest may say in exactly zero ways.
+    editable: record.editable,
     entry: record.entry,
     scripts: scripts.map((script) => script.name),
   });

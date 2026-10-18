@@ -120,6 +120,15 @@ export interface PlaceEditorState {
    * when it has not.
    */
   setWorld(world: PlaceProject["manifest"]["world"]): void;
+  /**
+   * Locks or unlocks the player's own dig and place while this place runs.
+   *
+   * **`true` deletes the field rather than writing it**, for the reason `setSpawn` and
+   * `setWorld` delete their defaults: absent is what every place written before the field
+   * existed says, and a manifest should not claim a choice nobody made. `false` writes the one
+   * value that means the place is a view.
+   */
+  setEditable(editable: boolean): void;
 
   /** Adds a script. Refused when it would pass `MAX_PLACE_FILES` or the name is taken. */
   addScript(name?: string): string | null;
@@ -417,6 +426,14 @@ export const createPlaceEditor = (
         const manifest = { ...current.manifest };
         if (world === undefined) delete manifest.world;
         else manifest.world = world;
+        return { ...current, manifest };
+      }),
+
+    setEditable: (editable) =>
+      edit((current) => {
+        const manifest = { ...current.manifest };
+        if (editable) delete manifest.editable;
+        else manifest.editable = false;
         return { ...current, manifest };
       }),
 

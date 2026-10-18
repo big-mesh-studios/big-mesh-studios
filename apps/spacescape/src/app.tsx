@@ -283,6 +283,14 @@ interface StartPlace {
    * request for what is already there.
    */
   readonly world?: WorldShape;
+  /**
+   * Whether the player may dig and place while this place runs.
+   *
+   * **Absent means yes**, which is every place written before the field existed. `false` is the
+   * place's own statement that it is a view rather than a sandbox; the game turns the player's
+   * aim off for as long as it is loaded. See `PlaceManifest.editable`.
+   */
+  readonly editable?: boolean;
 }
 
 /** The largest step a frame is allowed to advance the world, in seconds. */
@@ -2067,6 +2075,7 @@ export default function App() {
         levels: place.levels,
         // **And the world, which is the manifest's own statement about what the ground is.**
         world: place.manifest.world,
+        editable: place.manifest.editable,
       });
       return report.startsWith("could not load")
         ? report
@@ -2102,6 +2111,10 @@ export default function App() {
       zoneLines.update([]);
       sculpt.places.clearAll();
       sculpt.refreshPlaces();
+      // **The aim comes back with the place's absence.** A locked place that was unloaded by
+      // `/place:unload`, by another load, or by the editor's Run must not leave the next world
+      // unable to dig for a reason nothing on screen explains.
+      game.setEditing(true);
     };
 
     /**
@@ -2140,7 +2153,7 @@ export default function App() {
      */
     const startPlace = async (place: StartPlace): Promise<string> => {
       const { files, entry, seed, name } = place;
-      const { spawn, models, levels, world } = place;
+      const { spawn, models, levels, world, editable } = place;
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
@@ -2160,6 +2173,7 @@ export default function App() {
         models,
         levels,
         world,
+        editable,
       };
 
       // **The world is put in place before anything is built on it**, and before the models are
@@ -2268,6 +2282,11 @@ export default function App() {
       host = next;
       setPlaceOpen(true);
       placeHost = next;
+      // **Only once the place is actually running.** The lock is the place's statement, and a
+      // load that failed before this line must not leave the world un-diggable with no place in
+      // it — `dropPlace` has already put the aim back, and this is the one line that takes it
+      // away again. Absent and `true` are the same answer.
+      game.setEditing(editable !== false);
       loadedName = name;
       // **The physics can now feel this place.** One assignment, and every frame's collision run
       // asks the host directly rather than being handed a snapshot that could be a frame old.
@@ -2291,7 +2310,15 @@ export default function App() {
       // **The load's own problems, not "loaded".** A place that built half of itself reports
       // as a success, and "loaded" on a world with a missing bridge is the least useful thing
       // a console can say.
-      const summary = describePlace(name, host);
+      //
+      // **And the lock, when there is one**, because the player's next click otherwise looks
+      // like a broken mouse rather than the place's own choice. It rides on the summary rather
+      // than a notice: nothing is wrong, the place simply does not accept edits.
+      const summary =
+        describePlace(name, host) +
+        (editable === false
+          ? "\nediting off — dig and place are disabled"
+          : "");
       return notices.length === 0
         ? summary
         : `${summary}\n— with ${notices.length} problem(s):\n${notices.map((line) => `  ${line}`).join("\n")}`;
@@ -2323,6 +2350,7 @@ export default function App() {
         models: project.models,
         levels: project.levels,
         world: project.manifest.world,
+        editable: project.manifest.editable,
       });
 
     // **Published for the overlay's "play again".** The button is rendered from the application

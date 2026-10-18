@@ -236,6 +236,25 @@ describe("a project published as a record", () => {
     ).not.toHaveProperty("world");
   });
 
+  it("carries an edit lock across, and omits it when the place is editable", () => {
+    // **The lock has to survive the record round trip**, or a fork published from a read-back
+    // record would quietly become diggable again. `true` and absent are the same answer, so the
+    // record says nothing about a place that has not locked itself.
+    const locked = project({
+      manifest: { ...project().manifest, editable: false },
+    });
+    const published = makePlaceRecord(locked, "2026-10-08T09:00:00.000Z");
+    expect(published.editable).toBe(false);
+    expect(projectFromRecord(published)?.manifest.editable).toBe(false);
+
+    expect(
+      makePlaceRecord(project(), "2026-10-08T09:00:00.000Z"),
+    ).not.toHaveProperty("editable");
+    expect(
+      projectFromRecord(makePlaceRecord(project(), "x"))?.manifest,
+    ).not.toHaveProperty("editable");
+  });
+
   it("refuses to publish an attachment nothing can publish yet", () => {
     // **Not dropped silently.** A record is JSON and an attachment is bytes, so carrying one means
     // uploading it as a blob and naming the blob — which needs a publisher and a model with an
