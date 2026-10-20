@@ -264,6 +264,24 @@ describe("a manifest this can open", () => {
     ).toBe(true);
   });
 
+  it("accepts the sharp-edge angle a place's geometry needs", () => {
+    // The animal hospital is the case this exists for: hard boxes whose creases should not
+    // be rounded into soft clay. The angle is the `MeshResolution` field, validated by the
+    // same `isMeshResolution` the manifest reader calls.
+    expect(
+      isPlaceManifest({
+        ...good(),
+        mesh: { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 35 },
+      }),
+    ).toBe(true);
+    expect(
+      isPlaceManifest({
+        ...good(),
+        mesh: { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 0 },
+      }),
+    ).toBe(false);
+  });
+
   it("names the file and the type it agrees with the reference on", () => {
     // **Both are the reference's strings**, so a place authored there opens here. They are
     // constants rather than literals at the call sites precisely so that a change to either is

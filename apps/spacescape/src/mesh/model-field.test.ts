@@ -100,6 +100,33 @@ describe("building the meshers from a model message", () => {
     expect(finer.vertexCount).toBeGreaterThan(coarse.vertexCount);
   });
 
+  it("meshes a sharp place with split normals, and the same triangles", () => {
+    // A box is the simplest field whose creases are real: Surface Nets rounds them and
+    // the shading averages them, which is the "soft clay" a building gets. The angle is
+    // the switch; QEF changes where the vertices go, and the split adds vertices at the
+    // creases without changing the triangulation.
+    const operations = [
+      makeOperation(
+        0,
+        { x: 2.7, y: 2.7, z: 2.7 },
+        { type: "Box", len: { x: 40, y: 40, z: 40 } },
+        "Add",
+        { colour: { r: 180, g: 180, b: 180 } },
+      ),
+    ];
+    const plain = meshersFor({
+      ...model(operations),
+      mesh: { lodSampleSizes: [10, 20, 40] },
+    }).ground.mesh({ cell: cell(0), lod: 0 });
+    const sharp = meshersFor({
+      ...model(operations),
+      mesh: { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+    }).ground.mesh({ cell: cell(0), lod: 0 });
+
+    expect(sharp.triangleCount).toBe(plain.triangleCount);
+    expect(sharp.vertexCount).toBeGreaterThan(plain.vertexCount);
+  });
+
   it("gives the same mesh as the operations it was sent", () => {
     // The worker and the main thread must agree about the model, or two chunks meshed on
     // different sides of the thread boundary would not fit together.

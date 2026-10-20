@@ -20,7 +20,7 @@ recorded cost is a decision nobody thought about.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ---------------------------- |
 | [0001](0001-rmsl-over-three.md)                                          | Render with `@random-mesh/rmsl`, not three.js                                          | accepted                     |
 | [0002](0002-computed-field-never-stored.md)                              | The field is computed from an operation list, never stored                             | accepted                     |
-| [0003](0003-surface-nets.md)                                             | Surface Nets per chunk, not marching cubes                                             | accepted                     |
+| [0003](0003-surface-nets.md)                                             | Surface Nets per chunk, not marching cubes                                             | extended by `0055`           |
 | [0004](0004-csg-per-chunk.md)                                            | Each chunk evaluates the operation list at its own LOD                                 | accepted                     |
 | [0005](0005-streaming-shape.md)                                          | Slot-indexed flat arrays and a coordinate map, not a keyed map                         | accepted                     |
 | [0006](0006-field-saturation.md)                                         | The field saturates at a fixed distance                                                | accepted                     |
@@ -72,6 +72,7 @@ recorded cost is a decision nobody thought about.
 | [0052](0052-a-shape-may-write-its-own-width.md)                          | A shape may write its own width, and the file format is version 5                      | accepted                     |
 | [0053](0053-a-floor-is-a-shape-not-a-level-kind.md)                      | A floor is a `Polygon` shape, not a fourth kind of level item                          | accepted                     |
 | [0054](0054-a-place-may-say-it-is-not-editable.md)                       | A place may say it is not editable, and that is one bit of a mode                      | accepted                     |
+| [0055](0055-dual-contouring-for-hard-edges.md)                           | A place may ask for QEF vertices and sharp normals                                     | accepted                     |
 
 ## What is decided so far
 

@@ -1757,3 +1757,330 @@ describe("the broad pass", () => {
     );
   });
 });
+
+/**
+ * Dual Contouring's vertex placement, which is Surface Nets' topology with a different
+ * point inside each cell. The tests here are about that point and about the properties the
+ * rest of the mesher already promises — a seam, a cell, a fallback — still holding when it
+ * moves.
+ */
+describe("QEF vertex placement", () => {
+  /** A box's outward normal, choosing the nearest face; a valid subgradient everywhere. */
+  const boxNormal =
+    (centre: readonly [number, number, number], half: number) =>
+    (x: number, y: number, z: number): readonly [number, number, number] => {
+      const px = x - centre[0];
+      const py = y - centre[1];
+      const pz = z - centre[2];
+      const qx = Math.abs(px) - half;
+      const qy = Math.abs(py) - half;
+      const qz = Math.abs(pz) - half;
+      if (qx >= qy && qx >= qz) return [Math.sign(px) || 1, 0, 0] as const;
+      if (qy >= qz) return [0, Math.sign(py) || 1, 0] as const;
+      return [0, 0, Math.sign(pz) || 1] as const;
+    };
+
+  const meshQef = (
+    origin: readonly [number, number, number],
+    samples: number,
+    field: (x: number, y: number, z: number) => number,
+    normal: (
+      x: number,
+      y: number,
+      z: number,
+    ) => readonly [number, number, number],
+    sampleSize = STEP,
+    scratch = scratchFor(samples),
+    out = new ChunkMeshBuilder(),
+    onVertex?: (
+      index: number,
+      x: number,
+      y: number,
+      z: number,
+      cell: readonly [number, number, number],
+    ) => void,
+  ): ChunkMeshBuilder => {
+    surfaceNets({
+      origin,
+      samples,
+      sampleSize,
+      sampler: { distance: field },
+      vertexPlacement: "qef",
+      normalAt: normal,
+      out,
+      scratch,
+      onVertex,
+    });
+    return out;
+  };
+
+  const closest = (
+    out: ChunkMeshBuilder,
+    point: (p: { x: number; y: number; z: number }) => number,
+  ): number => {
+    let best = Infinity;
+    for (let i = 0; i < out.vertexCount; i++) {
+      best = Math.min(
+        best,
+        point({
+          x: out.positions.at(i * 3),
+          y: out.positions.at(i * 3 + 1),
+          z: out.positions.at(i * 3 + 2),
+        }),
+      );
+    }
+    return best;
+  };
+
+  const centre = [83, 83, 83] as const;
+  const half = 27.5;
+  const field = boxField([83, 83, 83], half);
+  const normal = boxNormal(centre, half);
+  const corner = [55.5, 55.5, 55.5] as const;
+
+  it("puts a box corner's vertex on the corner, not at the crossings' mean", () => {
+    const qef = meshQef([0, 0, 0], N, field, normal);
+    const mean = mesh([0, 0, 0], N, field);
+
+    const toCorner = (p: { x: number; y: number; z: number }): number =>
+      Math.hypot(p.x - corner[0], p.y - corner[1], p.z - corner[2]);
+
+    expect(closest(qef, toCorner)).toBeLessThan(0.1 * STEP);
+    expect(closest(mean, toCorner)).toBeGreaterThan(0.2 * STEP);
+  });
+
+  it("puts an edge's vertices on the edge, not halfway between its faces", () => {
+    const qef = meshQef([0, 0, 0], N, field, normal);
+    const mean = mesh([0, 0, 0], N, field);
+
+    // The vertical edge at (55.5, 55.5) from z = 55.5 to 110.5. Away from both corners,
+    // the only question is how far a vertex is from that line in the xy plane.
+    const toEdge = (p: { x: number; y: number; z: number }): number =>
+      p.z > 65 && p.z < 100 ? Math.hypot(p.x - 55.5, p.y - 55.5) : Infinity;
+
+    expect(closest(qef, toEdge)).toBeLessThan(0.1 * STEP);
+    expect(closest(mean, toEdge)).toBeGreaterThan(0.2 * STEP);
+  });
+
+  it("keeps every QEF vertex inside the cell it belongs to", () => {
+    const seen: Array<{
+      x: number;
+      y: number;
+      z: number;
+      cell: readonly [number, number, number];
+    }> = [];
+    meshQef(
+      [0, 0, 0],
+      N,
+      field,
+      normal,
+      STEP,
+      scratchFor(N),
+      new ChunkMeshBuilder(),
+      (_, x, y, z, cell) => {
+        seen.push({ x, y, z, cell });
+      },
+    );
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const vertex of seen) {
+      for (let axis = 0; axis < 3; axis++) {
+        const low = (vertex.cell[axis] - 1) * STEP;
+        const high = vertex.cell[axis] * STEP;
+        const value = [vertex.x, vertex.y, vertex.z][axis] as number;
+        expect(value, `axis ${axis}`).toBeGreaterThanOrEqual(low - 1e-6);
+        expect(value, `axis ${axis}`).toBeLessThanOrEqual(high + 1e-6);
+      }
+    }
+  });
+
+  it("produces the same triangles as one big chunk, by position", () => {
+    // The box crosses the 160 plane on every axis, so the tiling is exercised on all three.
+    const seamField = boxField([140, 140, 140], 40);
+    const seamNormal = boxNormal([140, 140, 140], 40);
+    const span = N * STEP;
+    const whole = meshQef([0, 0, 0], N * 2, seamField, seamNormal);
+
+    const tiled: ChunkMeshBuilder[] = [];
+    const scratch = scratchFor(N);
+    for (const origin of tileOrigins(span)) {
+      tiled.push(meshQef(origin, N, seamField, seamNormal, STEP, scratch));
+    }
+
+    expect(tiled.flatMap(canonicalTriangles).sort()).toEqual(
+      canonicalTriangles(whole).sort(),
+    );
+  });
+
+  it("falls back to the crossing mean on a plane, and stays on the plane", () => {
+    const out = meshQef(
+      [0, 0, 0],
+      8,
+      (_x, y) => y - 50,
+      () => [0, 1, 0],
+    );
+    expect(out.vertexCount).toBeGreaterThan(0);
+    for (let i = 0; i < out.vertexCount; i++) {
+      // The cell clamp keeps a vertex off a shared face by a ten-thousandth of a cell,
+      // so a plane that lands exactly on a sample is reported a hair to one side of it.
+      expect(out.positions.at(i * 3 + 1)).toBeCloseTo(50, 2);
+      expect(Number.isFinite(out.positions.at(i * 3))).toBe(true);
+      expect(Number.isFinite(out.positions.at(i * 3 + 2))).toBe(true);
+    }
+  });
+
+  it("refuses to run without the normals it needs", () => {
+    expect(() =>
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: 8,
+        sampleSize: STEP,
+        sampler: { distance: (x, y, z) => sphere(x, y, z, 45) },
+        vertexPlacement: "qef",
+        out: new ChunkMeshBuilder(),
+        scratch: scratchFor(8),
+      }),
+    ).toThrow(/normalAt/);
+  });
+});
+
+describe("QEF from the cell's own corners", () => {
+  const cornerPlane = (_x: number, y: number): number => y - 50;
+
+  it("keeps a plane on the plane without sampling the field for normals", () => {
+    const out = new ChunkMeshBuilder();
+    surfaceNets({
+      origin: [0, 0, 0],
+      samples: 8,
+      sampleSize: STEP,
+      sampler: { distance: cornerPlane },
+      vertexPlacement: "qef",
+      normalFromCorners: true,
+      out,
+      scratch: scratchFor(8),
+    });
+
+    expect(out.vertexCount).toBeGreaterThan(0);
+    for (let i = 0; i < out.vertexCount; i++) {
+      expect(out.positions.at(i * 3 + 1)).toBeCloseTo(50, 2);
+    }
+  });
+
+  it("is seam-consistent, because the eight corners are the same in both chunks", () => {
+    const span = N * STEP;
+    const field = boxField([140, 140, 140], 40);
+    const whole = (() => {
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: N * 2,
+        sampleSize: STEP,
+        sampler: { distance: field },
+        vertexPlacement: "qef",
+        normalFromCorners: true,
+        out,
+        scratch: scratchFor(N * 2),
+      });
+      return out;
+    })();
+
+    const scratch = scratchFor(N);
+    const tiled: ChunkMeshBuilder[] = [];
+    for (const origin of tileOrigins(span)) {
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin,
+        samples: N,
+        sampleSize: STEP,
+        sampler: { distance: field },
+        vertexPlacement: "qef",
+        normalFromCorners: true,
+        out,
+        scratch,
+      });
+      tiled.push(out);
+    }
+
+    expect(tiled.flatMap(canonicalTriangles).sort()).toEqual(
+      canonicalTriangles(whole).sort(),
+    );
+  });
+
+  it("refines a feature with the field's normals when it has them", () => {
+    // The cheap normals describe a plane exactly but blend across two. A box corner is the
+    // case the refinement exists for: with only the corners it lands near the crease, and
+    // with the field's normals it lands on it.
+    const centre = [83, 83, 83] as const;
+    const half = 27.5;
+    const field = boxField([83, 83, 83], half);
+    const corner = [55.5, 55.5, 55.5] as const;
+
+    const meshWith = (refined: boolean): ChunkMeshBuilder => {
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: N,
+        sampleSize: STEP,
+        sampler: { distance: field },
+        vertexPlacement: "qef",
+        normalFromCorners: true,
+        ...(refined
+          ? {
+              normalAt: (x: number, y: number, z: number) => {
+                const px = x - centre[0];
+                const py = y - centre[1];
+                const pz = z - centre[2];
+                const qx = Math.abs(px) - half;
+                const qy = Math.abs(py) - half;
+                const qz = Math.abs(pz) - half;
+                if (qx >= qy && qx >= qz)
+                  return [Math.sign(px) || 1, 0, 0] as const;
+                if (qy >= qz) return [0, Math.sign(py) || 1, 0] as const;
+                return [0, 0, Math.sign(pz) || 1] as const;
+              },
+            }
+          : {}),
+        out,
+        scratch: scratchFor(N),
+      });
+      return out;
+    };
+
+    const distanceToCorner = (out: ChunkMeshBuilder): number => {
+      let best = Infinity;
+      for (let i = 0; i < out.vertexCount; i++) {
+        best = Math.min(
+          best,
+          Math.hypot(
+            out.positions.at(i * 3) - corner[0],
+            out.positions.at(i * 3 + 1) - corner[1],
+            out.positions.at(i * 3 + 2) - corner[2],
+          ),
+        );
+      }
+      return best;
+    };
+
+    const cheap = distanceToCorner(meshWith(false));
+    const refined = distanceToCorner(meshWith(true));
+    expect(cheap).toBeLessThan(0.5 * STEP);
+    expect(refined).toBeLessThan(0.1 * STEP);
+    expect(refined).toBeLessThan(cheap);
+  });
+
+  it("refuses a warped grid that has no field normal", () => {
+    expect(() =>
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: 8,
+        sampleSize: STEP,
+        positionAt: (x, y, z) => [x, y, z],
+        sampler: { distance: cornerPlane },
+        vertexPlacement: "qef",
+        normalFromCorners: true,
+        out: new ChunkMeshBuilder(),
+        scratch: scratchFor(8),
+      }),
+    ).toThrow(/warped/);
+  });
+});

@@ -41,7 +41,8 @@ import {
   LOD_STRIDE,
   VOXEL_SIZE,
 } from "../src/constants";
-import type { Lod } from "../src/world";
+import type { Lod, MeshResolution } from "../src/world";
+import { DEFAULT_MESH_RESOLUTION } from "../src/world";
 import type { MeshField, MeshRequest } from "../src/mesh/chunk-mesher";
 import { SurfaceNetsChunkMesher } from "../src/mesh/chunk-mesher";
 
@@ -277,6 +278,16 @@ const radius = number("--radius", 3);
 // `GAME_WINDOW`'s own values, so the profile is of the window the player actually has.
 const yRadius = number("--yradius", 2);
 const repeat = number("--repeat", 1);
+// **The sharp-edge angle is the same switch a place manifest uses**, so the profile is of
+// the mesher the place editor will run and not a second code path with its own tuning.
+const sharp = args.includes("--sharp") ? number("--sharp", 35) : undefined;
+const resolution: MeshResolution =
+  sharp === undefined
+    ? DEFAULT_MESH_RESOLUTION
+    : {
+        lodSampleSizes: DEFAULT_MESH_RESOLUTION.lodSampleSizes,
+        sharpEdges: sharp,
+      };
 const lods = (
   args.includes("--lods") ? (args[args.indexOf("--lods") + 1] ?? "0,1") : "0,1"
 )
@@ -299,11 +310,17 @@ const field = new Field(new OperationBVH(buildOperations(opCount)), {
   fallbackNormal: base.fallbackNormal,
 });
 const timed = new TimedField(field);
-const mesher = new SurfaceNetsChunkMesher(timed, CHUNK_VOXELS);
+const mesher = new SurfaceNetsChunkMesher(
+  timed,
+  CHUNK_VOXELS,
+  undefined,
+  resolution,
+);
 
 console.log(
   `model: ${opCount} operations, terrain scale ${DEFAULT_TERRAIN.scale}, ` +
-    `chunk ${BLOCK_WORLD} units${withCaves ? ", caves" : ""}`,
+    `chunk ${BLOCK_WORLD} units${withCaves ? ", caves" : ""}` +
+    `${sharp === undefined ? "" : `, sharpEdges ${sharp}°`}`,
 );
 console.log(
   `cells: ${cellsAround(radius, yRadius).length} per level ` +

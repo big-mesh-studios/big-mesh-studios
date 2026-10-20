@@ -28,6 +28,8 @@ import {
   CHUNK_VERTEX_CAPACITY,
   ChunkMeshBuilder,
   FaceNormalWriter,
+  SharpNormalScratch,
+  splitSharpNormals,
   type ChunkMesh,
 } from "@big-mesh-studios/meshing";
 import {
@@ -267,6 +269,24 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
   private readonly boundary: Uint8Array;
   /** The sample grid this mesher builds, which is the place's if it named one. */
   private readonly resolution: MeshResolution;
+  /**
+   * The crease angle a place asked for, or `undefined` for the Surface Nets answer.
+   *
+   * One number turns on both halves of the change: QEF placement moves the vertex onto the
+   * crease, and `splitSharpNormals` stops the shader blending across it. See
+   * `MeshResolution.sharpEdges`.
+   */
+  private readonly sharpAngle: number | undefined;
+  /**
+   * The step for the finite difference that supplies a crossing's normal.
+   *
+   * **A quarter of the finest sample, capped at the field's own default of one unit.** At a
+   * place's 3.2-unit sample that is 0.8, which stays inside the cell; at the landscape's
+   * ten-unit sample the cap keeps the existing behaviour. A step of a whole sample would
+   * reach across the crease the normal is meant to describe.
+   */
+  private readonly gradientStep: number;
+  private readonly sharpNormals = new SharpNormalScratch();
 
   constructor(
     private readonly field: MeshField,
@@ -289,6 +309,16 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
     resolution: MeshResolution = DEFAULT_MESH_RESOLUTION,
   ) {
     this.resolution = resolution;
+    this.sharpAngle = resolution.sharpEdges;
+    // The landscape's own step is one world unit and is what every existing caller gets;
+    // a sharp place narrows it to a quarter of its own sample so the stencil stays inside a
+    // cell. `gradientStep` is the same number for boundary normals and crossings, because
+    // two different steps would shade a seam from a different neighbourhood than the one
+    // that placed it.
+    this.gradientStep =
+      resolution.sharpEdges === undefined
+        ? 1
+        : Math.min(1, resolution.lodSampleSizes[0] * 0.25);
     // **The widest run this mesher will ever be asked for**, which is the finest LOD — and
     // the caller's own `samples` when it passed one, so the old constructor contract still
     // sizes scratch for what it was told. A chunk that reaches one cell into a finer
@@ -358,6 +388,48 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
       // reason this is pinned by the test that counts them.
       this.boundary.fill(0, 0, CHUNK_VERTEX_CAPACITY);
 
+      // **The Hermite data's field fallback.** The cheap path takes a crossing's normal from
+      // its own cell's eight samples, which is free and seam-safe; this function is asked
+      // only where those samples are not enough — a cell touching a dropped broad-pass block,
+      // or a feature cell whose corners are not linear. It must be a pure function of
+      // position, because two chunks that own the same interface cell have to agree.
+      const normalAt =
+        this.sharpAngle === undefined
+          ? undefined
+          : (x: number, y: number, z: number) => {
+              /**
+               * **A tetrahedral difference, not `Field.gradient`'s six central samples.**
+               *
+               * The four probes sit at the corners of a tetrahedron around the crossing,
+               * which is the fewest points that give an unbiased first derivative in three
+               * dimensions: a one-sided difference costs three and is biased towards
+               * whichever side it looked, while six central differences cost half again as
+               * much as this for an accuracy a QEF plane does not need. It is asked only for
+               * the cells the corner gradient cannot describe, so the difference between
+               * four and six samples is a difference in the right direction without being
+               * the whole budget.
+               *
+               * The step is a quarter of the finest sample and never more than a unit, so
+               * the tetrahedron stays inside the cell the normal belongs to.
+               */
+              const h = this.gradientStep;
+              const a = this.field.distance(x + h, y + h, z + h);
+              const b = this.field.distance(x - h, y - h, z + h);
+              const c = this.field.distance(x - h, y + h, z - h);
+              const d = this.field.distance(x + h, y - h, z - h);
+              const nx = a - b - c + d;
+              const ny = a - b + c - d;
+              const nz = a + b - c - d;
+              const length = Math.hypot(nx, ny, nz);
+              if (!(length > 0) || !Number.isFinite(length)) {
+                // The project's own answer where a field has no direction. It is a fallback
+                // for a medial axis, not a surface normal, and any unit vector would be as
+                // wrong as this one; +Y is what `Field` already chooses.
+                return [0, 1, 0] as const;
+              }
+              return [nx / length, ny / length, nz / length] as const;
+            };
+
       surfaceNets({
         origin: [region.origin.x, region.origin.y, region.origin.z],
         samples: region.samples,
@@ -366,6 +438,18 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
         // than one that stops on it (ADR 0035).
         extra: region.extra,
         sampleSize: region.sampleSize,
+        // A place that asked for hard edges gets Dual Contouring's vertex placement;
+        // everything else keeps the Surface Nets mean byte for byte.
+        ...(normalAt === undefined
+          ? {}
+          : {
+              vertexPlacement: "qef" as const,
+              // The cell's own eight samples describe the crossing for free and cannot
+              // disagree across a seam. The field function is the fallback for a cell that
+              // touches a broad-pass fill, where those eight are not all measurements.
+              normalFromCorners: true,
+              normalAt,
+            }),
         sampler: {
           distance: (x, y, z) => this.field.distance(x, y, z),
         },
@@ -398,7 +482,14 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
     }
 
     // `finish` copies to exact length, which is what leaves the thread by transfer.
-    return this.builder.finish();
+    const built = this.builder.finish();
+    // **After the candidate cache is closed, because this pass reads no field.** It only
+    // duplicates vertices and writes the face normal that was already computed; doing it in
+    // the open region would be harmless and would keep a region alive for work that does not
+    // need it.
+    return this.sharpAngle === undefined
+      ? built
+      : splitSharpNormals(built, { angle: this.sharpAngle }, this.sharpNormals);
   }
 
   /**
@@ -429,6 +520,7 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
         positions[index * 3] as number,
         positions[index * 3 + 1] as number,
         positions[index * 3 + 2] as number,
+        this.gradientStep,
       );
       this.builder.setNormal(index, normal.x, normal.y, normal.z);
     }

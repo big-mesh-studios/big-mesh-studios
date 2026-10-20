@@ -5,6 +5,11 @@
  * placed at the average of the crossings along that cell's edges; then, for every
  * primal edge where the sign changes, emit a quad from the four cells sharing it.
  *
+ * **The vertex can be the QEF minimum instead of the mean** (`vertexPlacement`), which is
+ * Dual Contouring's vertex placement. The cells, the quads and every ownership rule are
+ * unchanged; only the point inside the cell moves, from between the faces to the line or
+ * corner where they meet. See `qef.ts` and ADR 0055.
+ *
  * Chosen over marching cubes (ADR 0003) for three reasons that all matter here: one
  * vertex per cell rather than two to five triangles; no 256-entry table and no
  * ambiguous cases; and a surface that reads as smooth where marching cubes' reads as
@@ -109,6 +114,7 @@ import {
   BROAD_PASS_UNIT,
   nextBroadPlane,
 } from "./broad-pass";
+import { QEF_REFINE_COS, QEF_REFINE_MIXED, QefScratch } from "./qef";
 
 /** What the mesher needs from whatever it is meshing. */
 export interface SurfaceSampler {
@@ -214,6 +220,103 @@ const CELL_EDGES = [
 ] as const;
 
 /**
+ * The trilinear interpolant's gradient at a point in a cell, as a unit normal.
+ *
+ * **The eight corner samples are the whole input**, which is what makes this seam-safe: a
+ * shared cell is the same eight numbers in both chunks, so both compute the same direction
+ * without sampling the field again. The gradient is taken in cell fractions and divided by
+ * each axis's span so that a cell wider on one axis still produces a world-space direction.
+ *
+ * Returns `false` for a gradient that has no direction or is not finite; the caller falls
+ * back to the centroid rather than writing a zero normal.
+ */
+const cornerNormal = (
+  corners: Float32Array,
+  u: number,
+  v: number,
+  w: number,
+  spanX: number,
+  spanY: number,
+  spanZ: number,
+  out: { x: number; y: number; z: number },
+): boolean => {
+  const f000 = corners[0] as number;
+  const f100 = corners[1] as number;
+  const f010 = corners[2] as number;
+  const f110 = corners[3] as number;
+  const f001 = corners[4] as number;
+  const f101 = corners[5] as number;
+  const f011 = corners[6] as number;
+  const f111 = corners[7] as number;
+
+  const iu = 1 - u;
+  const iv = 1 - v;
+  const iw = 1 - w;
+
+  // ∂F/∂u, ∂F/∂v and ∂F/∂w of the trilinear interpolant. Written out rather than through a
+  // weight loop because this is the innermost arithmetic of a QEF cell and the eight terms
+  // are the whole of it.
+  const gx =
+    (f100 - f000) * iv * iw +
+    (f110 - f010) * v * iw +
+    (f101 - f001) * iv * w +
+    (f111 - f011) * v * w;
+  const gy =
+    (f010 - f000) * iu * iw +
+    (f110 - f100) * u * iw +
+    (f011 - f001) * iu * w +
+    (f111 - f101) * u * w;
+  const gz =
+    (f001 - f000) * iu * iv +
+    (f101 - f100) * u * iv +
+    (f011 - f010) * iu * v +
+    (f111 - f110) * u * v;
+
+  // Fractions per cell, world units per fraction. A degenerate lane would divide by zero;
+  // one is the only finite stand-in and a cell with no width has no normal worth keeping.
+  const worldX = gx / (spanX || 1);
+  const worldY = gy / (spanY || 1);
+  const worldZ = gz / (spanZ || 1);
+  const length = Math.hypot(worldX, worldY, worldZ);
+  if (!(length > 0) || !Number.isFinite(length)) return false;
+  out.x = worldX / length;
+  out.y = worldY / length;
+  out.z = worldZ / length;
+  return true;
+};
+
+/**
+ * Whether a cell's eight samples are far enough from linear that a corner gradient is
+ * describing a blend rather than a plane.
+ *
+ * **The mixed differences are free, and they are the signal a normal spread misses.** A
+ * box corner's three crossings all see the same diagonal trilinear gradient, so their
+ * normals agree while the surface has three planes; a linear field has zero mixed
+ * differences, a resolved sphere has about a hundredth of a cell, and a corner has most of
+ * one. See `QEF_REFINE_MIXED`.
+ */
+const cellDeviatesFromLinear = (
+  corners: Float32Array,
+  span: number,
+): boolean => {
+  const f000 = corners[0] as number;
+  const f100 = corners[1] as number;
+  const f010 = corners[2] as number;
+  const f110 = corners[3] as number;
+  const f001 = corners[4] as number;
+  const f101 = corners[5] as number;
+  const f011 = corners[6] as number;
+  const f111 = corners[7] as number;
+  const mixed = Math.max(
+    Math.abs(f000 - f100 - f010 + f110),
+    Math.abs(f000 - f100 - f001 + f101),
+    Math.abs(f000 - f010 - f001 + f011),
+    Math.abs(f000 - f100 - f010 - f001 + f110 + f101 + f011 - f111),
+  );
+  return mixed > Math.abs(span) * QEF_REFINE_MIXED;
+};
+
+/**
  * Samples a chunk owns per axis: `n`. The grid holds one more on each side.
  *
  * Only one on the low side is ever needed — the seam rule puts every chunk's low cell
@@ -264,6 +367,15 @@ export class SurfaceNetsScratch {
   readonly corners = new Float32Array(8);
   /** The eight corner marker values of that same cell. */
   readonly cornerMarks = new Float32Array(8);
+  /**
+   * The crossings and QEF solve for the cell being placed.
+   *
+   * Allocated for every caller and left alone by centroid placement, because it is a fixed
+   * dozen crossings rather than something sized by the grid — and a branch that allocated it
+   * on first use would be a branch in the cell loop for a buffer smaller than the cell's own
+   * corner arrays.
+   */
+  readonly qef = new QefScratch();
 
   /**
    * @param samplesPerAxis samples on each axis, or the three counts when they differ.
@@ -380,6 +492,66 @@ export interface SurfaceNetsParams {
     y: number,
     z: number,
   ) => readonly [number, number, number];
+  /**
+   * Where the vertex in a crossing cell goes: the crossing mean, or the QEF minimum.
+   *
+   * **Centroid is Surface Nets and QEF is Dual Contouring**, and the connectivity is the
+   * same either way: one vertex a crossing cell, one quad a sign-changing primal edge. Only
+   * the point inside the cell changes, which is why this can be a parameter rather than a
+   * second mesher — the seam rule, the overlap, the cell gate and the broad pass are all
+   * statements about cells and edges and do not care where in the cell the vertex sits.
+   *
+   * **`"qef"` needs `normalAt`**, and a caller that asks for it without one gets an error
+   * rather than a silent return to the mean. The two produce visibly different boxes, and a
+   * silent fallback would be a setting that did nothing.
+   */
+  vertexPlacement?: "centroid" | "qef";
+  /**
+   * The surface normal at a world position, for QEF placement.
+   *
+   * **Asked at every edge crossing when `normalFromCorners` is off, and only for a cell that
+   * touches a dropped broad-pass block or is refined as a feature when it is on.** It must
+   * be a pure function of position: two neighbouring chunks compute the same crossing
+   * position for a shared cell and must get the same normal, or their vertices stop
+   * coinciding and the seam opens. A gradient sampled from the chunk's own grid does not
+   * satisfy that — one side's padding cell reads a different neighbourhood — which is why
+   * the intended answer is a finite difference of the field at the crossing position rather
+   * than of the chunk's sample buffer.
+   *
+   * Ignored when `vertexPlacement` is `"centroid"`.
+   */
+  normalAt?: (
+    x: number,
+    y: number,
+    z: number,
+  ) => readonly [number, number, number];
+  /**
+   * Take a crossing's normal from the cell's own eight samples instead of `normalAt`.
+   *
+   * **The cheap path, and the seam-safe one.** A cell's eight corners are the same eight
+   * numbers in every chunk that owns it, so a finite difference built only from them cannot
+   * disagree across a seam; it costs a handful of arithmetic rather than four field samples a
+   * crossing. The answer is the trilinear interpolant's gradient at the crossing, which is a
+   * smoothed estimate of the field — enough to place a crease, not enough to be the field's
+   * gradient.
+   *
+   * **It needs `normalAt` as a fallback when the broad pass is on.** A dropped block is
+   * filled with `FAR_DISTANCE`, so a crossing cell that touches one has corners that are not
+   * measurements. Such a cell asks `normalAt` instead, which is why both may be given
+   * together. A caller that gives neither, or gives only this and uses a broad pass, is
+   * choosing an answer the mesher cannot make honest.
+   *
+   * Ignored on a warped grid, where a cell has no single axis-aligned corner frame; a QEF
+   * warped caller must supply `normalAt`.
+   */
+  normalFromCorners?: boolean;
+  /**
+   * How strongly the QEF is pulled toward the crossing mean. Defaults to `QEF_BIAS`.
+   *
+   * See `qef.ts`: this is a regulariser for flat cells, not a shape control. Raising it
+   * rounds the corners the method exists to preserve.
+   */
+  qefBias?: number;
   sampler: SurfaceSampler;
   out: SurfaceOutput;
   scratch: SurfaceNetsScratch;
@@ -577,6 +749,39 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
   const pz = params.lanes?.z ?? uniformLane(origin[2], sampleSize, gridZ);
 
   out.clear();
+
+  // The placement mode, resolved once. `qef` is the scratch buffer rather than a boolean so
+  // the cell loop carries one branch on a defined value instead of two on a flag and a buffer.
+  const placement = params.vertexPlacement ?? "centroid";
+  const normalFromCorners = params.normalFromCorners === true;
+  if (
+    placement === "qef" &&
+    params.normalAt === undefined &&
+    !normalFromCorners
+  ) {
+    throw new Error(
+      "surface nets: QEF placement needs a normalAt function or normalFromCorners to supply its Hermite data",
+    );
+  }
+  // A warped cell has no axis-aligned corner frame to difference, so the cheap path cannot
+  // describe it; a caller asking for both without a field normal gets an error rather than a
+  // normal assembled from placeholder lanes.
+  if (
+    placement === "qef" &&
+    normalFromCorners &&
+    params.positionAt !== undefined &&
+    params.normalAt === undefined
+  ) {
+    throw new Error(
+      "surface nets: normalFromCorners cannot describe a warped grid; give normalAt as well",
+    );
+  }
+  const qef = placement === "qef" ? scratch.qef : undefined;
+  const normalAt = params.normalAt;
+  const useCorners =
+    qef !== undefined && normalFromCorners && !params.positionAt;
+  /** Reused by `cornerNormal`; never escapes this call. */
+  const cornerDirection = { x: 0, y: 0, z: 0 };
 
   const gate = params.cellGate;
 
@@ -892,6 +1097,38 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           if (!gate(scratch.corners, scratch.cornerMarks)) continue;
         }
 
+        // Empty before the crossings are gathered, and only for a cell the gate accepted —
+        // a refused cell contributes no vertex and must not leave crossings for the next one.
+        qef?.clear();
+
+        // The cell's own spans. Every crossing of this cell shares them, and the corner
+        // gradient divides its fraction-space answer by them to make a world direction.
+        const spanX = (px[cx + 1] as number) - (px[cx] as number);
+        const spanY = (py[cy + 1] as number) - (py[cy] as number);
+        const spanZ = (pz[cz + 1] as number) - (pz[cz] as number);
+        // A dropped broad-pass block is filled with the saturation value, not a measured
+        // distance. Its sign is trustworthy (that is the pass's proof) but its magnitude is
+        // not, so a cell touching one takes the field normal instead of a corner gradient.
+        let cornersAreMeasurements = true;
+        if (useCorners && normalAt !== undefined) {
+          for (let corner = 0; corner < 8; corner++) {
+            if (Math.abs(scratch.corners[corner] as number) >= FAR_DISTANCE) {
+              cornersAreMeasurements = false;
+              break;
+            }
+          }
+        }
+        // A cell that is not close to linear in its own eight samples is a cell a corner
+        // gradient cannot describe; the field is asked for the crossings' normals even if
+        // the corner normals happen to agree. See `cellDeviatesFromLinear`.
+        const featureCell =
+          useCorners &&
+          normalAt !== undefined &&
+          cellDeviatesFromLinear(
+            scratch.corners,
+            Math.max(Math.abs(spanX), Math.abs(spanY), Math.abs(spanZ)),
+          );
+
         let sumX = 0;
         let sumY = 0;
         let sumZ = 0;
@@ -901,10 +1138,67 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           const vb = scratch.corners[b];
           if (va < 0 === vb < 0) continue;
           const t = va / (va - vb);
-          sumX += (a & 1) + t * ((b & 1) - (a & 1));
-          sumY += (a & 2 ? 1 : 0) + t * ((b & 2 ? 1 : 0) - (a & 2 ? 1 : 0));
-          sumZ += (a & 4 ? 1 : 0) + t * ((b & 4 ? 1 : 0) - (a & 4 ? 1 : 0));
+          const ux = (a & 1) + t * ((b & 1) - (a & 1));
+          const uy = (a & 2 ? 1 : 0) + t * ((b & 2 ? 1 : 0) - (a & 2 ? 1 : 0));
+          const uz = (a & 4 ? 1 : 0) + t * ((b & 4 ? 1 : 0) - (a & 4 ? 1 : 0));
+          sumX += ux;
+          sumY += uy;
+          sumZ += uz;
           crossings++;
+
+          // **The crossing in world space, and its normal there.** The normal is what makes
+          // this Dual Contouring rather than Surface Nets: a position alone cannot say that
+          // two planes meet. See `qef.ts`.
+          //
+          // It is asked here rather than after the loop because the cell's lanes are already
+          // in hand, and because the position the normal is asked at has to be the crossing
+          // itself — a normal at the cell's centre describes no plane the crossings lie on.
+          //
+          // **Separable only.** A warped cell's `px`/`py`/`pz` are placeholders, so the
+          // crossings are gathered again below where `positionAt` has put them in the world.
+          if (qef !== undefined && positionAt === undefined) {
+            const wx = (px[cx] as number) + ux * spanX;
+            const wy = (py[cy] as number) + uy * spanY;
+            const wz = (pz[cz] as number) + uz * spanZ;
+            let nx = 0;
+            let ny = 0;
+            let nz = 0;
+            let haveNormal = false;
+            if (useCorners && cornersAreMeasurements) {
+              haveNormal = cornerNormal(
+                scratch.corners,
+                ux,
+                uy,
+                uz,
+                spanX,
+                spanY,
+                spanZ,
+                cornerDirection,
+              );
+              if (haveNormal) {
+                nx = cornerDirection.x;
+                ny = cornerDirection.y;
+                nz = cornerDirection.z;
+              }
+            }
+            if (!haveNormal && normalAt !== undefined) {
+              const normal = normalAt(wx, wy, wz);
+              nx = normal[0];
+              ny = normal[1];
+              nz = normal[2];
+              haveNormal = true;
+            }
+            // A crossing with no direction is still part of the mass point; the solver
+            // ignores a zero normal for the planes but not for the mean.
+            qef.add(
+              wx,
+              wy,
+              wz,
+              haveNormal ? nx : 0,
+              haveNormal ? ny : 0,
+              haveNormal ? nz : 0,
+            );
+          }
         }
 
         // Where the vertex goes, and the reason there are two ways to work it out.
@@ -950,9 +1244,16 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
             const t = va / (va - vb);
             const pa = positionAt(cx + ax0, cy + ay0, cz + az0);
             const pb = positionAt(cx + bx0, cy + by0, cz + bz0);
-            ax += pa[0] + t * (pb[0] - pa[0]);
-            ay += pa[1] + t * (pb[1] - pa[1]);
-            az += pa[2] + t * (pb[2] - pa[2]);
+            const wx = pa[0] + t * (pb[0] - pa[0]);
+            const wy = pa[1] + t * (pb[1] - pa[1]);
+            const wz = pa[2] + t * (pb[2] - pa[2]);
+            ax += wx;
+            ay += wy;
+            az += wz;
+            if (qef !== undefined) {
+              const normal = normalAt!(wx, wy, wz);
+              qef.add(wx, wy, wz, normal[0], normal[1], normal[2]);
+            }
             n++;
           }
           // Both branches walk `CELL_EDGES`, so both count the same crossings and
@@ -972,6 +1273,69 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           worldZ =
             (pz[cz] as number) +
             (sumZ / crossings) * ((pz[cz + 1] as number) - (pz[cz] as number));
+        }
+
+        // **Corner normals are refined only where they disagree.** A flat face or a smooth
+        // sphere has nothing to gain from the field's extra samples; a cell with two planes
+        // in it does, because a trilinear gradient across them is a blend and a QEF built
+        // from blends lands near the crease rather than on it.
+        if (
+          useCorners &&
+          normalAt !== undefined &&
+          (featureCell || qef.spreadCos() < QEF_REFINE_COS)
+        ) {
+          qef.refine(normalAt);
+        }
+
+        // **The QEF minimum replaces the mean, inside the same cell.** A separable cell's
+        // bounds are its own two lane positions. A warped cell has no box in its own frame,
+        // so the box is the bounds of its eight real corners: looser than the hexahedron,
+        // and the right direction to be loose in because the answer only has to stay out of
+        // the neighbour's cell.
+        if (qef !== undefined) {
+          let lowX: number;
+          let lowY: number;
+          let lowZ: number;
+          let highX: number;
+          let highY: number;
+          let highZ: number;
+          if (positionAt) {
+            lowX = Infinity;
+            lowY = Infinity;
+            lowZ = Infinity;
+            highX = -Infinity;
+            highY = -Infinity;
+            highZ = -Infinity;
+            for (let corner = 0; corner < 8; corner++) {
+              const [dx, dy, dz] = CORNER_OFFSETS[corner];
+              const p = positionAt(cx + dx, cy + dy, cz + dz);
+              if (p[0] < lowX) lowX = p[0];
+              if (p[1] < lowY) lowY = p[1];
+              if (p[2] < lowZ) lowZ = p[2];
+              if (p[0] > highX) highX = p[0];
+              if (p[1] > highY) highY = p[1];
+              if (p[2] > highZ) highZ = p[2];
+            }
+          } else {
+            lowX = px[cx] as number;
+            lowY = py[cy] as number;
+            lowZ = pz[cz] as number;
+            highX = px[cx + 1] as number;
+            highY = py[cy + 1] as number;
+            highZ = pz[cz + 1] as number;
+          }
+          const placed = qef.solve(
+            lowX,
+            lowY,
+            lowZ,
+            highX,
+            highY,
+            highZ,
+            params.qefBias,
+          );
+          worldX = placed.x;
+          worldY = placed.y;
+          worldZ = placed.z;
         }
 
         scratch.cellVertex[(cz * cellsY + cy) * cellsX + cx] = out.vertex(

@@ -10,7 +10,9 @@
  *
  * - **`surfaceNets`** — one vertex per cell, no table, fewer triangles. Not manifold in general, which
  *   its own test scopes and ADR 0003 records; it is what a streamed landscape wants and what a model
- *   on round numbers usually gets away with.
+ *   on round numbers usually gets away with. Its vertex can optionally be the Dual Contouring QEF
+ *   minimum instead of the crossing mean (ADR 0055), which is the same topology with a different
+ *   point inside the cell.
  * - **`marchingCubes`** — two to five triangles per cell, a 256-entry table, vertices on the true
  *   crossings. Closed and manifold unconditionally, which is what a mesh bound for a slicer needs and
  *   is the reason it exists alongside surface nets rather than instead of it.
@@ -61,6 +63,21 @@ export {
   type SurfaceOutput,
   type SurfaceSampler,
 } from "./surface-nets";
+
+/**
+ * **The QEF a Dual Contouring vertex minimizes**, which is the one thing `surfaceNets`
+ * needs that Surface Nets does not: the crossing normals. It is exported because it is
+ * the testable half — a solve is a small piece of arithmetic that does not need a grid,
+ * a chunk or a field to say whether it is right.
+ */
+export {
+  QEF_BIAS,
+  QEF_MAX_CROSSINGS,
+  QEF_REFINE_COS,
+  QEF_REFINE_MIXED,
+  QefScratch,
+  type QefPoint,
+} from "./qef";
 
 export {
   marchingCubes,
@@ -138,6 +155,20 @@ export {
   accumulateFaceNormals,
   resolveFaceNormal,
 } from "./vertex-normals";
+
+/**
+ * **Sharp normals, which are a shading decision rather than a meshing one.** Geometry can
+ * have a crease and still be lit as a curve, because a normal is per vertex; this pass
+ * duplicates the vertices on either side of a crease so the rasteriser has nothing to
+ * interpolate. It lives beside `vertex-normals` because that is the pass whose output it
+ * reads, and it must run before anything else duplicates a vertex.
+ */
+export {
+  DEFAULT_SHARP_ANGLE,
+  SharpNormalScratch,
+  splitSharpNormals,
+  type SharpNormalOptions,
+} from "./sharp-normals";
 
 /**
  * **`model-mesh` is the one file here that composes rather than sampling.** Everything above

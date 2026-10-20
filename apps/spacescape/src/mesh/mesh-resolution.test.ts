@@ -23,6 +23,40 @@ describe("a place's mesh resolution", () => {
     expect(isMeshResolution({ lodSampleSizes: [4, 4, 4] })).toBe(true);
   });
 
+  it("accepts a sharp-edge angle on any grid it accepts", () => {
+    expect(
+      isMeshResolution({
+        lodSampleSizes: [3.2, 6.4, 12.8],
+        sharpEdges: 35,
+      }),
+    ).toBe(true);
+    // Both ends are meaningful: just above flat, and just below a face turned back on
+    // itself. A number is what a manifest says; nothing is rounded.
+    expect(
+      isMeshResolution({ lodSampleSizes: [10, 20, 40], sharpEdges: 0.5 }),
+    ).toBe(true);
+    expect(
+      isMeshResolution({ lodSampleSizes: [10, 20, 40], sharpEdges: 90 }),
+    ).toBe(true);
+  });
+
+  it("refuses a sharp-edge angle that is not an angle", () => {
+    for (const sharpEdges of [
+      0,
+      -1,
+      90.5,
+      180,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      "35",
+    ]) {
+      expect(
+        isMeshResolution({ lodSampleSizes: [10, 20, 40], sharpEdges }),
+        String(sharpEdges),
+      ).toBe(false);
+    }
+  });
+
   it("derives the sample counts from the chunk, not from the number of levels", () => {
     expect(meshSamples(0)).toBe(32);
     expect(meshSamples(1)).toBe(16);
@@ -84,6 +118,27 @@ describe("a place's mesh resolution", () => {
       sameMeshResolution(DEFAULT_MESH_RESOLUTION, {
         lodSampleSizes: [3.2, 6.4, 12.8],
       }),
+    ).toBe(false);
+    // **A changed angle is a changed surface**, even when the samples are identical.
+    // `Session.setMeshSettings` uses this to decide whether to re-mesh, so forgetting it
+    // would make the setting appear to do nothing until the next load.
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+      ),
+    ).toBe(true);
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 30 },
+      ),
+    ).toBe(false);
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+        { lodSampleSizes: [10, 20, 40] },
+      ),
     ).toBe(false);
   });
 });
