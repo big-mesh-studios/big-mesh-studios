@@ -27,8 +27,11 @@ import {
 import {
   CHUNK_VERTEX_CAPACITY,
   ChunkMeshBuilder,
+  ColourBoundaryScratch,
   FaceNormalWriter,
   SharpNormalScratch,
+  colourBoundaryScratchFor,
+  splitColourBoundaries,
   splitSharpNormals,
   type ChunkMesh,
 } from "@big-mesh-studios/meshing";
@@ -287,6 +290,16 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
    */
   private readonly gradientStep: number;
   private readonly sharpNormals = new SharpNormalScratch();
+  /**
+   * Whether to cut triangles where the field's colour changes. See
+   * `MeshResolution.splitColours`.
+   */
+  private readonly splitColours: boolean;
+  /**
+   * Held across chunks, on the same terms as `sharpNormals`: the pass allocates buffers sized
+   * for the mesh it is handed, and a chunk rebuild should not pay for them again.
+   */
+  private colourBoundaries: ColourBoundaryScratch | undefined;
 
   constructor(
     private readonly field: MeshField,
@@ -310,6 +323,7 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
   ) {
     this.resolution = resolution;
     this.sharpAngle = resolution.sharpEdges;
+    this.splitColours = resolution.splitColours === true;
     // The landscape's own step is one world unit and is what every existing caller gets;
     // a sharp place narrows it to a quarter of its own sample so the stencil stays inside a
     // cell. `gradientStep` is the same number for boundary normals and crossings, because
@@ -487,9 +501,40 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
     // duplicates vertices and writes the face normal that was already computed; doing it in
     // the open region would be harmless and would keep a region alive for work that does not
     // need it.
-    return this.sharpAngle === undefined
-      ? built
-      : splitSharpNormals(built, { angle: this.sharpAngle }, this.sharpNormals);
+    const sharp =
+      this.sharpAngle === undefined
+        ? built
+        : splitSharpNormals(
+            built,
+            { angle: this.sharpAngle },
+            this.sharpNormals,
+          );
+    if (!this.splitColours) return sharp;
+    /**
+     * **The colour cut, and it is the only pass here that asks the field after meshing.**
+     * `splitColourBoundaries` walks every disagreeing edge and bisects `colourAt` along it, so
+     * the candidate cache is reopened for the chunk's own samples: without it each bisection
+     * point would gather its own candidates and the pass would cost a tree query per step.
+     *
+     * **Sharp first, then colour.** The split pass averages no normals but does duplicate
+     * vertices, and a fan clipped by colour boundaries would give `splitSharpNormals` a
+     * leaned normal at every seam — the ordering ADR 0046 records for models, applied here
+     * for the same reason.
+     */
+    const endColour =
+      this.field.beginRegion?.(region.sampleBounds) ?? (() => {});
+    try {
+      this.colourBoundaries ??= colourBoundaryScratchFor(sharp.triangleCount);
+      return splitColourBoundaries(
+        sharp,
+        // **The same function that filled the vertices**, which is what makes the pass's
+        // bracketed bisection find every crossing.
+        { colourAt: (x, y, z) => this.field.colourAt(x, y, z) },
+        this.colourBoundaries,
+      );
+    } finally {
+      endColour();
+    }
   }
 
   /**

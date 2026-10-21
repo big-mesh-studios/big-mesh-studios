@@ -54,6 +54,29 @@ export interface MeshResolution {
    * rather than the engine default until a place has been measured.
    */
   readonly sharpEdges?: number;
+  /**
+   * Whether the mesher cuts the triangles where the field's colour changes, so that a
+   * triangle carries one colour instead of blending between two.
+   *
+   * **A colour is per vertex and the rasteriser interpolates between vertices.** Where a blue
+   * wall meets a green floor the vertices on either side hold different colours, and every
+   * triangle spanning the join is drawn as a ramp — the colours bleed into each other for a
+   * cell's width. `splitColourBoundaries` cuts each disagreeing triangle at the point where
+   * `Field.colourAt` actually flips, so both halves are flat and the boundary follows the
+   * shape rather than the triangulation. It is the pass `apps/sdf-modeller` already runs on
+   * models; this is the same pass on a chunk.
+   *
+   * **Opt-in per place and not on by default, because it is a cost that only hard-edged
+   * geometry asks for.** The pass bails after a scan when no triangle disagrees, so a
+   * single-colour place pays almost nothing, but a painted landscape has colour boundaries
+   * everywhere and would pay field calls and extra triangles on every chunk.
+   *
+   * **Sharpest on a place that also sets `sharpEdges`.** The cut is found along the mesh's
+   * edges; QEF placement puts those edges on the surface at a crease, which is exactly where
+   * a hard colour change belongs. Without it the geometry is beveled by half a cell and the
+   * seam follows the bevel, which is still sharper than the blend it replaces.
+   */
+  readonly splitColours?: boolean;
 }
 
 /** The landscape's own spacing: ten units at LOD 0, then twenty and forty. */
@@ -111,7 +134,10 @@ export const sameMeshResolution = (
   a.lodSampleSizes[2] === b.lodSampleSizes[2] &&
   // **Compared, not remembered.** A place that changes its angle is asking for a different
   // surface, and `Session.setMeshSettings` only re-meshes when this says the grid moved.
-  a.sharpEdges === b.sharpEdges;
+  a.sharpEdges === b.sharpEdges &&
+  // A place that turns colour cutting on or off is asking for a different mesh, even at the
+  // same grid: the triangles are literally different.
+  (a.splitColours === true) === (b.splitColours === true);
 
 /**
  * Whether a value names a mesh grid this engine can build.
@@ -158,5 +184,10 @@ export const isMeshResolution = (value: unknown): value is MeshResolution => {
       return false;
     }
   }
+
+  // **A boolean, and only a boolean.** `"true"` in a manifest is a string, not a request, and
+  // coercing it would silently turn colour cutting on for a place that had a typo.
+  const split = (value as { splitColours?: unknown }).splitColours;
+  if (split !== undefined && typeof split !== "boolean") return false;
   return true;
 };

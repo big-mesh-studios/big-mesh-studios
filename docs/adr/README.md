@@ -73,6 +73,7 @@ recorded cost is a decision nobody thought about.
 | [0053](0053-a-floor-is-a-shape-not-a-level-kind.md)                      | A floor is a `Polygon` shape, not a fourth kind of level item                          | accepted                     |
 | [0054](0054-a-place-may-say-it-is-not-editable.md)                       | A place may say it is not editable, and that is one bit of a mode                      | accepted                     |
 | [0055](0055-dual-contouring-for-hard-edges.md)                           | A place may ask for QEF vertices and sharp normals                                     | accepted                     |
+| [0056](0056-a-place-cuts-its-triangles-at-a-colour-boundary.md)          | A place may cut its triangles where the field's colour changes                         | accepted                     |
 
 ## What is decided so far
 

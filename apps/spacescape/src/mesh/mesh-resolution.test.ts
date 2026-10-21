@@ -57,6 +57,51 @@ describe("a place's mesh resolution", () => {
     }
   });
 
+  it("accepts colour cutting as a boolean and refuses anything else", () => {
+    expect(
+      isMeshResolution({
+        lodSampleSizes: [3.2, 6.4, 12.8],
+        splitColours: true,
+      }),
+    ).toBe(true);
+    expect(
+      isMeshResolution({
+        lodSampleSizes: [3.2, 6.4, 12.8],
+        splitColours: false,
+      }),
+    ).toBe(true);
+    // **A string is a typo, not a request.** Coercing `"true"` would turn a place's colour
+    // boundaries into a different mesh without the manifest ever saying so.
+    for (const splitColours of ["true", 1, 0, null, {}]) {
+      expect(
+        isMeshResolution({ lodSampleSizes: [10, 20, 40], splitColours }),
+        String(splitColours),
+      ).toBe(false);
+    }
+  });
+
+  it("treats turning colour cutting on as a different mesh", () => {
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], splitColours: true },
+        { lodSampleSizes: [10, 20, 40], splitColours: true },
+      ),
+    ).toBe(true);
+    // Absent and explicit `false` are the same request: no cut.
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40] },
+        { lodSampleSizes: [10, 20, 40], splitColours: false },
+      ),
+    ).toBe(true);
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40] },
+        { lodSampleSizes: [10, 20, 40], splitColours: true },
+      ),
+    ).toBe(false);
+  });
+
   it("derives the sample counts from the chunk, not from the number of levels", () => {
     expect(meshSamples(0)).toBe(32);
     expect(meshSamples(1)).toBe(16);
