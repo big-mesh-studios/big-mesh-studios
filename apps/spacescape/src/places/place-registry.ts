@@ -465,5 +465,7 @@ export const placeOperation = (
     orientation?: Quat;
     colour?: { r: number; g: number; b: number };
     opacity?: number;
+    /** See `Operation.material`; a numeric id, not a name. */
+    material?: number;
   } = {},
 ): Operation => makeOperation(0, origin, shape, combine, options);

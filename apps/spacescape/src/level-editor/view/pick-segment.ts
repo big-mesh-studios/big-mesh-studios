@@ -27,14 +27,17 @@ export interface PickableSegment {
   readonly itemId: string;
   /** The edge's index in its item's own global segment order, as `wallSegments` assigns it. */
   readonly index: number;
+  /** The polyline the edge belongs to, which is the line a side belongs to. */
+  readonly lineIndex: number;
   readonly a: Vec3;
   readonly b: Vec3;
 }
 
-/** The segment a pick landed on: the item and the edge index. */
+/** The segment a pick landed on: the item, the edge index and the line it belongs to. */
 export interface SegmentPick {
   readonly itemId: string;
   readonly index: number;
+  readonly lineIndex: number;
 }
 
 /**
@@ -59,7 +62,11 @@ export const segmentUnderPointer = (
     if (distance > radius) continue;
     if (closest === undefined || distance < closest.distance) {
       closest = {
-        pick: { itemId: segment.itemId, index: segment.index },
+        pick: {
+          itemId: segment.itemId,
+          index: segment.index,
+          lineIndex: segment.lineIndex,
+        },
         distance,
       };
     }

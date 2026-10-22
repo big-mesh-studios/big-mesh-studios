@@ -143,6 +143,19 @@ export interface LevelFigure {
 export type LevelItem = LevelShape | LevelFigure | LevelWalls;
 
 /**
+ * Which side of a drawn line a wall stands on.
+ *
+ * **`centre` is the default, and it is what every wall meant before this existed.** `left` and
+ * `right` are relative to the direction the line's points run, and they put the whole wall on
+ * that side: the line becomes the wall's opposite face. A person tracing a reference image
+ * draws along the line they can see, so this is the parameter that says which side of that
+ * line the wall grows from rather than making them offset the points by hand.
+ */
+export const WALL_SIDES = ["centre", "left", "right"] as const;
+
+export type WallSide = (typeof WALL_SIDES)[number];
+
+/**
  * A set of walls: polylines drawn by hand and extruded upward.
  *
  * ## Why this is a third kind and not a `LevelShape`
@@ -188,6 +201,15 @@ export interface LevelWalls {
   readonly up: Vec3Like;
   /** Every polyline, in world space, in the order it was drawn. Each has two points or more. */
   readonly lines: readonly (readonly Vec3Like[])[];
+  /**
+   * Which side of each line the wall stands on, one entry per line.
+   *
+   * **Absent means every line is centred**, which is the shape this item had before the
+   * parameter existed. The array is parallel to `lines` when it is present: `sides[i]`
+   * belongs to `lines[i]`, so a line added or removed has to add or remove its entry too.
+   * `parseLevelPlan` refuses a mismatch rather than letting the two drift.
+   */
+  readonly sides?: readonly WallSide[];
   /** How tall the walls stand along `up`, from the plane they were drawn in. */
   readonly height: number;
   /** How thick a wall is, across its own line. */

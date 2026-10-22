@@ -43,8 +43,14 @@ import {
   MAX_SOFTNESS,
 } from "../limits";
 import { MATERIAL_NAMES } from "../../render/material-names";
-import type { Combine, LevelItem, LevelPlan, LevelShape } from "./types";
-import { isLevelFigure, LEVEL_PLACE } from "./types";
+import type {
+  Combine,
+  LevelItem,
+  LevelPlan,
+  LevelShape,
+  WallSide,
+} from "./types";
+import { isLevelFigure, LEVEL_PLACE, WALL_SIDES } from "./types";
 import { encodeImagePlane, type LevelImagePlane } from "./image-plane";
 
 /**
@@ -365,6 +371,33 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
     lines.push(points);
   }
 
+  let sides: WallSide[] | undefined;
+  if (value.sides !== undefined) {
+    if (!Array.isArray(value.sides)) {
+      return refuse(`${where}.sides`, "is not an array");
+    }
+    if (value.sides.length !== lines.length) {
+      return refuse(
+        `${where}.sides`,
+        `holds ${value.sides.length}, and there are ${lines.length} lines, so it is not one side per line`,
+      );
+    }
+    sides = [];
+    for (let i = 0; i < value.sides.length; i++) {
+      const side = value.sides[i];
+      if (
+        typeof side !== "string" ||
+        !(WALL_SIDES as readonly string[]).includes(side)
+      ) {
+        return refuse(
+          `${where}.sides[${i}]`,
+          `is ${JSON.stringify(side)}, and a side is centre, left or right`,
+        );
+      }
+      sides.push(side as WallSide);
+    }
+  }
+
   const height = readSize(value.height, `${where}.height`);
   if ("refusal" in height) return height;
   const thickness = readSize(value.thickness, `${where}.thickness`);
@@ -411,6 +444,7 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
     "at",
     "up",
     "lines",
+    "sides",
     "height",
     "thickness",
     "combine",
@@ -431,6 +465,7 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
       at: at.point,
       up: up.point,
       lines,
+      ...(sides === undefined ? {} : { sides }),
       height: height.size,
       thickness: thickness.size,
       combine: combine as Combine,

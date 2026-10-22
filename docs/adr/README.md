@@ -74,6 +74,9 @@ recorded cost is a decision nobody thought about.
 | [0054](0054-a-place-may-say-it-is-not-editable.md)                       | A place may say it is not editable, and that is one bit of a mode                      | accepted                     |
 | [0055](0055-dual-contouring-for-hard-edges.md)                           | A place may ask for QEF vertices and sharp normals                                     | accepted                     |
 | [0056](0056-a-place-cuts-its-triangles-at-a-colour-boundary.md)          | A place may cut its triangles where the field's colour changes                         | accepted                     |
+| [0057](0057-a-place-bakes-ambient-occlusion-into-its-chunks.md)          | A place may bake ambient occlusion into its chunks                                     | accepted                     |
+| [0058](0058-a-levels-material-name-reaches-the-fold.md)                  | A level's material name reaches the fold as the renderer's id                          | accepted                     |
+| [0059](0059-a-wall-line-carries-its-side.md)                             | A wall line carries its side, so a traced line can be the wall's face                  | accepted                     |
 
 ## What is decided so far
 

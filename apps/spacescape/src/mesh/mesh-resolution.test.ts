@@ -102,6 +102,62 @@ describe("a place's mesh resolution", () => {
     ).toBe(false);
   });
 
+  it("accepts baked occlusion as a strength from zero to one and refuses anything else", () => {
+    expect(
+      isMeshResolution({
+        lodSampleSizes: [3.2, 6.4, 12.8],
+        bakeOcclusion: 0.8,
+      }),
+    ).toBe(true);
+    // Zero is a legitimate way to say "none", and the same request as leaving it out.
+    expect(
+      isMeshResolution({ lodSampleSizes: [10, 20, 40], bakeOcclusion: 0 }),
+    ).toBe(true);
+    // **A string is a typo, not an amount**, for the same reason `"true"` is not a boolean.
+    for (const bakeOcclusion of [
+      -0.1,
+      1.1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      "0.8",
+      true,
+      null,
+    ]) {
+      expect(
+        isMeshResolution({ lodSampleSizes: [10, 20, 40], bakeOcclusion }),
+        String(bakeOcclusion),
+      ).toBe(false);
+    }
+  });
+
+  it("treats a change of occlusion strength as a different mesh", () => {
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0.8 },
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0.8 },
+      ),
+    ).toBe(true);
+    // Absent and zero are the same request: no occlusion.
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40] },
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0 },
+      ),
+    ).toBe(true);
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40] },
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0.8 },
+      ),
+    ).toBe(false);
+    expect(
+      sameMeshResolution(
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0.8 },
+        { lodSampleSizes: [10, 20, 40], bakeOcclusion: 0.6 },
+      ),
+    ).toBe(false);
+  });
+
   it("derives the sample counts from the chunk, not from the number of levels", () => {
     expect(meshSamples(0)).toBe(32);
     expect(meshSamples(1)).toBe(16);

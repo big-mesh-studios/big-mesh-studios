@@ -19,11 +19,18 @@ const project = (point: Vec3): { x: number; y: number } => ({
 
 const SEGMENTS: readonly PickableSegment[] = [
   // A horizontal run along z = 0, from x = 0 to 10.
-  { itemId: "a", index: 0, a: { x: 0, y: 0, z: 0 }, b: { x: 10, y: 0, z: 0 } },
-  // A vertical run at x = 10, from z = 0 to 10.
+  {
+    itemId: "a",
+    index: 0,
+    lineIndex: 0,
+    a: { x: 0, y: 0, z: 0 },
+    b: { x: 10, y: 0, z: 0 },
+  },
+  // A vertical run at x = 10, from z = 0 to 10, on the same line.
   {
     itemId: "a",
     index: 1,
+    lineIndex: 0,
     a: { x: 10, y: 0, z: 0 },
     b: { x: 10, y: 0, z: 10 },
   },
@@ -31,6 +38,7 @@ const SEGMENTS: readonly PickableSegment[] = [
   {
     itemId: "b",
     index: 0,
+    lineIndex: 0,
     a: { x: 0, y: 0, z: 40 },
     b: { x: 10, y: 0, z: 40 },
   },
@@ -41,12 +49,14 @@ describe("segmentUnderPointer", () => {
     expect(segmentUnderPointer(SEGMENTS, project, { x: 5, y: 1 }, 5)).toEqual({
       itemId: "a",
       index: 0,
+      lineIndex: 0,
     });
     expect(
       segmentUnderPointer(SEGMENTS, project, { x: 10.5, y: 5 }, 5),
     ).toEqual({
       itemId: "a",
       index: 1,
+      lineIndex: 0,
     });
   });
 

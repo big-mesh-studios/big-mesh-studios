@@ -35,6 +35,7 @@ import {
   splitSharpNormals,
   type ChunkMesh,
 } from "@big-mesh-studios/meshing";
+import { OCCLUSION_REACH, bakeAmbientOcclusion } from "./ambient-occlusion";
 import {
   NO_OVERLAP,
   OVERLAP_CELLS,
@@ -133,6 +134,20 @@ export interface ChunkRegion {
    */
   readonly sampleBounds: Bounds;
 }
+
+/** The same box, grown by `amount` on every axis. */
+const growBounds = (bounds: Bounds, amount: number): Bounds => ({
+  min: {
+    x: bounds.min.x - amount,
+    y: bounds.min.y - amount,
+    z: bounds.min.z - amount,
+  },
+  max: {
+    x: bounds.max.x + amount,
+    y: bounds.max.y + amount,
+    z: bounds.max.z + amount,
+  },
+});
 
 /** The region a chunk at a level meshes, reaching `overlap` cells into finer neighbours. */
 export const chunkRegion = (
@@ -300,6 +315,19 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
    * for the mesh it is handed, and a chunk rebuild should not pay for them again.
    */
   private colourBoundaries: ColourBoundaryScratch | undefined;
+  /**
+   * How strongly to bake ambient occlusion into the colours, or `undefined` for none. See
+   * `MeshResolution.bakeOcclusion`.
+   */
+  private readonly bakeOcclusion: number | undefined;
+  /**
+   * The world distance one unit of occlusion reach spans: the place's finest sample spacing.
+   *
+   * **The finest, not the level being meshed**, so a wall darkens by the same amount at every
+   * level of detail. A band scaled by the current level's spacing would double when a chunk
+   * coarsened, and the LOD step would change the shading as well as the silhouette.
+   */
+  private readonly occlusionScale: number;
 
   constructor(
     private readonly field: MeshField,
@@ -324,6 +352,13 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
     this.resolution = resolution;
     this.sharpAngle = resolution.sharpEdges;
     this.splitColours = resolution.splitColours === true;
+    // Zero and absent are the same request; normalising here means the mesh tail asks one
+    // question ("was a strength given?") rather than re-deciding it per chunk.
+    this.bakeOcclusion =
+      resolution.bakeOcclusion === undefined || resolution.bakeOcclusion === 0
+        ? undefined
+        : resolution.bakeOcclusion;
+    this.occlusionScale = resolution.lodSampleSizes[0];
     // The landscape's own step is one world unit and is what every existing caller gets;
     // a sharp place narrows it to a quarter of its own sample so the stencil stays inside a
     // cell. `gradientStep` is the same number for boundary normals and crossings, because
@@ -509,31 +544,53 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
             { angle: this.sharpAngle },
             this.sharpNormals,
           );
-    if (!this.splitColours) return sharp;
+    if (!this.splitColours && this.bakeOcclusion === undefined) return sharp;
     /**
-     * **The colour cut, and it is the only pass here that asks the field after meshing.**
-     * `splitColourBoundaries` walks every disagreeing edge and bisects `colourAt` along it, so
-     * the candidate cache is reopened for the chunk's own samples: without it each bisection
-     * point would gather its own candidates and the pass would cost a tree query per step.
+     * **The two passes that ask the field after meshing, and the region is reopened for
+     * both.** `splitColourBoundaries` walks every disagreeing edge and bisects `colourAt`
+     * along it, and occlusion samples a few distances around every vertex; without an open
+     * region each query would gather its own candidate set and the passes would cost a tree
+     * query per step.
      *
-     * **Sharp first, then colour.** The split pass averages no normals but does duplicate
-     * vertices, and a fan clipped by colour boundaries would give `splitSharpNormals` a
-     * leaned normal at every seam — the ordering ADR 0046 records for models, applied here
-     * for the same reason.
+     * **Sharp, then colour, then occlusion.** The split pass averages no normals but does
+     * duplicate vertices, and a fan clipped by colour boundaries would give
+     * `splitSharpNormals` a leaned normal at every seam — the ordering ADR 0046 records for
+     * models, applied here for the same reason. Occlusion runs last because it is a
+     * multiplier on the colour and the colour cut compares exact bytes: darkening a vertex
+     * first would make one colour disagree with itself and cut a surface that has no seam.
      */
-    const endColour =
-      this.field.beginRegion?.(region.sampleBounds) ?? (() => {});
+    const endField =
+      this.field.beginRegion?.(
+        this.bakeOcclusion === undefined
+          ? region.sampleBounds
+          : growBounds(
+              region.sampleBounds,
+              OCCLUSION_REACH * this.occlusionScale,
+            ),
+      ) ?? (() => {});
     try {
-      this.colourBoundaries ??= colourBoundaryScratchFor(sharp.triangleCount);
-      return splitColourBoundaries(
-        sharp,
-        // **The same function that filled the vertices**, which is what makes the pass's
-        // bracketed bisection find every crossing.
-        { colourAt: (x, y, z) => this.field.colourAt(x, y, z) },
-        this.colourBoundaries,
-      );
+      let result = sharp;
+      if (this.splitColours) {
+        this.colourBoundaries ??= colourBoundaryScratchFor(sharp.triangleCount);
+        result = splitColourBoundaries(
+          result,
+          // **The same function that filled the vertices**, which is what makes the pass's
+          // bracketed bisection find every crossing.
+          { colourAt: (x, y, z) => this.field.colourAt(x, y, z) },
+          this.colourBoundaries,
+        );
+      }
+      if (this.bakeOcclusion !== undefined) {
+        // In place: the arrays were built for this chunk and nothing else holds them. The
+        // fourth byte stays the material id, so a darker brick is still brick.
+        bakeAmbientOcclusion(result, this.field, {
+          strength: this.bakeOcclusion,
+          scale: this.occlusionScale,
+        });
+      }
+      return result;
     } finally {
-      endColour();
+      endField();
     }
   }
 

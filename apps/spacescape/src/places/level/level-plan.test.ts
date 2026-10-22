@@ -419,6 +419,56 @@ describe("a level's walls", () => {
     ]);
   });
 
+  it("reads one side per line, and writes it back", () => {
+    const plan = ok([
+      aWalls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+          ],
+          [
+            [0, 0, 40],
+            [40, 0, 40],
+          ],
+        ],
+        sides: ["left", "right"],
+      }),
+    ]);
+    const walls = plan.items[0];
+    if (walls.kind !== "walls") throw new Error("expected walls");
+    expect(walls.sides).toEqual(["left", "right"]);
+    expect(parseLevelPlan(writeLevelPlan(plan))).toMatchObject({
+      plan: { items: plan.items },
+    });
+  });
+
+  it("refuses a side array that is not one per line", () => {
+    expect(
+      bad([
+        aWalls({
+          lines: [
+            [
+              [0, 0, 0],
+              [40, 0, 0],
+            ],
+            [
+              [0, 0, 40],
+              [40, 0, 40],
+            ],
+          ],
+          sides: ["left"],
+        }),
+      ]).why,
+    ).toMatch(/one side per line/);
+  });
+
+  it("refuses a side it does not know", () => {
+    expect(bad([aWalls({ sides: ["outside"] })]).why).toMatch(
+      /a side is centre, left or right/,
+    );
+  });
+
   it("round-trips through a file, unchanged", () => {
     const written = writeLevelPlan(ok([aWalls()]));
     const read = parseLevelPlan(written);

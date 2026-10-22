@@ -90,9 +90,11 @@ import { floorDrawing, floorPlacement } from "./level-editor/draw/floor";
 import { IDENTITY } from "./level-editor/view/quaternion";
 import { planeThrough, rayPlanePoint } from "./level-editor/draw/plane";
 import {
-  deleteWallSegment,
+  deleteWallSegmentFrom,
   wallsCentre,
   wallSegments,
+  wallSideAt,
+  withWallSide,
 } from "./places/level/walls";
 import {
   projectToScreen as projectPointToScreen,
@@ -135,6 +137,7 @@ import {
   type LevelItem,
   type LevelPlan,
   type LevelWalls,
+  type WallSide,
 } from "./places/level/types";
 import {
   pickAlong,
@@ -1161,12 +1164,25 @@ export default function App() {
     if (editing !== undefined && editing.kind === "walls") {
       // **The centre is recomputed from the new lines**, because the item's `at` is a function
       // of its points and an edit can move them. Everything else is carried over: the person
-      // is changing the layout, not re-deciding what the wall is made of.
-      const at = wallsCentre({ up, height: editing.height, lines });
+      // is changing the layout, not re-deciding what the wall is made of. The sides are
+      // carried by line position, with a new line defaulting to centred — a redraw can add
+      // or remove a line, but the ones that are still there keep the side they had.
+      const sides =
+        editing.sides === undefined
+          ? undefined
+          : lines.map((_, lineIndex) => editing.sides?.[lineIndex] ?? "centre");
+      const at = wallsCentre({
+        up,
+        height: editing.height,
+        thickness: editing.thickness,
+        lines,
+        ...(sides === undefined ? {} : { sides }),
+      });
       levelEditor.updateItem(index, {
         ...editing,
         up,
         lines,
+        ...(sides === undefined ? {} : { sides }),
         at: [at.x, at.y, at.z],
       });
       setEditingDrawId(undefined);
@@ -1300,15 +1316,101 @@ export default function App() {
     if (index === -1) return;
     const item = levelEditor.items()[index];
     if (item === undefined || item.kind !== "walls") return;
-    const lines = deleteWallSegment(item.lines, pick.index);
-    if (lines === undefined) return;
+    const next = deleteWallSegmentFrom(item, pick.index);
+    if (next === undefined) return;
     setPickedSegment(undefined);
-    if (lines.length === 0) {
+    if (next.lines.length === 0) {
       levelEditor.removeItem(index);
       return;
     }
-    const at = wallsCentre({ up: item.up, height: item.height, lines });
-    levelEditor.updateItem(index, { ...item, lines, at: [at.x, at.y, at.z] });
+    const at = wallsCentre({
+      up: item.up,
+      height: item.height,
+      thickness: item.thickness,
+      lines: next.lines,
+      ...(next.sides === undefined ? {} : { sides: next.sides }),
+    });
+    levelEditor.updateItem(index, {
+      ...item,
+      lines: next.lines,
+      ...(next.sides === undefined ? {} : { sides: next.sides }),
+      at: [at.x, at.y, at.z],
+    });
+  };
+
+  /**
+   * The wall a pick landed on, if it is one whose side can be edited now.
+   *
+   * **A first insert's draft is excluded, not forgotten.** Its segments are still picked so
+   * they can be deleted, but a draft has no stored lines and therefore no side array to edit
+   * yet; a side set there would have no place to live until Finish. The item being redrawn is
+   * different: it has a stored side array, so it is offered while the draft still has the same
+   * number of lines. Once an edit adds or removes a line the numbering is no longer the stored
+   * item's, and the group hides rather than writing a side onto the wrong line.
+   *
+   * **Component scope, not the game branch**, because the side buttons in `DrawLinesUi` are
+   * rendered from the application root and are read on every frame of a pick.
+   */
+  const pickedWall = ():
+    | {
+        readonly item: LevelWalls;
+        readonly index: number;
+        readonly lineIndex: number;
+      }
+    | undefined => {
+    const pick = pickedSegment();
+    if (pick === undefined || pick.itemId === DRAFT_SEGMENT_ID)
+      return undefined;
+    const index = levelEditor
+      .items()
+      .findIndex((item) => item.id === pick.itemId);
+    if (index === -1) return undefined;
+    const item = levelEditor.items()[index];
+    if (item === undefined || item.kind !== "walls") return undefined;
+    if (pick.lineIndex < 0 || pick.lineIndex >= item.lines.length)
+      return undefined;
+    if (pick.itemId === editingDrawId()) {
+      const chains = drawLines()?.state().chains;
+      if (chains === undefined || chains.length !== item.lines.length)
+        return undefined;
+    }
+    return { item, index, lineIndex: pick.lineIndex };
+  };
+
+  /** The picked line's side, or undefined when the pick has no stored wall behind it. */
+  const pickedSegmentSide = (): WallSide | undefined => {
+    const picked = pickedWall();
+    return picked === undefined
+      ? undefined
+      : wallSideAt(picked.item, picked.lineIndex);
+  };
+
+  /**
+   * Puts the picked line's wall on a side, as a normal level edit.
+   *
+   * **The array is written one-per-line and dropped when every line is centred**, so the file
+   * keeps the format's own default rather than a row of the word. The pick survives the edit;
+   * only the geometry under it changes.
+   */
+  const setPickedSegmentSide = (side: WallSide): void => {
+    const picked = pickedWall();
+    if (picked === undefined) return;
+    if (wallSideAt(picked.item, picked.lineIndex) === side) return;
+    const next = withWallSide(picked.item, picked.lineIndex, side);
+    // **The side moves the solid, so the item's own centre moves with it.** `at` is the middle
+    // of the wall's boxes, not of the line; leaving it on the old centre would make the
+    // selection and highlight sit half a thickness away from what was built.
+    const at = wallsCentre({
+      up: next.up,
+      height: next.height,
+      thickness: next.thickness,
+      lines: next.lines,
+      ...(next.sides === undefined ? {} : { sides: next.sides }),
+    });
+    levelEditor.updateItem(picked.index, {
+      ...next,
+      at: [at.x, at.y, at.z],
+    });
   };
 
   /**
@@ -3544,11 +3646,14 @@ export default function App() {
       // them by the item it is editing instead, so a delete lands in the draft either way.
       if (levelEditor.tool() === "walls" && controller !== undefined) {
         let index = 0;
-        for (const chain of controller.state().chains) {
+        const chains = controller.state().chains;
+        for (let lineIndex = 0; lineIndex < chains.length; lineIndex++) {
+          const chain = chains[lineIndex]!;
           for (let point = 0; point + 1 < chain.length; point++) {
             segments.push({
               itemId: editingId ?? DRAFT_SEGMENT_ID,
               index,
+              lineIndex,
               a: chain[point]!,
               b: chain[point + 1]!,
             });
@@ -3566,6 +3671,7 @@ export default function App() {
           segments.push({
             itemId: item.id,
             index: segment.index,
+            lineIndex: segment.lineIndex,
             a: segment.a,
             b: segment.b,
           });
@@ -4535,6 +4641,8 @@ export default function App() {
                 setSegmentSelect((on) => !on);
               }}
               segmentPicked={pickedSegment() !== undefined}
+              segmentSide={pickedSegmentSide()}
+              onSetSegmentSide={setPickedSegmentSide}
               onDeleteSegment={deletePickedSegment}
             />
           </Show>

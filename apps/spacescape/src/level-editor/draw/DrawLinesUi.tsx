@@ -33,6 +33,7 @@ import {
 } from "solid-js";
 
 import { Button } from "../components/controls";
+import { WALL_SIDES, type WallSide } from "../../places/level/types";
 import type { AngleLock } from "./plane";
 import type { DrawLinesController } from "./draw-lines-controller";
 import styles from "./draw-lines.module.css";
@@ -50,6 +51,19 @@ const LOCKS: readonly { readonly lock: AngleLock; readonly label: string }[] = [
   { lock: "nearest", label: "0/90°" },
   { lock: "continue", label: "Continue" },
 ];
+
+/** The three sides a picked line can put its wall on, as buttons rather than a select. */
+const SIDE_LABELS: Record<WallSide, string> = {
+  centre: "Centre",
+  left: "Left",
+  right: "Right",
+};
+
+/** What each side button means, said as the act it performs rather than the value it stores. */
+const sideTitle = (side: WallSide): string =>
+  side === "centre"
+    ? "Centre the wall on the picked line"
+    : `Stand the wall on the ${side} of the picked line`;
 
 const round = (value: number, places: number): number => {
   const scale = 10 ** places;
@@ -192,6 +206,15 @@ export const DrawLinesUi = (props: {
   onToggleSegmentSelect?: () => void;
   /** Whether a segment is picked, so Delete can be enabled. */
   segmentPicked?: boolean;
+  /**
+   * The picked line's side, or undefined when the pick is the draft rather than a stored wall.
+   *
+   * **Absent means "no side to show", not "centred"**, because a draft has no side array yet.
+   * The group is hidden in that case rather than offering a choice that Finish would discard.
+   */
+  segmentSide?: WallSide;
+  /** Puts the picked line's wall on a side. */
+  onSetSegmentSide?: (side: WallSide) => void;
   /** Deletes the picked segment. */
   onDeleteSegment?: () => void;
 }) => {
@@ -252,10 +275,37 @@ export const DrawLinesUi = (props: {
         <Show when={!floor()}>
           <Button
             label="Select segment"
-            title="Pick a wall segment in the world, then delete it"
+            title="Pick a wall segment in the world, then set its line's side or delete it"
             selected={selecting()}
             onClick={() => props.onToggleSegmentSelect?.()}
           />
+        </Show>
+        {/*
+          **A side belongs to the line, but the line is chosen through a segment.** The three
+          buttons appear for a wall that already has stored lines: a first insert's draft has no
+          `sides` array yet. An item being redrawn does, and is offered while its draft still has
+          the stored item's line count.
+        */}
+        <Show
+          when={
+            selecting() &&
+            props.segmentSide !== undefined &&
+            props.onSetSegmentSide !== undefined
+          }
+        >
+          <div class={styles.sideGroup} role="group" aria-label="Wall side">
+            <span class={styles.sideLabel}>Side</span>
+            <For each={WALL_SIDES}>
+              {(side) => (
+                <Button
+                  label={SIDE_LABELS[side]}
+                  title={sideTitle(side)}
+                  selected={props.segmentSide === side}
+                  onClick={() => props.onSetSegmentSide?.(side)}
+                />
+              )}
+            </For>
+          </div>
         </Show>
         <Show when={!selecting()}>
           <Button
@@ -376,9 +426,17 @@ export const DrawLinesUi = (props: {
         the button a person presses twice.
       */}
       <Show when={selecting()}>
-        <p class={styles.warn}>
+        <p
+          class={
+            props.segmentSide !== undefined
+              ? `${styles.warn} ${styles.warnPicked}`
+              : styles.warn
+          }
+        >
           {props.segmentPicked === true
-            ? "Picked. Delete removes that segment; a middle one splits the wall in two."
+            ? props.segmentSide !== undefined
+              ? "Picked. Choose the line's side, or Delete removes that segment; a middle one splits the wall in two."
+              : "Picked. Delete removes that segment; a middle one splits the wall in two."
             : "Tap a wall segment in the world to pick it."}
         </p>
       </Show>

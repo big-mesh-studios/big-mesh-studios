@@ -10,9 +10,11 @@ import {
   levelFigureId,
   type LevelItem,
   type LevelPlan,
+  type LevelShape,
   type LevelWalls,
 } from "./types";
 import { PlaceRegistry } from "../place-registry";
+import { materialId } from "../../render/material-names";
 import { SculptDocument } from "../../edit/document";
 import { FigureSet } from "../../figures/figure-set";
 import type { FigureModel } from "../model-library";
@@ -191,6 +193,30 @@ describe("a level applied to a world", () => {
     expect(painted.colour).toEqual({ r: 10, g: 20, b: 30 });
     expect(painted.softness).toBeCloseTo(0.1);
     expect(painted.origin).toEqual({ x: 1, y: 2, z: 3 });
+  });
+
+  it("carries a level's material name into the id the renderer patterns by", () => {
+    // **The file names a material; the fold holds a number.** ADR 0048 keeps the number on
+    // the operation because it crosses into a meshing worker, and the table it indexes is
+    // the renderer's. `parseLevelPlan` has already refused a name this build does not know;
+    // this test is about the conversion that was missing between the two.
+    const { target, registry } = world();
+    const tile = materialId("tile");
+    const plaster = materialId("plaster");
+    createLevelApplier(target).apply(
+      aPlan([
+        { ...(aShape("floor") as LevelShape), material: "tile" },
+        aWalls("partition", { material: "plaster" }),
+        aShape("plain"),
+      ]),
+    );
+
+    const place = registry.get(LEVEL_PLACE)!;
+    expect(place.get("floor")?.material).toBe(tile);
+    // A walls item is one entry in the file and one operation per segment in the fold.
+    expect(place.get("partition#0")?.material).toBe(plaster);
+    // **Absent is not zero.** A shape that named nothing must not claim it chose "plain".
+    expect(place.get("plain")?.material).toBeUndefined();
   });
 
   it("carries a turn across as a quaternion, and the identity for a shape that has none", () => {

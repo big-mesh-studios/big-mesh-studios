@@ -273,4 +273,40 @@ describe("a coloured wall on a coloured floor", () => {
     expect(cut.triangleCount).toBe(plain.triangleCount);
     expect(cut.vertexCount).toBe(plain.vertexCount);
   });
+
+  it("darkens the floor where it meets the wall, and not in the open", () => {
+    // **The same geometry with occlusion baked in.** The pass is a multiplier on the colour,
+    // so the triangle and vertex counts are the identity check: if it moved anything, it
+    // would be visible here before the colour was even compared.
+    const plain = mesh(NO_CUT);
+    const shaded = mesh({ ...NO_CUT, bakeOcclusion: 0.8 });
+    expect(shaded.triangleCount).toBe(plain.triangleCount);
+    expect(shaded.vertexCount).toBe(plain.vertexCount);
+
+    // Vertices keep their order, so one scan finds both meshes' samples. The wall's side is at
+    // `z = WALL_SIDE`; the floor outside it is the only floor here that is not under the wall.
+    let near = -1;
+    let open = -1;
+    for (let vertex = 0; vertex < plain.vertexCount; vertex++) {
+      const point = positionAt(plain, vertex);
+      if (Math.abs(point.y - FLOOR_TOP) > 0.5) continue;
+      if (point.z > WALL_SIDE && point.z < WALL_SIDE + SAMPLE * 2)
+        near = vertex;
+      if (point.z > WALL_SIDE + SAMPLE * 7) open = vertex;
+    }
+    expect(near).toBeGreaterThanOrEqual(0);
+    expect(open).toBeGreaterThanOrEqual(0);
+
+    const brightness = (mesh: ChunkMesh, vertex: number): number =>
+      (mesh.colours[vertex * 4] as number) +
+      (mesh.colours[vertex * 4 + 1] as number) +
+      (mesh.colours[vertex * 4 + 2] as number);
+
+    // A crease is darker; a floor seven samples from it is far enough that the reach cannot
+    // see the wall, so it must be untouched.
+    expect(brightness(shaded, near)).toBeLessThan(brightness(plain, near));
+    expect(brightness(shaded, open)).toBe(brightness(plain, open));
+    // The material byte is still the field's answer, not a shade.
+    expect(shaded.colours[near * 4 + 3]).toBe(plain.colours[near * 4 + 3]);
+  });
 });

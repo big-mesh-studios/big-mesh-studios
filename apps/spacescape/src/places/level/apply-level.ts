@@ -59,6 +59,7 @@ import type { PlaceRegistry } from "../place-registry";
 import type { Bounds, Quat, Vec3 } from "@big-mesh-studios/core";
 import type { FigureSet } from "../../figures/figure-set";
 import type { FigureModel } from "../model-library";
+import { materialId } from "../../render/material-names";
 
 import type {
   LevelFigure,
@@ -77,6 +78,22 @@ import { wallParts, type WallPart } from "./walls";
 
 /** The turn a shape that names none has. `makeOperation` would have used it too. */
 const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
+
+/**
+ * A level's material name, as the id the renderer's pattern table indexes.
+ *
+ * **The conversion belongs here rather than in `Operation`.** ADR 0048 keeps a fold's
+ * material a number because it crosses into a meshing worker, while the table it indexes
+ * lives in the renderer; the level file keeps the name because that is what a person reads
+ * and what the editor's dropdown offers. `parseLevelPlan` has already refused a name this
+ * build does not know, so the fall-through is a guard for a live plan whose item was built
+ * somewhere that skipped the reader — not a user-facing failure mode.
+ */
+const materialOf = (name: string | undefined): { material?: number } => {
+  if (name === undefined) return {};
+  const id = materialId(name);
+  return id === undefined ? {} : { material: id };
+};
 
 /**
  * What a level needs from the world to be applied.
@@ -106,16 +123,15 @@ export interface LevelTarget {
 /**
  * The options a walls item's part carries into the fold.
  *
- * **Colour and softness come off the item; the turn is the part's own.** Every segment of one
- * walls item shares its combine, its softness and its colour, but each stands along its own
- * line — so the item is the thing with a colour and the part is the thing with a direction,
- * and mixing the two would give every segment the first segment's turn.
+ * **Colour, softness and material come off the item; the turn is the part's own.** Every
+ * segment of one walls item shares its appearance, but each stands along its own line — so
+ * the item is the thing with a colour and the part is the thing with a direction, and mixing
+ * the two would give every segment the first segment's turn.
  *
- * **`material` is not carried, matching `operationOf` for shapes.** A level shape's material
- * name is dropped on the way to the fold today (`operationOf` passes softness, orientation and
- * colour and nothing else), so a walls item that carried one would be the only level geometry
- * whose material applied — a difference nobody asked for. When level materials are wired, both
- * go through one conversion at once.
+ * **The material conversion is `materialOf`'s, the same one `operationOf` uses.** Both kinds
+ * of level geometry carry a name from the same vocabulary, so both have to reach the fold the
+ * same way; a walls item applying a material that a shape did not would be one truth per
+ * item kind.
  */
 const wallOptions = (
   item: LevelWalls,
@@ -124,10 +140,12 @@ const wallOptions = (
   softness?: number;
   orientation: Quat;
   colour?: { r: number; g: number; b: number };
+  material?: number;
 } => ({
   ...(item.softness === undefined ? {} : { softness: item.softness }),
   orientation: part.orientation,
   ...(item.colour === undefined ? {} : { colour: item.colour }),
+  ...materialOf(item.material),
 });
 
 export const createLevelApplier = (target: LevelTarget) => {
@@ -216,6 +234,7 @@ export const createLevelApplier = (target: LevelTarget) => {
         ? {}
         : { orientation: quatOf(item.orientation) ?? IDENTITY }),
       ...(item.colour === undefined ? {} : { colour: item.colour }),
+      ...materialOf(item.material),
     });
 
   const applyFigures = (plan: LevelPlan): void => {

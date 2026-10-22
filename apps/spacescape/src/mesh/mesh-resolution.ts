@@ -77,6 +77,29 @@ export interface MeshResolution {
    * seam follows the bevel, which is still sharper than the blend it replaces.
    */
   readonly splitColours?: boolean;
+  /**
+   * How strongly to bake ambient occlusion into the vertex colours, from 0 to 1; absent or
+   * 0 means none.
+   *
+   * **A place's corners are lit as flatly as its open floor without this.** There is no
+   * shadow map, and the fourth colour byte is the material id, so a shader cannot carry an
+   * occlusion term. The mesher has the field and each vertex's normal, though: a few
+   * distances sampled out along rays around the normal say how much surface is in the way,
+   * and multiplying the colour by that answer darkens a floor into a wall, the inside of a
+   * doorway and the band under a ceiling. It is geometry's own shading, and it is what
+   * makes a hard-edged interior read as a room rather than as a box.
+   *
+   * **After the colour cut, deliberately.** `splitColourBoundaries` finds a boundary by
+   * comparing the four bytes at the ends of an edge, so darkening a vertex first would make
+   * one colour disagree with itself and cut a surface that has no seam. The cut runs on the
+   * field's exact colours and the occlusion is multiplied into the finished mesh.
+   *
+   * **A number rather than a boolean, because the amount is a look.** 1 is the strongest;
+   * 0.5 to 0.8 leaves the palette readable and the creases visible. The reach is a fixed
+   * world distance taken from the finest level's spacing, so a wall darkens by the same
+   * amount at every level of detail rather than doubling when the mesh coarsens.
+   */
+  readonly bakeOcclusion?: number;
 }
 
 /** The landscape's own spacing: ten units at LOD 0, then twenty and forty. */
@@ -137,7 +160,9 @@ export const sameMeshResolution = (
   a.sharpEdges === b.sharpEdges &&
   // A place that turns colour cutting on or off is asking for a different mesh, even at the
   // same grid: the triangles are literally different.
-  (a.splitColours === true) === (b.splitColours === true);
+  (a.splitColours === true) === (b.splitColours === true) &&
+  // Absent and zero are the same request; any other change moves the colours.
+  (a.bakeOcclusion ?? 0) === (b.bakeOcclusion ?? 0);
 
 /**
  * Whether a value names a mesh grid this engine can build.
@@ -189,5 +214,22 @@ export const isMeshResolution = (value: unknown): value is MeshResolution => {
   // coercing it would silently turn colour cutting on for a place that had a typo.
   const split = (value as { splitColours?: unknown }).splitColours;
   if (split !== undefined && typeof split !== "boolean") return false;
+
+  // **A strength, and only in the range it means something in.** Zero is allowed and is the
+  // same request as absent; above one the mesh would be darker than the occlusion it was
+  // given, which is a typo rather than an amount. `"0.7"` is refused for the same reason
+  // `"true"` is: a manifest is data, and guessing at a string is how a place gets a look its
+  // author never asked for.
+  const occlusion = (value as { bakeOcclusion?: unknown }).bakeOcclusion;
+  if (occlusion !== undefined) {
+    if (
+      typeof occlusion !== "number" ||
+      !Number.isFinite(occlusion) ||
+      occlusion < 0 ||
+      occlusion > 1
+    ) {
+      return false;
+    }
+  }
   return true;
 };

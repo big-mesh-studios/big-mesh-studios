@@ -75,6 +75,37 @@
 }
 
 /*
+ * The picked line's side, where the direction locks sit while drawing.
+ *
+ * **A separate row rather than more buttons in the cluster**, because the cluster already
+ * carries the tool's actions and adding three more would crowd it on a phone. The locks are
+ * hidden in the select sub-mode, so this uses their place; the warning moves up to clear it.
+ */
+.sideGroup {
+  position: fixed;
+  left: 50%;
+  bottom: calc(146px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(10, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.sideLabel {
+  padding: 0 4px;
+  color: rgba(230, 237, 243, 0.65);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
  * Why a floor's Finish is disabled.
  *
  * **Above the buttons rather than below them, because it is an answer and not a caption.**
@@ -98,4 +129,9 @@
   line-height: 1.4;
   text-align: center;
   pointer-events: none;
+}
+
+/* Clear of the side group, which takes the locks' row while a stored segment is picked. */
+.warnPicked {
+  bottom: calc(198px + env(safe-area-inset-bottom, 0px));
 }

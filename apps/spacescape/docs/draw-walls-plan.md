@@ -190,9 +190,12 @@ Wiring in `app.tsx`, inside the editor-open effect (`app.tsx:2551`) and under `a
 
 - `panels/PropertiesPanel.tsx` — walls fields: height, thickness, position, combine, softness,
   material, colour; and the point count with a **Redraw** button that re-enters Phase 2's
-  controller seeded with the existing points.
+  controller seeded with the existing points. The side of a line is not listed here; it is
+  chosen from the picked segment in the wall editor's select-segment controls.
+- `draw/DrawLinesUi.tsx` — in the segment select sub-mode, **Centre / Left / Right** for the
+  picked segment's line. A first insert's draft has no stored side array, so it offers none.
 - `level-editor/view/picking.ts` / `highlight.ts` — a walls item needs a box for selection and
-  for the gizmo pivot. Cheapest correct answer: the point-set's bounding box in the plane,
+  for the gizmo pivot. Cheapest correct answer: the wall boxes' bounding box in the plane,
   extruded by height, as an `OrientedBox` (the machinery already exists from ADR 0051).
 - `level-editor-store.ts` — `defaultShape`/`addShapeAt` untouched; walls is a separate item.
 
@@ -266,9 +269,9 @@ plan left to the inspector.
 | `src/level-editor/draw/plane.ts` (+ test)                                          | The drawing plane, ray/plane, angle locks, screen-space vertex snapping                   |
 | `src/level-editor/draw/draw-lines-controller.ts` (+ test)                          | The state machine: begin / aim / commit / newLine / undoPoint / finish / seed             |
 | `src/level-editor/draw/draw-lines-overlay.ts` (+ test)                             | The draft lines and the hit-area rings, `depthTest` off like the move handles             |
-| `src/level-editor/draw/DrawLinesUi.tsx` + `.module.css`                            | The floating length/angle readout and the Next / Undo / New line / Finish / lock row      |
+| `src/level-editor/draw/DrawLinesUi.tsx` + `.module.css`                            | The floating readout, Next / Undo / New line / Finish / locks, and the picked line's side |
 | `src/places/level/types.ts`                                                        | `LevelWalls`, `isLevelWalls`, the widened `LevelItem`                                     |
-| `src/places/level/walls.ts` (+ test)                                               | Segments, oriented boxes (`quatFromBasis`), bounds, centre                                |
+| `src/places/level/walls.ts` (+ test)                                               | Segments, oriented boxes (`quatFromBasis`), sides, bounds, centre                         |
 | `src/places/level/level-plan.ts` (+ test)                                          | The walls reader and its refusals; `itemLabel`                                            |
 | `src/places/level/apply-level.ts` (+ test)                                         | Expansion to one operation per segment, under `id#n`, with fold-index stability           |
 | `src/level-editor/view/picking.ts`, `highlight.ts`                                 | `wallsBox`, selection and highlight                                                       |
@@ -279,7 +282,14 @@ plan left to the inspector.
 **Edit lines.** Selecting a wall and pressing **Edit lines** seeds the controller from the
 item's stored lines (plane rebuilt from the first point and the item's `up`), switches to the
 walls tool, and makes **Finish** write the redrawn lines back over the same item — recomputing
-its centre and carrying height, thickness, combine, material and colour across.
+its centre and carrying height, thickness, each line's side, combine, material and colour
+across.
+
+**Side of a traced line.** A line traced from a reference image can be the wall's inner face
+rather than its centre. The side is stored once per line in `sides`, and edited from the picked
+segment in the wall editor rather than from a select beside every line in the inspector. Left
+and right are relative to the direction the line's points run, and a side puts the whole wall on
+that side, so the line is the wall's opposite face.
 
 **One deviation from the plan, and it is a fix.** The plan had the walls tool hold the camera's
 gesture claim for the whole session. `setToolOwnsLeft` declines _every_ single-pointer drag and
