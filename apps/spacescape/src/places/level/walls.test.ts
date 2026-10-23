@@ -27,11 +27,19 @@ import type { WallPart } from "./walls";
 
 const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
 
-/** A wall part's half-length, narrowed because every wall part is a box. */
+/** A wall part's half-length, narrowed because the segment parts are boxes. */
 const halfLength = (part: WallPart | undefined): number => {
   if (part?.shape.type !== "Box") throw new Error("expected a box");
   return part.shape.len.x;
 };
+
+/** The segment boxes, which keep their ids and order as more corners are added. */
+const boxes = (parts: readonly WallPart[]): readonly WallPart[] =>
+  parts.filter((part) => part.shape.type === "Box");
+
+/** The mitre wedges, which are the only polygon parts a wall has. */
+const polygons = (parts: readonly WallPart[]): readonly WallPart[] =>
+  parts.filter((part) => part.shape.type === "Polygon");
 
 const pointsAt = (got: Vec3, expected: Vec3): boolean =>
   close(got.x, expected.x) &&
@@ -320,11 +328,11 @@ describe("wallParts", () => {
     expect(second?.at.z).toBe(53);
   });
 
-  it("closes the outside of a corner by extending both side walls", () => {
+  it("fills the outside of a side-wall corner with a wedge, not by stretching the boxes", () => {
     // East then north is a left turn. A right wall is on the outside, where the two boxes
-    // meet only at the drawn vertex; each has to run a thickness past it. A left wall would
-    // be on the inside and needs no extension.
-    const [east, north] = wallParts(
+    // meet only at the drawn vertex; the join is the square between the two outer faces. A
+    // left wall would be on the inside and needs no wedge.
+    const parts = wallParts(
       walls({
         lines: [
           [
@@ -336,17 +344,33 @@ describe("wallParts", () => {
         sides: ["right"],
       }),
     );
-    // The east run is twenty long, plus a half-extent of three at its outside end, and its
-    // middle moves three along the run.
-    expect(halfLength(east)).toBe(23);
-    expect(east?.at).toEqual({ x: 23, y: 15, z: 3 });
-    // The north run is extended at its start, and its right is east.
-    expect(halfLength(north)).toBe(23);
-    expect(north?.at).toEqual({ x: 43, y: 15, z: -17 });
+    const [east, north] = boxes(parts);
+    expect(parts.map((part) => part.id)).toEqual([
+      "wall#0",
+      "wall#1",
+      "wall#j0-1",
+    ]);
+    expect(halfLength(east)).toBe(20);
+    expect(east?.at).toEqual({ x: 20, y: 15, z: 3 });
+    expect(halfLength(north)).toBe(20);
+    expect(north?.at).toEqual({ x: 43, y: 15, z: -20 });
+
+    const [join] = polygons(parts);
+    expect(join?.at).toEqual({ x: 43, y: 15, z: 3 });
+    expect(join?.shape).toEqual({
+      type: "Polygon",
+      points: [
+        { x: -3, z: -3 },
+        { x: -3, z: 3 },
+        { x: 3, z: 3 },
+        { x: 3, z: -3 },
+      ],
+      len: 30,
+    });
   });
 
-  it("does not extend a wall that is on the inside of a corner", () => {
-    const [east, south] = wallParts(
+  it("does not add a wedge inside a side-wall corner", () => {
+    const parts = wallParts(
       walls({
         lines: [
           [
@@ -358,15 +382,233 @@ describe("wallParts", () => {
         sides: ["right"],
       }),
     );
-    // East then south is a right turn, so the right wall is on the inside of the corner.
+    // East then south is a right turn, so the right wall is on the inside of the corner and
+    // the two boxes already overlap.
+    const [east, south] = boxes(parts);
+    expect(parts).toHaveLength(2);
+    expect(polygons(parts)).toHaveLength(0);
     expect(halfLength(east)).toBe(20);
     expect(halfLength(south)).toBe(20);
   });
 
+  it("fills a centred corner with the mitre wedge", () => {
+    const parts = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+            [40, 0, -40],
+          ],
+        ],
+      }),
+    );
+    const [join] = polygons(parts);
+    // A centred run offsets by half the thickness, so the same corner is half as large.
+    expect(join?.at).toEqual({ x: 41.5, y: 15, z: 1.5 });
+    expect(join?.shape).toEqual({
+      type: "Polygon",
+      points: [
+        { x: -1.5, z: -1.5 },
+        { x: -1.5, z: 1.5 },
+        { x: 1.5, z: 1.5 },
+        { x: 1.5, z: -1.5 },
+      ],
+      len: 30,
+    });
+  });
+
+  it("puts a shallow corner's outer point where the outer faces cross", () => {
+    const parts = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+            [50, 0, -10],
+          ],
+        ],
+      }),
+    );
+    const [join] = polygons(parts);
+    if (join?.shape.type !== "Polygon") throw new Error("expected a polygon");
+    // The third point is the miter, not the square corner the two box ends would make.
+    expect(join.at.x).toBeCloseTo(41.06066017177982, 9);
+    expect(join.at.z).toBeCloseTo(1.5, 9);
+    expect(join.shape.points).toHaveLength(4);
+    expect(join.shape.points[2]!.x).toBeCloseTo(0.18198051533946558, 9);
+    expect(join.shape.points[2]!.z).toBeCloseTo(1.5, 9);
+  });
+
+  it("clips a hairpin to a bevel instead of sending a spike out", () => {
+    const parts = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [100, 0, 0],
+            [0, 0, -10],
+          ],
+        ],
+      }),
+    );
+    const [join] = polygons(parts);
+    if (join?.shape.type !== "Polygon") throw new Error("expected a polygon");
+    expect(join.shape.points).toHaveLength(3);
+    expect(join.at.x).toBeCloseTo(100.1492555785315, 9);
+  });
+
+  it("joins separate line ends that snapped to the same point", () => {
+    // The same L as above, but drawn as two strokes rather than one polyline. A line end
+    // and another line's start are a continuous path, so they use the same corner.
+    const parts = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+          ],
+          [
+            [40, 0, 0],
+            [40, 0, -40],
+          ],
+        ],
+      }),
+    );
+    expect(parts.map((part) => part.id)).toEqual([
+      "wall#0",
+      "wall#1",
+      "wall#j0-1",
+    ]);
+    const [join] = polygons(parts);
+    expect(join?.at).toEqual({ x: 41.5, y: 15, z: 1.5 });
+    expect(join?.shape).toEqual({
+      type: "Polygon",
+      points: [
+        { x: -1.5, z: -1.5 },
+        { x: -1.5, z: 1.5 },
+        { x: 1.5, z: 1.5 },
+        { x: 1.5, z: -1.5 },
+      ],
+      len: 30,
+    });
+  });
+
+  it("joins two ends snapped together when both lines end there", () => {
+    const parts = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+          ],
+          [
+            [40, 0, -40],
+            [40, 0, 0],
+          ],
+        ],
+      }),
+    );
+    expect(parts.map((part) => part.id)).toEqual([
+      "wall#0",
+      "wall#1",
+      "wall#j0-1",
+    ]);
+    expect(polygons(parts)).toHaveLength(1);
+  });
+
+  it("does not join ends that did not snap, or a T junction", () => {
+    const apart = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+          ],
+          [
+            [40, 0, 1],
+            [40, 0, -40],
+          ],
+        ],
+      }),
+    );
+    expect(polygons(apart)).toHaveLength(0);
+
+    // The second line's free end lands on an interior vertex of the first, which is a
+    // junction rather than a two-ended corner. It is left alone for now.
+    const tee = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+            [80, 0, 0],
+          ],
+          [
+            [40, 0, 0],
+            [40, 0, -40],
+          ],
+        ],
+      }),
+    );
+    expect(polygons(tee)).toHaveLength(0);
+  });
+
+  it("adds nothing at a straight collinear joint", () => {
+    const within = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [20, 0, 0],
+            [40, 0, 0],
+          ],
+        ],
+      }),
+    );
+    expect(polygons(within)).toHaveLength(0);
+    expect(boxes(within)).toHaveLength(2);
+
+    // The same straight run as two snapped strokes, and a stroke that doubles back. Neither
+    // is a corner: the two continued halves meet on the end line, so there is no area.
+    const across = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [20, 0, 0],
+          ],
+          [
+            [20, 0, 0],
+            [40, 0, 0],
+          ],
+        ],
+      }),
+    );
+    expect(polygons(across)).toHaveLength(0);
+    expect(boxes(across)).toHaveLength(2);
+
+    const reversal = wallParts(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [20, 0, 0],
+          ],
+          [
+            [20, 0, 0],
+            [0, 0, 0],
+          ],
+        ],
+      }),
+    );
+    expect(polygons(reversal)).toHaveLength(0);
+    expect(boxes(reversal)).toHaveLength(2);
+  });
+
   it("closes a closed line's final corner as well as its interior ones", () => {
-    // A clockwise square, so the outside of every corner is on the left. The first segment's
-    // start has to look at the last segment, which is the only way the closing corner is
-    // treated as a corner at all.
+    // A square, so every corner has an outside. The first segment's start has to look at the
+    // last segment, which is the only way the closing corner is treated as a corner at all.
     const parts = wallParts(
       walls({
         lines: [
@@ -381,9 +623,25 @@ describe("wallParts", () => {
         sides: ["left"],
       }),
     );
-    // Every run is twenty long and extends one thickness (six) at each outside end, split
-    // across the two ends, so every box is twenty-six long.
-    expect(parts.map(halfLength)).toEqual([26, 26, 26, 26]);
+    // Every run keeps its own length, and the four outside corners are four wedges.
+    expect(boxes(parts).map(halfLength)).toEqual([20, 20, 20, 20]);
+    expect(parts.map((part) => part.id)).toEqual([
+      "wall#0",
+      "wall#1",
+      "wall#2",
+      "wall#3",
+      "wall#j0-1",
+      "wall#j0-2",
+      "wall#j0-3",
+      "wall#j0-0",
+    ]);
+    const joins = polygons(parts);
+    expect(joins.map((part) => part.at)).toEqual([
+      { x: 43, y: 15, z: -3 },
+      { x: 43, y: 15, z: 43 },
+      { x: -3, y: 15, z: 43 },
+      { x: -3, y: 15, z: -3 },
+    ]);
   });
 });
 
@@ -438,6 +696,23 @@ describe("wallsBounds / wallsCentre", () => {
     const bounds = wallsBounds(walls({ sides: ["left"] }));
     expect(bounds.min.z).toBeCloseTo(-6, 6);
     expect(bounds.max.z).toBeCloseTo(0, 6);
+  });
+
+  it("includes a corner wedge the boxes do not reach", () => {
+    // The shallow turn's mitre reaches z = 3, while the turned second box reaches only about
+    // z = 2.12. A pick box over the boxes alone would miss the outer corner of the wedge.
+    const bounds = wallsBounds(
+      walls({
+        lines: [
+          [
+            [0, 0, 0],
+            [40, 0, 0],
+            [50, 0, -10],
+          ],
+        ],
+      }),
+    );
+    expect(bounds.max.z).toBeCloseTo(3, 6);
   });
 
   it("centres on the middle of the box", () => {

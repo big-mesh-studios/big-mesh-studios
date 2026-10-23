@@ -42,16 +42,26 @@ points run. A side puts the whole wall on that side, so the drawn line becomes t
 - **The line is the face, and the box moves by half the thickness.** In `wallParts`, the run's
   right-hand axis is `ez`; `left` offsets the box's middle by `-halfThickness × ez`, and `right`
   by `+halfThickness × ez`. The inner face therefore lands exactly on the stored points.
-- **Outside corners are closed by extending the side boxes, not by offsetting the data.** A side
-  wall on the outside of a turn would otherwise leave a notch the size of the wall thickness.
-  Each segment extends along its own line by `thickness / tan(turn / 2)`, capped at two
-  thicknesses so a shallow turn on a hand-drawn curve cannot fire a miter spike across the plan.
-  A side wall on the **inside** of a turn needs no extension: its boxes already overlap. A closed
-  line treats its first and last segment as adjacent at the closing vertex.
-- **The bounds and the pick box are the wall boxes.** `wallsBounds` now takes the eight corners
-  of every box, including thickness, side offset and corner extension, so a click hits what was
-  drawn rather than the centreline. `wallsCentre` uses the same bounds, which keeps the item's
-  stored `at` consistent with its geometry.
+- **Outside corners are closed by a mitre wedge, not by offsetting the data.** A side wall on
+  the outside of a turn would otherwise leave a notch the size of the wall thickness. Each
+  segment stays its own length, and a small `Polygon` prism fills the corner with the quad
+  `[vertex, outer corner, miter point, outer corner]`. The miter point is where the two outer
+  faces cross; a centred wall offsets by half the thickness and gets the same wedge on the
+  outside of every turn. A side wall on the **inside** of a turn needs no wedge: its boxes
+  already overlap. A closed line treats its first and last segment as adjacent at the closing
+  vertex. Free ends of separate lines that snapped to the same point are paired when exactly
+  two meet there, so strokes drawn corner to corner join as if they were one polyline.
+- **The wedge is a clipped half-infinite intersection.** Continue each run past the vertex on
+  the outside side; the two half-infinite walls intersect in the wedge. A straight collinear
+  pair's halves point away from each other and meet only on the end line, so no area is added.
+  The miter distance is capped at four thicknesses and a near-reversal falls back to a bevel
+  triangle, because the outer faces are nearly parallel and an exact miter would spike across
+  the plan. An exact reversal has no miter point and is left butt-ended; three or more free
+  ends at one point are a junction and are left alone.
+- **The bounds and the pick box are the wall solids.** `wallsBounds` takes the corners of every
+  box and every mitre wedge, including thickness, side offset and the wedge's outer extent, so
+  a click hits what was drawn rather than the centreline. `wallsCentre` uses the same bounds,
+  which keeps the item's stored `at` consistent with its geometry.
 - **The picked segment's line can be given a side in the wall editor.** In the segment select
   sub-mode the floating controls show **Centre / Left / Right** for the line the picked segment
   belongs to; choosing one writes the line's entry and rebuilds the wall. The properties panel
@@ -75,10 +85,12 @@ centre on another has to become two lines. That is a deliberate limit: the alter
 per segment, which is a much larger format and a much less obvious thing to draw. The selected
 segment is only how a line is reached in the editor; it does not give each segment its own side.
 
-**A side wall's outside corners are slightly approximate on shallow turns.** The extension is
-capped at two thicknesses. At a right angle it is exact; on a curve it leaves a small outside
-notch rather than a spike. The inner face is still exactly the drawn line, which is the surface a
-person sees from inside and the one the parameter is for.
+**A side wall's outside corners are exact at an ordinary turn.** The wedge is the true miter,
+whether the wall is centred or on a side; the boxes no longer run past the vertex, so the drawn
+line stays the face and the box length stays the segment's length. A turn within about 15° of a
+reversal is beveled rather than spiked, and a straight collinear pair adds nothing at all. The
+inner face is still exactly the drawn line, which is the surface a person sees from inside and
+the one the parameter is for.
 
 **The format is forward-incompatible only for files that use it.** A build before this reads a
 file with `sides` as an unknown field and refuses the level whole, which is the rule ADR 0017
@@ -102,6 +114,7 @@ it is the item's answer to "where are you" for the list, the selection and the h
 - **Offset the data at read time, with a miter.** This is the current trick moved into the
   loader. It still cannot answer for the internal shared walls, and it hides the choice in a
   derived coordinate rather than recording it.
-- **Mitre every corner exactly, with no cap.** Rejected because a hand-drawn curve is a chain of
-  shallow turns, and an exact miter at a nearly straight turn is a long spike. The cap keeps the
-  wall near the line; the inside face is unaffected.
+- **Mitre every corner exactly, with no cap.** Rejected because a hand-drawn curve can contain a
+  near-reversal, and an exact miter there is a long spike. The cap keeps the wall near the line;
+  the inside face is unaffected. A straight run and an exact reversal are not corners and add
+  nothing.

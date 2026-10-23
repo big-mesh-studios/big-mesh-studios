@@ -12,12 +12,14 @@
  *
  * ## How a polyline becomes a solid
  *
- * **One oriented box per segment**, standing on the plane and reaching `height` up it. A wall
- * is a straight run between two points, so a box is exactly its shape: the segment's length
- * along the wall's own length axis, its thickness across, and its height up. A centred wall
- * joins its neighbours with a small notch, which is what a hand-drawn plan's corners are and
- * what softness blends; a wall on a chosen side extends at an outside corner until the boxes
- * meet, because otherwise the side of the line would have a thickness-sized hole in it.
+ * **One oriented box per segment, plus a mitre wedge at a shared corner.** A wall is a
+ * straight run between two points, so a box is exactly its shape: the segment's length along
+ * the wall's own length axis, its thickness across, and its height up. The boxes stop at the
+ * drawn vertex; where two runs meet, the outside of the turn is filled by a small prism whose
+ * corners are the vertex, the two outer corners of the boxes, and the point where their outer
+ * faces cross. That is the mitre: the intersection of the two half-infinite walls that continue
+ * past the vertex on the outside of the turn. A straight pair's halves point away from each
+ * other and meet only on the end line, so there is no area to add.
  *
  * **The box is turned, not axis-aligned.** A wall running north-east is not an axis-aligned
  * box, and describing it as one would be a wall four times its size that selects and highlights
@@ -272,72 +274,62 @@ export const quatFromBasis = (ex: Vec3, ey: Vec3, ez: Vec3): Quat => {
   };
 };
 
-/** One segment as it reaches the fold: where its box stands, what it is, and how it is turned. */
+/** One solid as it reaches the fold: where it stands, what it is, and how it is turned. */
 export interface WallPart {
   /** Unique within the level, derived from the item's id so a rebuild is deterministic. */
   readonly id: string;
-  /** The middle of the segment's box. */
+  /** The middle of the solid. */
   readonly at: Vec3;
   readonly shape: OperationShape;
   readonly orientation: Quat;
 }
 
-/** A box before it is an operation or a pick target, with the basis its corners need. */
-interface WallBox {
-  /** Position in the item's own sequence, across every line. Also the derived id's suffix. */
-  readonly index: number;
+/** A box or a mitre wedge before it is an operation or a pick target. */
+interface WallSolid {
+  /** The part of the derived id after the item's own id and `#`. */
+  readonly suffix: string;
   readonly at: Vec3;
-  /** Half-extents along `ex`, `ey` and `ez`. */
-  readonly len: Vec3;
+  readonly shape: OperationShape;
   readonly ex: Vec3;
   readonly ey: Vec3;
   readonly ez: Vec3;
 }
 
-/**
- * The longest a side wall may run past a corner to close it, in thicknesses.
- *
- * **A miter is exact until the turn gets shallow.** The distance along a segment to the
- * outside corner is `thickness / tan(turn / 2)`, which is one thickness at a right angle and
- * grows without bound as the turn straightens. A hand-drawn curve is a chain of shallow turns,
- * so an uncapped miter would spike a wall far out at every vertex. Two thicknesses keeps a
- * square corner exact and leaves a small outside notch on a curve, which is the forgiving
- * direction: the drawn line stays the wall's face.
- */
-const MAX_SIDE_EXTENSION = 2;
+/** A corner where two runs meet, with the two directions as the wall runs through it. */
+interface Corner {
+  readonly point: Vec3;
+  /** The direction of the run arriving at `point`, pointing towards it. */
+  readonly incoming: Vec3;
+  /** The direction of the run leaving `point`, pointing away from it. */
+  readonly outgoing: Vec3;
+  readonly side: WallSide;
+  readonly suffix: string;
+}
 
-/** A tiny turn is not a corner; an exact reversal has no outside to close. */
+/** A free end of an open line, for joining to another line's free end at the same point. */
+interface FreeEnd {
+  readonly lineIndex: number;
+  readonly pointIndex: number;
+  readonly point: Vec3;
+  /** The line's own direction at this end: away from a start, towards an end. */
+  readonly direction: Vec3;
+  readonly kind: "start" | "end";
+  readonly side: WallSide;
+}
+
+/**
+ * The longest a mitre may reach from the shared vertex, in thicknesses.
+ *
+ * **A mitre is exact until the turn gets close to a reversal.** The distance from the vertex
+ * to the miter point is `offset / cos(turn / 2)`, which is about one offset at a gentle turn
+ * and grows without bound as the turn approaches half a revolution. Four thicknesses leaves
+ * every ordinary room corner and every shallow curve exact and only clips a hairpin, which is
+ * the one case where a long spike would be worse than a small cut.
+ */
+const MAX_MITER_DISTANCE = 4;
+
+/** A tiny turn is not a corner; an exact reversal has no outside to mitre. */
 const TURN_EPSILON = 1e-6;
-
-/**
- * How far a side wall has to run past a shared vertex to close the outside of a corner.
- *
- * **Only the outside needs closing.** A left wall on a left turn is on the inside, where the
- * two boxes already overlap; extending it there would push wall into the space the line
- * bounds. A left wall on a right turn is on the outside, where the two boxes meet only at the
- * line vertex and leave a square notch the size of the thickness. That is the case this
- * fills.
- */
-const sideExtension = (
-  incoming: Vec3,
-  outgoing: Vec3,
-  side: Exclude<WallSide, "centre">,
-  up: Vec3,
-  thickness: number,
-): number => {
-  const turn = dot(cross(incoming, outgoing), up);
-  const outside =
-    (side === "left" && turn < -TURN_EPSILON) ||
-    (side === "right" && turn > TURN_EPSILON);
-  if (!outside) return 0;
-
-  const cosine = Math.max(-1, Math.min(1, dot(incoming, outgoing)));
-  const angle = Math.acos(cosine);
-  if (!(angle > TURN_EPSILON) || angle > Math.PI - TURN_EPSILON) return 0;
-
-  const extension = thickness / Math.tan(angle / 2);
-  return Math.min(extension, thickness * MAX_SIDE_EXTENSION);
-};
 
 /** Whether two points are the same to the precision a drawn line is stored at. */
 const samePoint = (a: Vec3, b: Vec3): boolean =>
@@ -345,24 +337,166 @@ const samePoint = (a: Vec3, b: Vec3): boolean =>
   Math.abs(a.y - b.y) < TURN_EPSILON &&
   Math.abs(a.z - b.z) < TURN_EPSILON;
 
+/** Where two lines in the outline plane cross, or nothing when they are parallel. */
+const intersectOutline = (
+  p: { readonly x: number; readonly z: number },
+  d: { readonly x: number; readonly z: number },
+  q: { readonly x: number; readonly z: number },
+  e: { readonly x: number; readonly z: number },
+): { readonly x: number; readonly z: number } | undefined => {
+  const denominator = d.x * e.z - d.z * e.x;
+  if (Math.abs(denominator) <= TURN_EPSILON) return undefined;
+  const t = ((q.x - p.x) * e.z - (q.z - p.z) * e.x) / denominator;
+  return { x: p.x + d.x * t, z: p.z + d.z * t };
+};
+
 /**
- * Every box a walls item stands as, including the side offset and the corner extensions.
+ * The mitre wedge at one corner, or nothing when the corner needs no fill.
+ *
+ * **The four corners are the vertex, the two outside corners of the boxes, and the point
+ * where the two outer faces cross.** That region is the intersection of the two half-infinite
+ * walls that continue past the vertex on the outside of the turn, so it is the extra bit a
+ * mitre adds and nothing the boxes already cover. A centred wall offsets by half the thickness;
+ * a wall on a side offsets by the whole thickness and fills only the outside of the turn,
+ * because on the inside the boxes already overlap.
+ *
+ * **A straight joint and an exact reversal get no wedge.** A straight joint's two continued
+ * halves point away from each other and meet only on the end line, so they have no area; in an
+ * exact reversal the outer faces are parallel and there is no miter point. A near-reversal is
+ * clipped to the bevel triangle rather than sent out to a spike.
+ */
+const cornerSolid = (
+  corner: Corner,
+  up: Vec3,
+  height: number,
+  thickness: number,
+): WallSolid | undefined => {
+  const turn = dot(cross(corner.incoming, corner.outgoing), up);
+  const cosine = Math.max(
+    -1,
+    Math.min(1, dot(corner.incoming, corner.outgoing)),
+  );
+  if (cosine > 1 - TURN_EPSILON || cosine < -1 + TURN_EPSILON) return undefined;
+  if (Math.abs(turn) <= TURN_EPSILON) return undefined;
+
+  const rightIncoming = normalize(cross(corner.incoming, up));
+  const rightOutgoing = normalize(cross(corner.outgoing, up));
+
+  let n0: Vec3;
+  let n1: Vec3;
+  let offset: number;
+  if (corner.side === "centre") {
+    // **A left turn puts the outside on the right**, which is the sign `right` already has.
+    const sign = turn > 0 ? 1 : -1;
+    n0 = scale(rightIncoming, sign);
+    n1 = scale(rightOutgoing, sign);
+    offset = thickness / 2;
+  } else {
+    const outside =
+      (corner.side === "left" && turn < -TURN_EPSILON) ||
+      (corner.side === "right" && turn > TURN_EPSILON);
+    if (!outside) return undefined;
+    const sign = corner.side === "right" ? 1 : -1;
+    n0 = scale(rightIncoming, sign);
+    n1 = scale(rightOutgoing, sign);
+    offset = thickness;
+  }
+
+  const p0World = {
+    x: corner.point.x + n0.x * offset,
+    y: corner.point.y + n0.y * offset,
+    z: corner.point.z + n0.z * offset,
+  };
+  const p1World = {
+    x: corner.point.x + n1.x * offset,
+    y: corner.point.y + n1.y * offset,
+    z: corner.point.z + n1.z * offset,
+  };
+
+  const ex = corner.incoming;
+  const ez = normalize(cross(ex, up));
+  const local = (point: Vec3) => ({
+    x: dot(sub(point, corner.point), ex),
+    z: dot(sub(point, corner.point), ez),
+  });
+  const p0 = local(p0World);
+  const p1 = local(p1World);
+  const miter = intersectOutline(p0, { x: 1, z: 0 }, p1, {
+    x: dot(corner.outgoing, ex),
+    z: dot(corner.outgoing, ez),
+  });
+  if (miter === undefined) return undefined;
+
+  const points =
+    Math.hypot(miter.x, miter.z) <= thickness * MAX_MITER_DISTANCE
+      ? [{ x: 0, z: 0 }, p0, miter, p1]
+      : [{ x: 0, z: 0 }, p0, p1];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.z < minZ) minZ = point.z;
+    if (point.z > maxZ) maxZ = point.z;
+  }
+  const centreX = (minX + maxX) / 2;
+  const centreZ = (minZ + maxZ) / 2;
+  const outline = points.map((point) => ({
+    x: point.x - centreX,
+    z: point.z - centreZ,
+  }));
+
+  let twiceArea = 0;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i, i++) {
+    twiceArea += outline[j]!.x * outline[i]!.z - outline[i]!.x * outline[j]!.z;
+  }
+  if (Math.abs(twiceArea) <= thickness * thickness * 1e-9) return undefined;
+
+  const origin = {
+    x: corner.point.x + ex.x * centreX + ez.x * centreZ,
+    y: corner.point.y + ex.y * centreX + ez.y * centreZ,
+    z: corner.point.z + ex.z * centreX + ez.z * centreZ,
+  };
+  const halfHeight = height / 2;
+
+  return {
+    suffix: corner.suffix,
+    at: {
+      x: origin.x + up.x * halfHeight,
+      y: origin.y + up.y * halfHeight,
+      z: origin.z + up.z * halfHeight,
+    },
+    shape: { type: "Polygon", points: outline, len: height },
+    ex,
+    ey: up,
+    ez,
+  };
+};
+
+/**
+ * Every box and mitre wedge a walls item stands as.
  *
  * **A line's side is one answer for the whole line**, because it was traced as one run. The
  * box for each segment is pushed by half the thickness onto that side, so the line becomes its
  * opposite face. `centre` pushes nothing and keeps the item's original geometry.
  *
- * **A side wall extends only at an outside corner**, and only along its own line, so the
- * extension fills the corner without crossing to the other side of the drawn face. The
- * closing vertex of a closed line is a corner like any other, which is why the first segment
- * looks at the last one when the line comes back to its start.
+ * **Corners are found in two places.** An interior vertex of a line is a corner within that
+ * line, including the seam where a closed line comes back to its start. A free end of an open
+ * line is a corner when exactly one other free end is snapped to the same point; that is what
+ * makes separate strokes drawn corner to corner meet cleanly. A point with three or more free
+ * ends is a junction, not a corner, and is left alone for now.
  */
-const wallBoxes = (item: WallsGeometry): readonly WallBox[] => {
+const wallSolids = (item: WallsGeometry): readonly WallSolid[] => {
   const up = normalize(pointOf(item.up));
   const halfHeight = item.height / 2;
   const halfThickness = item.thickness / 2;
   const centreUp = scale(up, halfHeight);
-  const boxes: WallBox[] = [];
+  const solids: WallSolid[] = [];
+  const corners: Corner[] = [];
+  const freeEnds: FreeEnd[] = [];
   let index = 0;
 
   for (let lineIndex = 0; lineIndex < item.lines.length; lineIndex++) {
@@ -400,58 +534,27 @@ const wallBoxes = (item: WallsGeometry): readonly WallBox[] => {
 
       const ey = up;
       const ez = normalize(cross(ex, ey));
-      let extensionAtStart = 0;
-      let extensionAtEnd = 0;
-
-      if (side !== "centre") {
-        const previous =
-          i > 0
-            ? directions[i - 1]
-            : closed
-              ? directions[segmentCount - 1]
-              : undefined;
-        if (previous !== undefined) {
-          extensionAtStart = sideExtension(
-            previous,
-            ex,
-            side,
-            up,
-            item.thickness,
-          );
-        }
-        const next =
-          i + 1 < segmentCount
-            ? directions[i + 1]
-            : closed
-              ? directions[0]
-              : undefined;
-        if (next !== undefined) {
-          extensionAtEnd = sideExtension(ex, next, side, up, item.thickness);
-        }
-      }
 
       // **Left is `-ez` and right is `+ez`**, because `ez` is the run's own right-hand side.
       // The line is therefore the wall's opposite face, exactly as the field's name says.
       const sideOffset =
         side === "left" ? -halfThickness : side === "right" ? halfThickness : 0;
-      const alongShift = (extensionAtEnd - extensionAtStart) / 2;
       const middle = {
         x: (a.x + b.x) / 2,
         y: (a.y + b.y) / 2,
         z: (a.z + b.z) / 2,
       };
 
-      boxes.push({
-        index,
+      solids.push({
+        suffix: `${index}`,
         at: {
-          x: middle.x + centreUp.x + ez.x * sideOffset + ex.x * alongShift,
-          y: middle.y + centreUp.y + ez.y * sideOffset + ex.y * alongShift,
-          z: middle.z + centreUp.z + ez.z * sideOffset + ex.z * alongShift,
+          x: middle.x + centreUp.x + ez.x * sideOffset,
+          y: middle.y + centreUp.y + ez.y * sideOffset,
+          z: middle.z + centreUp.z + ez.z * sideOffset,
         },
-        len: {
-          x: runLength / 2 + (extensionAtStart + extensionAtEnd) / 2,
-          y: halfHeight,
-          z: halfThickness,
+        shape: {
+          type: "Box",
+          len: { x: runLength / 2, y: halfHeight, z: halfThickness },
         },
         ex,
         ey,
@@ -459,26 +562,140 @@ const wallBoxes = (item: WallsGeometry): readonly WallBox[] => {
       });
       index++;
     }
+
+    for (let i = 1; i < segmentCount; i++) {
+      const incoming = directions[i - 1];
+      const outgoing = directions[i];
+      if (incoming === undefined || outgoing === undefined) continue;
+      corners.push({
+        point: points[i]!,
+        incoming,
+        outgoing,
+        side,
+        suffix: `j${lineIndex}-${i}`,
+      });
+    }
+
+    if (closed) {
+      const incoming = directions[segmentCount - 1];
+      const outgoing = directions[0];
+      if (incoming !== undefined && outgoing !== undefined) {
+        corners.push({
+          point: points[0]!,
+          incoming,
+          outgoing,
+          side,
+          suffix: `j${lineIndex}-0`,
+        });
+      }
+    }
+
+    if (!closed && segmentCount > 0) {
+      const start = directions[0];
+      if (start !== undefined) {
+        freeEnds.push({
+          lineIndex,
+          pointIndex: 0,
+          point: points[0]!,
+          direction: start,
+          kind: "start",
+          side,
+        });
+      }
+      const end = directions[segmentCount - 1];
+      if (end !== undefined) {
+        freeEnds.push({
+          lineIndex,
+          pointIndex: segmentCount,
+          point: points[segmentCount]!,
+          direction: end,
+          kind: "end",
+          side,
+        });
+      }
+    }
   }
 
-  return boxes;
+  // **Pair free ends that snapped to the same point, and only one other end there.** The
+  // directions are reordered into an incoming run and an outgoing run so the same turn sign
+  // that a within-line corner uses answers this corner too.
+  const paired = new Set<number>();
+  for (let i = 0; i < freeEnds.length; i++) {
+    if (paired.has(i)) continue;
+    const first = freeEnds[i]!;
+    const group: number[] = [];
+    for (let j = i; j < freeEnds.length; j++) {
+      if (paired.has(j)) continue;
+      if (samePoint(first.point, freeEnds[j]!.point)) group.push(j);
+    }
+    for (const at of group) paired.add(at);
+    if (group.length !== 2) continue;
+
+    const other = freeEnds[group[1]!]!;
+    const bothCentre = first.side === "centre" && other.side === "centre";
+    // **A side wall needs the runs to form a continuous path.** When one line ends where
+    // the next starts and both name the same side, the corner is the same one a single
+    // polyline would have. Two starts or two ends are a different shape: reversing one run
+    // to make a path would flip its side, and the two boxes may already overlap on the
+    // side the join would fill. Those are left alone.
+    const sameSide =
+      first.kind !== other.kind && first.side === other.side
+        ? first.side
+        : undefined;
+    if (!bothCentre && sameSide === undefined) continue;
+
+    let incoming: Vec3;
+    let outgoing: Vec3;
+    let side: WallSide;
+    if (first.kind === "end" && other.kind === "start") {
+      incoming = first.direction;
+      outgoing = other.direction;
+      side = bothCentre ? "centre" : first.side;
+    } else if (first.kind === "start" && other.kind === "end") {
+      incoming = other.direction;
+      outgoing = first.direction;
+      side = bothCentre ? "centre" : first.side;
+    } else if (bothCentre && first.kind === "end") {
+      incoming = first.direction;
+      outgoing = scale(other.direction, -1);
+      side = "centre";
+    } else if (bothCentre) {
+      incoming = scale(first.direction, -1);
+      outgoing = other.direction;
+      side = "centre";
+    } else {
+      continue;
+    }
+
+    corners.push({
+      point: first.point,
+      incoming,
+      outgoing,
+      side,
+      suffix: `j${first.lineIndex}-${first.pointIndex}`,
+    });
+  }
+
+  for (const corner of corners) {
+    const solid = cornerSolid(corner, up, item.height, item.thickness);
+    if (solid !== undefined) solids.push(solid);
+  }
+
+  return solids;
 };
 
 /**
- * A walls item as the boxes the fold evaluates and the boxes a click tests.
+ * A walls item as the solids the fold evaluates and a click tests.
  *
  * **The same function serves both**, which is the point: an operation the mesher never sees and
  * a box the picker does would be a wall you can click and cannot see, or the other way round.
  */
 export const wallParts = (item: LevelWalls): readonly WallPart[] =>
-  wallBoxes(item).map((box) => ({
-    id: `${item.id}#${box.index}`,
-    at: box.at,
-    shape: {
-      type: "Box",
-      len: box.len,
-    },
-    orientation: quatFromBasis(box.ex, box.ey, box.ez),
+  wallSolids(item).map((solid) => ({
+    id: `${item.id}#${solid.suffix}`,
+    at: solid.at,
+    shape: solid.shape,
+    orientation: quatFromBasis(solid.ex, solid.ey, solid.ez),
   }));
 
 /**
@@ -494,11 +711,64 @@ export type WallsGeometry = Pick<
 >;
 
 /**
+ * The world corners of one solid, which is all `wallsBounds` needs from it.
+ *
+ * **A box is eight corners; a polygon prism is two for each outline point.** Every corner is
+ * the shape's origin plus its own axes scaled by its half-extents, so this is the same
+ * arithmetic the old box-only bounds used, widened to the one other shape a wall part can be.
+ */
+const solidCorners = (solid: WallSolid): readonly Vec3[] => {
+  const { at, ex, ey, ez, shape } = solid;
+  if (shape.type === "Box") {
+    const corners: Vec3[] = [];
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          corners.push({
+            x:
+              at.x +
+              ex.x * shape.len.x * sx +
+              ey.x * shape.len.y * sy +
+              ez.x * shape.len.z * sz,
+            y:
+              at.y +
+              ex.y * shape.len.x * sx +
+              ey.y * shape.len.y * sy +
+              ez.y * shape.len.z * sz,
+            z:
+              at.z +
+              ex.z * shape.len.x * sx +
+              ey.z * shape.len.y * sy +
+              ez.z * shape.len.z * sz,
+          });
+        }
+      }
+    }
+    return corners;
+  }
+
+  if (shape.type !== "Polygon") return [];
+
+  const halfHeight = shape.len / 2;
+  const corners: Vec3[] = [];
+  for (const point of shape.points) {
+    for (const sy of [-1, 1]) {
+      corners.push({
+        x: at.x + ex.x * point.x + ez.x * point.z + ey.x * halfHeight * sy,
+        y: at.y + ex.y * point.x + ez.y * point.z + ey.y * halfHeight * sy,
+        z: at.z + ex.z * point.x + ez.z * point.z + ey.z * halfHeight * sy,
+      });
+    }
+  }
+  return corners;
+};
+
+/**
  * The world box a walls item reaches, height and thickness included.
  *
- * **The eight corners of every wall box, not the line's points.** A wall is a solid standing
+ * **The corners of every wall solid, not the line's points.** A wall is a solid standing
  * beside its line, so a box over the line alone would miss the thickness on every side and
- * the whole wall on the side of a `left` or `right` run. The boxes here are the same ones
+ * the whole wall on the side of a `left` or `right` run. The solids here are the same ones
  * `wallParts` hands the fold, so a click can hit exactly what was built.
  */
 export const wallsBounds = (item: WallsGeometry): Bounds => {
@@ -509,35 +779,14 @@ export const wallsBounds = (item: WallsGeometry): Bounds => {
   let maxY = -Infinity;
   let maxZ = -Infinity;
 
-  for (const box of wallBoxes(item)) {
-    for (const sx of [-1, 1]) {
-      for (const sy of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const point = {
-            x:
-              box.at.x +
-              box.ex.x * box.len.x * sx +
-              box.ey.x * box.len.y * sy +
-              box.ez.x * box.len.z * sz,
-            y:
-              box.at.y +
-              box.ex.y * box.len.x * sx +
-              box.ey.y * box.len.y * sy +
-              box.ez.y * box.len.z * sz,
-            z:
-              box.at.z +
-              box.ex.z * box.len.x * sx +
-              box.ey.z * box.len.y * sy +
-              box.ez.z * box.len.z * sz,
-          };
-          minX = Math.min(minX, point.x);
-          minY = Math.min(minY, point.y);
-          minZ = Math.min(minZ, point.z);
-          maxX = Math.max(maxX, point.x);
-          maxY = Math.max(maxY, point.y);
-          maxZ = Math.max(maxZ, point.z);
-        }
-      }
+  for (const solid of wallSolids(item)) {
+    for (const point of solidCorners(solid)) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      minZ = Math.min(minZ, point.z);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+      maxZ = Math.max(maxZ, point.z);
     }
   }
 

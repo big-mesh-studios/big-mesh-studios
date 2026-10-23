@@ -569,7 +569,11 @@ describe("a level's walls", () => {
         }),
       ]),
     );
-    expect(registry.get(LEVEL_PLACE)!.ids()).toEqual(["room#0", "room#1"]);
+    expect(registry.get(LEVEL_PLACE)!.ids()).toEqual([
+      "room#0",
+      "room#1",
+      "room#j0-1",
+    ]);
   });
 
   it("stands each segment as a box of its own length, the wall's height and thickness", () => {
@@ -644,6 +648,7 @@ describe("a level's walls", () => {
       "floor",
       "wall#0",
       "wall#1",
+      "wall#j0-1",
     ]);
   });
 
