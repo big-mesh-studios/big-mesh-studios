@@ -292,14 +292,30 @@ export const partSize = (shape: OperationShape): Vec3 => {
 /**
  * Whether a primitive's own axes mean anything to rotate.
  *
- * **A sphere, an ellipsoid and a round box do not.** Rotating them is not an error — the
- * model accepts it and the field is unchanged — but it is a control that does nothing, and a
- * control that does nothing is one nobody trusts. A torus is in the list because rolling it
- * is visible, and so is laying it flat. Shared by the transform panel, which hides its
- * rotation fields for these, and by the toolbar, which disables the rotate tool for them.
+ * **Only a sphere says no**, and it says no for a stronger reason than it looks. This asks
+ * about a *kind*, not about a particular shape, so it has to be true of every instance of
+ * that kind — and a sphere is the same object from every direction whatever you do to it.
+ *
+ * The other shapes are all `true`, including the two that look like they should not be:
+ *
+ * - **An `Ellipsoid` with three different radii turns visibly.** It is only symmetric when
+ *   its radii happen to be equal, and that is a property of the numbers somebody typed, not
+ *   of the kind. A panel is free to be edited into a ball and then a turn of it will not
+ *   show — which is the same situation as resizing a box into a cube and being surprised
+ *   that dragging it sideways moves nothing.
+ * - **A `RoundBox` turns visibly.** Rounding the corners is not making it symmetric; the
+ *   thing that decides is whether its `len` is the same on each axis, and a rounded box of
+ *   `40 × 6 × 20` lying on its side is plainly a different object from the one standing up.
+ *
+ * **So the rule is one exclusion rather than three**, and the question it answers is "could
+ * this ever be symmetric", not "is this symmetric right now". The field applies the
+ * quaternion either way, by rotating each sample into the primitive's own frame; what this
+ * stops is offering rotation on the one primitive where it is never going to do anything.
+ * Shared by the transform panel, which hides its rotation fields for it, and by the
+ * toolbar, which disables the rotate tool for it.
  */
 export const isAxial = (type: Part["shape"]["type"]): boolean =>
-  type !== "Sphere" && type !== "Ellipsoid" && type !== "RoundBox";
+  type !== "Sphere";
 
 /**
  * A part that unions, with a hard edge and no rotation.

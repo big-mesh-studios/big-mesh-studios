@@ -2230,10 +2230,10 @@ export function App() {
   /**
    * Whether the selected part's own axes mean anything to rotate.
    *
-   * **So the Rotate tool is disabled for a round shape**, which is the same claim the
-   * transform panel makes by hiding its rotation fields for one: turning a sphere is not an
-   * error, but it is a tool that does nothing, and a tool that does nothing teaches a person
-   * it is broken. Both read the one `isAxial`, so the two cannot come to disagree.
+   * **So the Rotate tool is disabled for a sphere**, which is the same claim the transform
+   * panel makes by hiding its rotation fields for one: turning a sphere is not an error, but
+   * it is a tool that does nothing, and a tool that does nothing teaches a person it is
+   * broken. Both read the one `isAxial`, so the two cannot come to disagree.
    */
   const rotatable = createMemo(() => {
     const part = selected();
@@ -2268,7 +2268,7 @@ export function App() {
        * technology the same way the appearance does.
        *
        * **Move and Rotate are disabled when there is nothing for them to act on** — move with
-       * no selection, rotate with no selection or with a round shape whose turn would change
+       * no selection, rotate with no selection or with a sphere whose turn would change
        * nothing. Rather than arming a tool that would refuse every press, which teaches the
        * button is broken, it says so.
        */}

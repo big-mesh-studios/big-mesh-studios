@@ -57,13 +57,13 @@ describe("fromEuler / toEuler", () => {
 });
 
 describe("isAxial", () => {
-  it("says no for the shapes a turn leaves unchanged", () => {
+  it("says no only for the shape every direction leaves unchanged", () => {
     expect(isAxial("Sphere")).toBe(false);
-    expect(isAxial("Ellipsoid")).toBe(false);
-    expect(isAxial("RoundBox")).toBe(false);
   });
 
   it("says yes for the shapes a turn is visible on", () => {
+    expect(isAxial("Ellipsoid")).toBe(true);
+    expect(isAxial("RoundBox")).toBe(true);
     expect(isAxial("Capsule")).toBe(true);
     expect(isAxial("Torus")).toBe(true);
     expect(isAxial("Box")).toBe(true);
