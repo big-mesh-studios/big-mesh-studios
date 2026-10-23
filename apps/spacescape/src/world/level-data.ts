@@ -52,27 +52,26 @@ export interface LodBands {
 }
 
 /**
- * Full detail within two chunks, one step coarser to three, coarsest beyond that.
+ * Full detail within four chunks, one step coarser to six, coarsest beyond that.
  *
- * **`full` is two rather than one because of where the player stands, not where the
- * chunk grid does.** The distance is measured from the focus *cell*, and the player is
- * anywhere inside that cell — so at `full: 1` the full-detail region is the focus cell
- * and its six face neighbours, and the first lower-detail chunk is a diagonal neighbour
- * at distance √2. Its corner is the corner of the chunk the player is standing in. You
- * could stand on the seam and be looking at two levels at once, which is the thing this
- * number exists to prevent. At two, the nearest lower-detail chunk is one whole chunk
- * away from wherever in your own cell you happen to be.
+ * **The numbers doubled with the chunk size.** A chunk is now 160 units rather than 320,
+ * so four chunks are the same 640-unit full-detail radius two chunks used to be, and six
+ * are the same 960-unit coarse radius. Keeping the old chunk counts would have halved the
+ * world distance a player sees at full detail, which is a quality change nobody asked for
+ * when they asked for faster edits.
  *
- * `coarse` is three rather than two for a mechanical reason and only that one: it must
- * exceed `full` or the middle level is never reached, and a chunk can be full detail or
- * coarsest with nothing in between. That makes LOD1 the thin shell it is here, which
- * suits it — it exists to be the step between the two, not a region of its own.
+ * **`full` is more than one because of where the player stands, not where the chunk grid
+ * does.** The distance is measured from the focus *cell*, and the player is anywhere
+ * inside that cell — so at `full: 1` the first coarser chunk is a diagonal neighbour at
+ * √2, whose corner is the corner of the chunk the player is standing in. You could stand
+ * on the seam and be looking at two levels at once, which is the thing this number exists
+ * to prevent.
  *
- * The cost is real and worth stating plainly: LOD0 grows from 7 cells to 33, so a window
- * carries about 1.3× the samples it did. It buys a resolution change you have to walk a
- * chunk to reach.
+ * `coarse` exceeds `full` for a mechanical reason and only that one: it must be past
+ * `full` or the middle level is never reached, and a chunk can be full detail or coarsest
+ * with nothing in between.
  */
-export const DEFAULT_LOD_BANDS: LodBands = { full: 2, coarse: 3 };
+export const DEFAULT_LOD_BANDS: LodBands = { full: 4, coarse: 6 };
 
 /** Whether level of detail is switched off, so every chunk is full resolution. */
 export const LOD_OFF: LodBands = {
@@ -90,8 +89,8 @@ export const lodStride = (lod: Lod): number =>
 /**
  * How many voxel samples fit across a chunk at a level of detail, for the default grid.
  *
- * The coarsest level divides thirty-two by four, giving eight — which is one sample
- * per eighty world units. A brush is twenty units across at its smallest, so a
+ * The coarsest level divides sixteen by four, giving four — which is one sample
+ * per forty world units. A brush is twenty units across at its smallest, so a
  * sculpt at that level of detail is not visible. That is not a defect: it is the
  * point of having a coarsest level, and it is why the bands default to keeping the
  * coarsest level at the far edge of the window where nothing is being sculpted.
@@ -256,14 +255,14 @@ export const cellCentre = (cell: CellCoord): Vec3 => ({
  * the last one interval short of its high edge.
  *
  * Putting samples at interval *centres* instead is the intuitive choice and it does not
- * work. Thirty-two samples at interval centres span thirty-one intervals — 310 units
- * where the chunk is 320 — so the chunk leaves a ten-unit gap at its high edge, and the
- * next chunk begins with another. Samples on the boundary are shared by two chunks,
+ * work. Sixteen samples at interval centres span fifteen intervals — 150 units where the
+ * chunk is 160 — so the chunk leaves a ten-unit gap at its high edge, and the next chunk
+ * begins with another. Samples on the boundary are shared by two chunks,
  * which sounds alarming and is exactly what is wanted: each chunk uses its neighbour's
  * boundary sample as the one cell of padding the mesher's seam rule needs, and both
  * arrive at the same value because the field is a function of position (0002).
  *
- * Thirty-three samples at interval centres would tile, but then the outermost sample
+ * Seventeen samples at interval centres would tile, but then the outermost sample
  * hangs outside the chunk and "which samples does this chunk own" stops being answerable
  * from the chunk alone. Ownership measured from the low edge is.
  */

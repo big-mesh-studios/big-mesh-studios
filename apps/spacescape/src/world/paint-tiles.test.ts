@@ -112,14 +112,14 @@ describe("painting a sample", () => {
     expect(tiles.tileAt(cell)).toBeUndefined();
     tiles.paintSample(cell, 10, 12, 14, RED);
     tiles.paintSample(cell, 4, 3, 2, GREEN);
-    tiles.paintSample(cell, 20, 25, 30, RED);
+    tiles.paintSample(cell, 12, 14, 15, RED);
     expect(tiles.tileAt(cell)?.written).toEqual({
       minX: 4,
       minY: 3,
       minZ: 2,
-      maxX: 20,
-      maxY: 25,
-      maxZ: 30,
+      maxX: 12,
+      maxY: 14,
+      maxZ: 15,
     });
   });
 
@@ -269,14 +269,16 @@ describe("addressing by world position", () => {
     // find their work gone.
     const tiles = new PaintTiles();
     const cell: CellCoord = { x: 0, y: 0, z: 0 };
-    tiles.paintSample(cell, 16, 16, 16, RED);
+    tiles.paintSample(cell, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, RED);
 
     // Stand in for the window recycling every slot, which is all it takes to lose a
     // slot-keyed tile: nothing about a tile's storage depends on the window at all.
     const other: CellCoord = { x: 9, y: 0, z: 9 };
     tiles.paintSample(other, 0, 0, 0, GREEN);
 
-    expect(tiles.atSample(cell, 16, 16, 16)).toEqual(RED);
+    expect(
+      tiles.atSample(cell, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1),
+    ).toEqual(RED);
     expect(tiles.atSample(other, 0, 0, 0)).toEqual(GREEN);
     expect(tiles.paintedCells()).toHaveLength(2);
     expect(tiles.paintedCells()).toContainEqual(cell);

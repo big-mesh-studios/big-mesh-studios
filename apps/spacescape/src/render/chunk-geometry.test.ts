@@ -7,6 +7,7 @@ import {
   countDrawn,
   emptySlotGeometry,
   installChunkMesh,
+  mergeChunkMeshes,
   releaseSlotGeometry,
   slotDraws,
   toChunkGeometry,
@@ -79,6 +80,30 @@ describe("uploading a chunk mesh", () => {
     // reports this as a flag with no buffers, precisely so that nothing is built.
     expect(toChunkGeometry(meshOf(0, 0))).toBeUndefined();
   });
+
+  it("merges a group's chunks and re-bases each one's indices", () => {
+    const first = meshOf(3, 1);
+    first.positions.set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    first.indices.set([0, 1, 2]);
+    const second = meshOf(3, 1);
+    second.positions.set([10, 20, 30, 40, 50, 60, 70, 80, 90]);
+    second.indices.set([2, 1, 0]);
+
+    const merged = mergeChunkMeshes([first, second])!;
+    expect(merged.vertexCount).toBe(6);
+    expect(merged.triangleCount).toBe(2);
+    expect([...merged.positions]).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+    ]);
+    // The second chunk's indices must address the second chunk's vertices, not its own
+    // zero-based ones — otherwise the merged mesh draws the first chunk's surface twice.
+    expect([...merged.indices]).toEqual([0, 1, 2, 5, 4, 3]);
+  });
+
+  it("has nothing to merge when every member is air", () => {
+    expect(mergeChunkMeshes([meshOf(0, 0), meshOf(0, 0)])).toBeUndefined();
+    expect(mergeChunkMeshes([])).toBeUndefined();
+  });
 });
 
 describe("a slot's geometry", () => {
@@ -98,6 +123,19 @@ describe("a slot's geometry", () => {
     if (slot.state.kind !== "drawn") throw new Error("expected a drawn slot");
     expect(slot.state.mesh.geometry).toBe(slot.state.geometry);
     expect(slot.triangles).toBe(4);
+  });
+
+  it("keeps a merged chunk's arrays without building a geometry of its own", () => {
+    // The superchunk owns the draw call; a per-slot geometry here would be buffers nothing
+    // draws. The arrays are still held because the group is rebuilt from its members.
+    const slot = emptySlotGeometry();
+    const mesh = meshOf(12, 4);
+    installChunkMesh(slot, mesh, material, true);
+    expect(slot.state.kind).toBe("merged");
+    if (slot.state.kind !== "merged") throw new Error("expected merged");
+    expect(slot.state.raw).toBe(mesh);
+    expect(slot.triangles).toBe(4);
+    expect(slotDraws(slot)).toBe(true);
   });
 
   it("records an air chunk as air rather than unmeshed", () => {

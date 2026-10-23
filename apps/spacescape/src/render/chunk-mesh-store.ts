@@ -38,21 +38,34 @@
  * Nothing here knows what a chunk contains, and nothing here asks the window what a slot
  * holds. The window owns cell identity and answerability; this owns GPU resources and the
  * scene's children. The two meet at the callbacks in `ChunkWindowParams`.
+ *
+ * **It does remember the cell an accepted answer named**, because a 2×2×2 superchunk is a
+ * group of *cells* and drawing it as one mesh needs to know which group a slot belongs to.
+ * That is membership for drawing, not a second opinion about answerability: the cell comes
+ * from the answer the session already checked, and `markStale` — the window's own event —
+ * is the only thing that takes it away.
  */
 
-import type { Material } from "@random-mesh/rmsl/scene";
-import type { Mesh as SceneMesh, Scene } from "@random-mesh/rmsl/scene";
-import { Group } from "@random-mesh/rmsl/scene";
+import type {
+  BufferGeometry,
+  Material,
+  Mesh as SceneMesh,
+  Scene,
+} from "@random-mesh/rmsl/scene";
+import { Group, Mesh } from "@random-mesh/rmsl/scene";
 
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 
+import type { CellCoord } from "../world";
 import type { MeshedChunk } from "../mesh/protocol";
 import {
   type SlotGeometry,
   emptySlotGeometry,
   installChunkMesh,
+  mergeChunkMeshes,
   releaseSlotGeometry,
   slotDraws,
+  toChunkGeometry,
 } from "./chunk-geometry";
 
 /** Why a mesh was refused, which is more useful than a bare false. */
@@ -84,14 +97,51 @@ const refused = (reason: Refusal): ApplyOutcome => ({
 interface Surface {
   readonly slots: SlotGeometry[];
   readonly revisions: number[];
+  /** Per-slot meshes, used only for a slot the store does not know a cell for. */
   readonly inScene: (SceneMesh | undefined)[];
   /** The group's scene children, in draw order. See the header. */
   readonly group: Group;
+  readonly material: Material;
+  /** One merged mesh per 2×2×2 group of cells, keyed by the group's cell coordinates. */
+  readonly superchunks: Map<string, Superchunk>;
 }
+
+/**
+ * How many chunks a superchunk holds on each axis.
+ *
+ * **Two, so a superchunk is the chunk size this application used to have.** With
+ * `CHUNK_VOXELS` at sixteen a chunk is 160 units and an edit re-meshes one of those rather
+ * than a 320-unit volume; a 2×2×2 group is 320 units and so brings the draw calls back to
+ * what they were before the split. The two numbers are meant to move together: change the
+ * chunk size and this is what keeps the picture's granularity, rather than every chunk
+ * becoming a draw call.
+ */
+export const SUPERCHUNK_SPAN = 2;
+
+/** The merged mesh a 2×2×2 group of cells is drawn as. */
+interface Superchunk {
+  /** Slots whose chunks contribute vertices to {@link mesh}. */
+  readonly members: Set<number>;
+  mesh: SceneMesh | undefined;
+  geometry: BufferGeometry | undefined;
+}
+
+/** The cell coordinates of the superchunk a chunk cell belongs to. */
+const superKey = (cell: CellCoord): string =>
+  `${Math.floor(cell.x / SUPERCHUNK_SPAN)},${Math.floor(cell.y / SUPERCHUNK_SPAN)},${Math.floor(cell.z / SUPERCHUNK_SPAN)}`;
 
 export class ChunkMeshStore {
   private readonly ground: Surface;
   private readonly sea: Surface | undefined;
+  /**
+   * The cell each slot stands for, as the last accepted answer named it.
+   *
+   * **Held beside the slot rather than in the window**, because the window recycles slots and
+   * the store has to know which superchunk a slot's vertices belong to when the answer is
+   * installed or the slot is released. A slot whose answer has not arrived yet has no entry,
+   * and contributes to no superchunk.
+   */
+  private readonly slotCells: (CellCoord | undefined)[] = [];
 
   /**
    * How many times a mesh was refused for being stale.
@@ -125,16 +175,23 @@ export class ChunkMeshStore {
     // **Ground first, then sea, and the sea's group only if there is a sea.** The order these
     // two lines run in is the draw order — it is the only ordering this renderer has, so it
     // is stated by the constructor's own field order rather than left to a reader to infer.
-    this.ground = this.makeSurface();
-    if (seaMaterial !== undefined) this.sea = this.makeSurface();
+    this.ground = this.makeSurface(this.material);
+    if (seaMaterial !== undefined) this.sea = this.makeSurface(seaMaterial);
     this.resize(slots);
   }
 
   /** Builds one surface's bookkeeping and puts its group in the scene, in order. */
-  private makeSurface(): Surface {
+  private makeSurface(material: Material): Surface {
     const group = new Group();
     this.scene.add(group);
-    return { slots: [], revisions: [], inScene: [], group };
+    return {
+      slots: [],
+      revisions: [],
+      inScene: [],
+      group,
+      material,
+      superchunks: new Map(),
+    };
   }
 
   /** The revision a slot is currently at. Capture this before requesting a mesh. */
@@ -160,7 +217,20 @@ export class ChunkMeshStore {
    * right: an absent ground is a ground that must go, because the slot has been recycled
    * and whatever the previous cell drew there is no longer wanted.
    */
-  apply(slot: number, meshed: MeshedChunk, revision: number): ApplyOutcome {
+  apply(
+    slot: number,
+    meshed: MeshedChunk,
+    revision: number,
+    /**
+     * The cell this answer is for, when the caller knows it.
+     *
+     * **Optional because the store is usable without a window**, and because a test that is
+     * about a slot's own mesh should not have to invent a cell. When it is present the chunk
+     * is merged into its 2×2×2 group and the group's mesh is what draws; when it is absent the
+     * slot keeps a mesh of its own, exactly as it always did.
+     */
+    cell?: CellCoord,
+  ): ApplyOutcome {
     const ground = this.ground.slots[slot];
     if (ground === undefined) return refused("unknownSlot");
     if (revision !== this.revisionOf(slot)) {
@@ -168,8 +238,31 @@ export class ChunkMeshStore {
       return refused("staleRevision");
     }
 
+    const previousCell = this.slotCells[slot];
+    const previousKey =
+      previousCell === undefined ? undefined : superKey(previousCell);
+    const nextKey = cell === undefined ? undefined : superKey(cell);
+
+    // A cell change is a different group. Remove the slot from the old one and rebuild it
+    // before the slot's vertices stop describing it.
+    if (previousKey !== undefined && previousKey !== nextKey) {
+      for (const surface of this.surfaces) {
+        this.superchunkFor(surface, previousKey).members.delete(slot);
+        this.rebuildSuperchunk(surface, previousKey);
+      }
+    }
+
     for (const surface of this.surfaces) this.takeOut(slot, surface);
-    installChunkMesh(ground, meshed.ground ?? EMPTY, this.material);
+
+    if (cell !== undefined) this.slotCells[slot] = { ...cell };
+    else this.slotCells[slot] = undefined;
+
+    installChunkMesh(
+      ground,
+      meshed.ground ?? EMPTY,
+      this.material,
+      nextKey !== undefined,
+    );
     // **Only for a world that has a sea.** A world with no sea material has no sea slots,
     // and offering it one would put water in an editor that has no water in it.
     if (this.sea !== undefined)
@@ -177,8 +270,18 @@ export class ChunkMeshStore {
         this.sea.slots[slot]!,
         meshed.sea ?? EMPTY,
         this.seaMaterial!,
+        nextKey !== undefined,
       );
-    for (const surface of this.surfaces) this.addIn(slot, surface);
+
+    if (nextKey === undefined) {
+      for (const surface of this.surfaces) this.addIn(slot, surface);
+      return accepted;
+    }
+
+    for (const surface of this.surfaces) {
+      this.superchunkFor(surface, nextKey).members.add(slot);
+      this.rebuildSuperchunk(surface, nextKey);
+    }
     return accepted;
   }
 
@@ -197,6 +300,7 @@ export class ChunkMeshStore {
   markStale(slot: number): void {
     const ground = this.ground.slots[slot];
     if (ground === undefined) return;
+    this.detachFromSuperchunk(slot);
     for (const surface of this.surfaces) {
       this.takeOut(slot, surface);
       releaseSlotGeometry(surface.slots[slot]!);
@@ -326,6 +430,9 @@ export class ChunkMeshStore {
   resize(slots: number): void {
     if (slots === this.ground.slots.length) return;
 
+    // A reshape moves cells between slots arbitrarily, so no superchunk survives it. Clearing
+    // them first keeps `markStale` from rebuilding each group on the way down.
+    this.clearSuperchunks();
     for (let slot = 0; slot < this.ground.slots.length; slot++)
       this.markStale(slot);
 
@@ -339,6 +446,8 @@ export class ChunkMeshStore {
       surface.revisions.length = slots;
       surface.inScene.length = slots;
     }
+    this.slotCells.length = slots;
+    for (let slot = 0; slot < slots; slot++) this.slotCells[slot] = undefined;
   }
 
   /**
@@ -350,6 +459,7 @@ export class ChunkMeshStore {
    * globe first, which is a coincidence in a caller rather than a rule anyone could read.
    */
   dispose(): void {
+    this.clearSuperchunks();
     for (let slot = 0; slot < this.ground.slots.length; slot++)
       this.markStale(slot);
     for (const surface of this.surfaces) {
@@ -358,6 +468,7 @@ export class ChunkMeshStore {
       surface.revisions.length = 0;
       surface.inScene.length = 0;
     }
+    this.slotCells.length = 0;
   }
 
   /** How many slots the store covers. */
@@ -382,14 +493,103 @@ export class ChunkMeshStore {
    */
   private takeOut(slot: number, surface: Surface): void {
     const mesh = surface.inScene[slot];
-    if (mesh === undefined) return;
-    surface.group.remove(mesh);
-    surface.inScene[slot] = undefined;
+    if (mesh !== undefined) {
+      surface.group.remove(mesh);
+      surface.inScene[slot] = undefined;
+    }
     const entry = surface.slots[slot];
-    if (entry !== undefined && entry.state.kind === "drawn") {
+    if (entry === undefined) return;
+    if (entry.state.kind === "drawn") {
       entry.state.geometry.dispose();
       entry.state = { kind: "unmeshed" };
       entry.triangles = 0;
+    } else if (entry.state.kind === "merged") {
+      // The arrays were the superchunk's source and are dropped with the state. There is no
+      // per-slot geometry to dispose: the merged mesh belongs to the group and is replaced by
+      // `rebuildSuperchunk`.
+      entry.state = { kind: "unmeshed" };
+      entry.triangles = 0;
+    }
+  }
+
+  /** The superchunk under `key`, created empty if this is the first member. */
+  private superchunkFor(surface: Surface, key: string): Superchunk {
+    const existing = surface.superchunks.get(key);
+    if (existing !== undefined) return existing;
+    const made: Superchunk = {
+      members: new Set(),
+      mesh: undefined,
+      geometry: undefined,
+    };
+    surface.superchunks.set(key, made);
+    return made;
+  }
+
+  /** Takes a slot out of the group its stored cell names, if it is in one. */
+  private detachFromSuperchunk(slot: number): void {
+    const cell = this.slotCells[slot];
+    this.slotCells[slot] = undefined;
+    if (cell === undefined) return;
+    const key = superKey(cell);
+    for (const surface of this.surfaces) {
+      const superchunk = surface.superchunks.get(key);
+      if (superchunk === undefined) continue;
+      if (!superchunk.members.delete(slot)) continue;
+      this.rebuildSuperchunk(surface, key);
+    }
+  }
+
+  /**
+   * Rebuilds one group's merged geometry from the chunks that currently belong to it.
+   *
+   * **A rebuild, not an incremental append.** That is the simple version and it is right for
+   * this application: an edit changes one chunk, so one group of eight is rejoined, and the
+   * arrays are a few megabytes at a 3.2-unit grid — far less than the mesh that produced them.
+   * If the group becomes empty its mesh goes, so a superchunk scrolled away from leaves
+   * nothing drawing and nothing held.
+   */
+  private rebuildSuperchunk(surface: Surface, key: string): void {
+    const superchunk = surface.superchunks.get(key);
+    if (superchunk === undefined) return;
+
+    if (superchunk.mesh !== undefined) {
+      surface.group.remove(superchunk.mesh);
+      superchunk.mesh = undefined;
+    }
+    superchunk.geometry?.dispose();
+    superchunk.geometry = undefined;
+
+    const meshes: ChunkMesh[] = [];
+    for (const member of superchunk.members) {
+      const state = surface.slots[member]?.state;
+      if (state?.kind === "drawn" || state?.kind === "merged") {
+        meshes.push(state.raw);
+      }
+    }
+
+    const merged = mergeChunkMeshes(meshes);
+    if (merged === undefined) {
+      if (superchunk.members.size === 0) surface.superchunks.delete(key);
+      return;
+    }
+    const geometry = toChunkGeometry(merged);
+    if (geometry === undefined) return;
+    const mesh = new Mesh(geometry, surface.material);
+    superchunk.geometry = geometry;
+    superchunk.mesh = mesh;
+    surface.group.add(mesh);
+  }
+
+  /** Drops every merged mesh and its membership. */
+  private clearSuperchunks(): void {
+    for (const surface of this.surfaces) {
+      for (const superchunk of surface.superchunks.values()) {
+        if (superchunk.mesh !== undefined)
+          surface.group.remove(superchunk.mesh);
+        superchunk.geometry?.dispose();
+        superchunk.members.clear();
+      }
+      surface.superchunks.clear();
     }
   }
 }
@@ -415,11 +615,10 @@ export interface StoreHooks {
   /**
    * Takes the slot and nothing else.
    *
-   * The window's own callback also receives the cell, and deliberately so — dropping it
-   * would be a good way to make the store's signature look compatible with the window's
-   * so the hooks could be spread straight in. They cannot, and should not: the store does
-   * not know what cells are, and an argument it ignores is an argument that will be read
-   * one day as if it meant something.
+   * **The cell is dropped here even though the window passes it.** Invalidation is about a
+   * slot becoming unfilled, and the store already recorded the cell of the last accepted
+   * answer — the only cell whose vertices it holds. Taking the window's new cell here would
+   * be taking the cell the slot is *becoming*, which is the one thing this path must forget.
    */
   onSlotReposition: (slot: number) => void;
   onSlotRelease: (slot: number) => void;

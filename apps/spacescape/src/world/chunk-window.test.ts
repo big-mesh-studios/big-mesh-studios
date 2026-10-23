@@ -273,13 +273,15 @@ describe("scrolling", () => {
     // boundary crosses a whole ring of cells at once, so that is a flicker sweeping the
     // horizon on every step rather than a gap somewhere.
     const { window, events, reset } = recordingWindow({
-      radius: 3,
-      yRadius: 3,
+      radius: 5,
+      yRadius: 5,
     });
     fillEverything(window);
     reset();
 
-    window.scrollTo({ x: 900, y: 0, z: 0 });
+    // Five chunks at 160 units is 800, so the focus moves from cell 0 to cell 5 and the
+    // cell that was on the coarse band's edge comes back to full detail.
+    window.scrollTo({ x: 5 * BLOCK_WORLD, y: 0, z: 0 });
 
     expect(events.refilled.length).toBeGreaterThan(0);
     // Nothing that merely changed resolution was taken out of the window's bookkeeping as

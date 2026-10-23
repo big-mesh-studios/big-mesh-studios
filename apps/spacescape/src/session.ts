@@ -55,24 +55,37 @@ import type { Bounds } from "./edit/document";
 /**
  * The streaming window's radius, in chunks, when the caller does not ask for one.
  *
- * **Four is not a preference: it is the fog's far distance.** `src/render/fog.ts` closes
- * at `4 * BLOCK_WORLD` because that is where the terrain stops, and this is where the
- * terrain stops. So the two are named here and in there and `fog.test.ts` holds them
- * together — a window that grew without the fog following it would still be *correct*
- * (an exponential never stops) and would still show a seam at its edge, which is the
- * failure mode that costs a day to find from a screenshot.
+ * **Eight is not a preference: it is the fog's far distance in chunks.** `src/render/fog.ts`
+ * closes at `8 * BLOCK_WORLD` because that is where the terrain stops, and this is where the
+ * terrain stops. The radius doubled when `CHUNK_VOXELS` halved, so the window still reaches
+ * 1280 world units; so did the fog's multiple, and `fog.test.ts` holds the two together — a
+ * window that grew without the fog following it would still be *correct* (an exponential
+ * never stops) and would still show a seam at its edge, which is the failure mode that costs
+ * a day to find from a screenshot.
  */
-export const DEFAULT_WINDOW_RADIUS = 4;
+export const DEFAULT_WINDOW_RADIUS = 8;
 
 /**
  * The game's window: wider and much flatter than the editor's.
  *
  * A walking player wants ground ahead and a little above, not a ball of sky, and wants
  * further than an orbit camera does because the horizon is most of what a first-person
- * frame is. Five chunks is 1600 units against the editor's 1280, which the fog has to
+ * frame is. Ten chunks is 1600 units against the editor's 1280, which the fog has to
  * cover — so `fog.test.ts` asserts against this and not only against `FOG_FAR`.
  */
-export const GAME_WINDOW = { radius: 5, yRadius: 2 } as const;
+export const GAME_WINDOW = { radius: 10, yRadius: 4 } as const;
+
+/**
+ * The editor's window: spherical, because an orbit camera looks up as often as forward.
+ *
+ * **Eight chunks is the fog's far distance**, so the editor's window edge is hidden by the
+ * same fog the game's is. Making it as wide as the game's ten would cost 4,169 slots against
+ * this window's 2,109 for a viewpoint that is orbiting one building — and the extra slots
+ * are not free, because every scroll scans them. The old editor's five chunks were 1600
+ * units at 320 per chunk; eight at 160 is 1280 and still covers the hospital several times
+ * over.
+ */
+export const EDITOR_WINDOW = { radius: 8, yRadius: 8 } as const;
 
 /** What a mesh request is remembered as, so its answer can be applied where it belongs. */
 interface Outstanding {
@@ -704,7 +717,15 @@ export class Session {
    */
   private onMesh(meshed: MeshedChunk, wanted: Wanted): void {
     this.settle(wanted, (request) => {
-      const outcome = this.store.apply(request.slot, meshed, request.revision);
+      const outcome = this.store.apply(
+        request.slot,
+        meshed,
+        request.revision,
+        // The cell names the superchunk the chunk belongs to. It comes from the request
+        // rather than the slot because a slot is recycled and the answer is for the cell it
+        // was asked about.
+        request.wanted.cell,
+      );
       if (!outcome.accepted) return;
       this.window.markFilled(request.slot);
     });
@@ -714,7 +735,7 @@ export class Session {
     // An air chunk is an answer, not a failure, and the slot must be marked filled so the
     // window stops asking and the picker stops being refused.
     this.settle(wanted, (request) => {
-      this.store.apply(request.slot, {}, request.revision);
+      this.store.apply(request.slot, {}, request.revision, request.wanted.cell);
       this.window.markFilled(request.slot);
     });
   }

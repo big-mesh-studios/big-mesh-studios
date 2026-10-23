@@ -88,12 +88,29 @@ export class TilePaint implements PaintSource {
 }
 
 /**
+ * The meshers built for each model message, by identity.
+ *
+ * **A worker meshes many chunks against one model, and this is what makes it build the
+ * model once rather than once per chunk.** The mesher already holds scratch buffers and
+ * output arrays for its whole life (`chunk-mesher.ts`); rebuilding it per request would
+ * allocate those multi-megabyte buffers per chunk and rebuild the operation BVH every
+ * time, which is exactly the cost that class exists to avoid.
+ *
+ * **Keyed by message identity rather than revision.** `worker.ts` keeps the message it was
+ * sent and hands the same object to every `meshChunk`, so a new `setModel` is a new key and
+ * an old one is collected with its meshers. Revision numbers would be equivalent today, but
+ * they are a protocol value and this is a local lifetime question.
+ */
+const meshersByModel = new WeakMap<ModelMessage, ChunkMeshers>();
+
+/**
  * Builds the meshers for a model message.
  *
- * Returns *new* meshers rather than reusing one, because the fields they wrap are built
- * from the message and a message may carry a different model. A cached field would answer
- * from an operations list the main thread has already replaced, and nothing about the
- * resulting mesh would look wrong.
+ * **The same message gives the same meshers, so scratch is reused across chunks.** A
+ * different message — however similar — builds a new field, because the fields they wrap
+ * are built from the message and a message may carry a different model. A field cached
+ * across *models* would answer from an operations list the main thread has already
+ * replaced, and nothing about the resulting mesh would look wrong.
  *
  * **The sea's mesher is built from the base field alone, with no `Field` around it**, and
  * that is deliberate rather than an omission. Water is a static sheet at sea level cut to
@@ -103,6 +120,15 @@ export class TilePaint implements PaintSource {
  * `mesh/water-mesher.ts`.
  */
 export const meshersFor = (model: ModelMessage): ChunkMeshers => {
+  const cached = meshersByModel.get(model);
+  if (cached !== undefined) return cached;
+  const meshers = buildMeshers(model);
+  meshersByModel.set(model, meshers);
+  return meshers;
+};
+
+/** The actual construction, separated so `meshersFor` can own the message's lifetime. */
+const buildMeshers = (model: ModelMessage): ChunkMeshers => {
   const operations = deserialiseOperations(model.operations);
   const base = baseFieldOf(model.base);
   // **The place's grid, or the landscape's.** The worker cannot read a manifest, so the

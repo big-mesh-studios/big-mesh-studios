@@ -3,7 +3,7 @@
  *
  * ## The two jobs
  *
- * **The near field closes the chunk window.** The window is four chunks on a side, 1280 world units,
+ * **The near field closes the chunk window.** The window is eight chunks on a side, 1280 world units,
  * and the camera's far plane is four hundred thousand, so the terrain stops at a small fraction of the
  * depth of the frame and its edge is a hard line the eye resolves perfectly well. A distance
  * exponential steep enough to hide that line is what the first term is, and its far distance is **the
@@ -53,11 +53,12 @@ export const FOG_NEAR = 500;
 /**
  * Where the fog has effectively hidden everything.
  *
- * Four chunks on a side, which is where the streaming window stops placing cells. Not
+ * Eight chunks on a side, which is where the streaming window stops placing cells. Not
  * the far plane: the terrain genuinely ends here, and this is the distance that fact
- * is visible at.
+ * is visible at. The number of chunks doubled with the chunk size, so the distance is
+ * still 1280 world units.
  */
-export const FOG_FAR = 4 * BLOCK_WORLD;
+export const FOG_FAR = 8 * BLOCK_WORLD;
 
 /**
  * How steeply the fog closes, in multiples of "fully fogged" over `FOG_FAR - FOG_NEAR`.

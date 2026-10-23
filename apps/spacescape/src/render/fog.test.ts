@@ -86,19 +86,19 @@ const eyeAt = (altitude: number): Vec3 => ({
 
 describe("the fog's distances", () => {
   it("closes exactly where the chunk window stops", () => {
-    // The session's default window is four chunks on a side and a chunk is
+    // The session's default window is eight chunks on a side and a chunk is
     // `BLOCK_WORLD` across. That is the distance at which the terrain genuinely ends,
     // so it is the distance at which the fog has to have taken over — and it is not an
     // art decision, which is the whole reason it is written as this rather than tuned.
-    expect(DEFAULT_WINDOW_RADIUS).toBe(4);
+    expect(DEFAULT_WINDOW_RADIUS).toBe(8);
     expect(FOG_FAR).toBe(DEFAULT_WINDOW_RADIUS * BLOCK_WORLD);
     expect(FOG_FAR).toBe(1280);
   });
 
   it("closes inside the widest window any scene builds", () => {
     // The coupling this file exists for, and the half of it that a test on `FOG_FAR`
-    // alone cannot see. The game's window is five chunks — 1600 units — while the fog's
-    // nominal far distance is the *editor's* four. That is still correct, because an
+    // alone cannot see. The game's window is ten chunks — 1600 units — while the fog's
+    // nominal far distance is the *editor's* eight. That is still correct, because an
     // exponential never stops, but it means the fog is not *tuned* to where the game's
     // terrain ends.
     //

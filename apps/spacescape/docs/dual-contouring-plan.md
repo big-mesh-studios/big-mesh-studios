@@ -107,7 +107,7 @@ Wire into `SurfaceNetsChunkMesher.mesh`, after `resolveNormals` and before `fini
 
 ```json
 "mesh": {
-  "lodSampleSizes": [3.2, 6.4, 12.8],
+  "lodSampleSizes": [3.2, 6.4, 16],
   "sharpEdges": 35
 }
 ```

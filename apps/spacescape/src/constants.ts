@@ -20,16 +20,19 @@ export const VOXEL_SIZE = 10;
 /**
  * Voxels per chunk per axis at level of detail 0.
  *
- * Thirty-two rather than sixty-four. A chunk is re-meshed in full after every edit, so its size
- * sets the cost of the most frequent operation the application performs: 32³ is 32,768 field
- * samples, which is a few milliseconds on one worker thread, where 64³ is eight times that and
- * lands four chunks into the adaptive scaler's frame budget on a modest machine.
+ * **Sixteen, because a chunk is the unit an edit re-meshes.** A place like the animal hospital
+ * asks for a 3.2-unit sample grid (`MeshSettings.lodSampleSizes`), and at thirty-two voxels a
+ * chunk is 320 units and therefore 100³ — just over a million field evaluations per edit. At
+ * sixteen it is 160 units and 50³, one eighth of that, and an edit to a small cutout still fits
+ * in one chunk. The default landscape stays at the same ten-unit spacing; it simply has sixteen
+ * samples a chunk rather than thirty-two.
  *
- * The reference renderer uses sixty-four, because it also has to fill a chunk from terrain before
- * meshing it and the fill is the larger cost. Nothing is filled here — a chunk is evaluated from
- * the operation list on demand (ADR 0004) — so the mesher's own size is the whole budget.
+ * The cost of the smaller chunk is more cells in the streaming window, which is why the window
+ * radius, the level-of-detail bands and the superchunk grouping all speak in chunks and are
+ * scaled with it. Drawing is still batched over a 2×2×2 superchunk, so a chunk becoming smaller
+ * does not become a draw call of its own.
  */
-export const CHUNK_VOXELS = 32;
+export const CHUNK_VOXELS = 16;
 
 /** World units one chunk spans on each axis, at every level of detail. */
 export const BLOCK_WORLD = CHUNK_VOXELS * VOXEL_SIZE;
@@ -77,8 +80,8 @@ export const CANDIDATE_CELL = BLOCK_WORLD;
  * The chunk size the operation BVH is given, which is this application's.
  *
  * **A number passed rather than a constant read**, so that the BVH in `packages/csg` is not tied to
- * a chunk this application happens to use. The default is the same 320 units, so nothing about the
- * behaviour changes; what changes is that a second application can be built at a different scale
- * without it reaching into the landscape's constants to say so.
+ * a chunk this application happens to use. The default is the same chunk size, so nothing about
+ * the behaviour changes; what changes is that a second application can be built at a different
+ * scale without it reaching into the landscape's constants to say so.
  */
 export const BVH_CANDIDATE_CELL = CANDIDATE_CELL;

@@ -18,7 +18,7 @@
  * it to move, so a day-night cycle over a fixed key direction is a sky that changes over
  * a world whose shadows do not.
  *
- * Fog arrived with it, for a related reason. The chunk window ends four chunks out —
+ * Fog arrived with it, for a related reason. The chunk window ends eight chunks out —
  * 1280 world units — while the far plane is four hundred thousand, so the terrain's edge is
  * a line across the horizon at a distance the eye resolves easily. `fog.ts` closes that
  * gap, and its far distance is the window's radius rather than a number chosen to look

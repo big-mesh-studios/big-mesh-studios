@@ -33,6 +33,7 @@
  * constant exists to set.
  */
 
+import { BLOCK_WORLD } from "../constants";
 import { GlobeMaterial, globeTextures } from "../render/globe";
 import type { GlobeMaps } from "../render/globe";
 import {
@@ -49,7 +50,7 @@ import { Mesh, SphereGeometry } from "@random-mesh/rmsl/scene";
  * three-dimensional noise evaluations and comes to roughly 5s on a phone; halving either axis
  * quarters the cost and costs visible detail, and doubling either doubles the cost for detail nobody
  * sees from orbit. One texel is about 278 units of surface at the equator — finer than a chunk
- * (`BLOCK_WORLD` is 320), which is the requirement, since the globe replaces chunks rather than
+ * (`BLOCK_WORLD` is 160), which is the requirement, since the globe replaces chunks rather than
  * approximating them.
  */
 export const GLOBE_MAP_WIDTH = 3072;
@@ -195,7 +196,7 @@ export const globeOpacityAt = (altitude: number): number => {
 };
 
 /** The distance at which the streamed chunks stop, used to say why the altitude is what it is. */
-export const CHUNK_REACH = 4 * 320;
+export const CHUNK_REACH = 8 * BLOCK_WORLD;
 
 /**
  * The altitude at which the horizon passes the chunks' edge, for the record.

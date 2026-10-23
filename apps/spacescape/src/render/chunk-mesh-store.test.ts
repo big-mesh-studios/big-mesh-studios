@@ -669,6 +669,158 @@ describe("the window hooks", () => {
   });
 });
 
+describe("drawing a 2x2x2 group of chunks as one superchunk", () => {
+  const cell = (x: number, y: number, z: number) => ({ x, y, z });
+
+  it("merges two chunks in the same group into one mesh", () => {
+    const store = newStore(2);
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.apply(
+      1,
+      { ground: meshOf(9, 3) },
+      store.revisionOf(1),
+      cell(1, 1, 1),
+    );
+
+    // One scene mesh, both chunks' triangles still counted per slot.
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+    expect(store.triangleCount).toBe(7);
+    expect(store.drawnCount).toBe(2);
+  });
+
+  it("keeps chunks in different groups separate", () => {
+    const store = newStore(2);
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.apply(
+      1,
+      { ground: meshOf(9, 3) },
+      store.revisionOf(1),
+      cell(2, 0, 0),
+    );
+
+    expect(surface(store, "ground").group.children).toHaveLength(2);
+  });
+
+  it("takes a released member out of its group and rebuilds the rest", () => {
+    const store = newStore(2);
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.apply(
+      1,
+      { ground: meshOf(9, 3) },
+      store.revisionOf(1),
+      cell(1, 0, 0),
+    );
+    expect(store.triangleCount).toBe(7);
+
+    store.markStale(1);
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+    expect(store.triangleCount).toBe(4);
+  });
+
+  it("drops the merged mesh when the last member is released", () => {
+    const store = newStore();
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.markStale(0);
+    expect(surface(store, "ground").group.children).toHaveLength(0);
+  });
+
+  it("rebuilds one group when a member's mesh changes", () => {
+    const store = newStore(2);
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.apply(
+      1,
+      { ground: meshOf(9, 3) },
+      store.revisionOf(1),
+      cell(1, 0, 0),
+    );
+
+    store.apply(
+      0,
+      { ground: meshOf(24, 8) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+    expect(store.triangleCount).toBe(11);
+  });
+
+  it("merges the sea into its own group", () => {
+    const store = withSea(2);
+    store.apply(
+      0,
+      { ground: meshOf(12, 4), sea: meshOf(6, 2) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    store.apply(
+      1,
+      { ground: meshOf(9, 3), sea: meshOf(3, 1) },
+      store.revisionOf(1),
+      cell(1, 0, 0),
+    );
+
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+    expect(surface(store, "sea").group.children).toHaveLength(1);
+    expect(store.groundTriangles).toBe(7);
+    expect(store.seaTriangles).toBe(3);
+  });
+
+  it("moves a slot between groups without leaving its old mesh behind", () => {
+    const store = newStore();
+    store.apply(
+      0,
+      { ground: meshOf(12, 4) },
+      store.revisionOf(0),
+      cell(0, 0, 0),
+    );
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+
+    // A recycled slot: the same answer slot now names a cell in a different 2x2x2 group.
+    store.apply(
+      0,
+      { ground: meshOf(9, 3) },
+      store.revisionOf(0),
+      cell(2, 0, 0),
+    );
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+    expect(store.triangleCount).toBe(3);
+  });
+
+  it("does not merge a chunk the store has no cell for", () => {
+    // The no-cell path is the store's own unit-test and library path, and it must keep the
+    // per-slot mesh it has always had.
+    const store = newStore();
+    store.apply(0, { ground: meshOf(12, 4) }, store.revisionOf(0));
+    expect(meshFor(store, 0)).toBeDefined();
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+  });
+});
+
 describe("what the store will not do", () => {
   it("does not reach for the window to check a cell", () => {
     // The window owns cell identity and answerability. The store owning a second opinion
@@ -677,10 +829,19 @@ describe("what the store will not do", () => {
     expect(source).not.toMatch(/ChunkWindow|slotOf|cellOfSlot/);
   });
 
-  it("keeps no per-cell state", () => {
-    // Slots are recycled and cells are not; anything keyed by cell here would have to be
-    // invalidated on every scroll (ADR 0005).
-    const source = ChunkMeshStore.toString();
-    expect(source).not.toMatch(/CoordinateMap|new Map/);
+  it("keeps cell state only as superchunk membership, and drops it when a slot moves", () => {
+    // **The one exception to "the store knows slots, not cells", and the reason is drawing.**
+    // A merged mesh has to be found by the group of cells it draws, so the store records the
+    // cell each accepted answer named. Nothing is *answered* from that record: the window is
+    // still the authority on whether a slot holds a cell, and `markStale` is the only path
+    // that changes membership. A release therefore leaves no merged geometry behind.
+    const store = newStore(2);
+    const cell = { x: 0, y: 0, z: 0 };
+    store.apply(0, { ground: meshOf(12, 4) }, store.revisionOf(0), cell);
+    expect(surface(store, "ground").group.children).toHaveLength(1);
+
+    store.markStale(0);
+    expect(surface(store, "ground").group.children).toHaveLength(0);
+    expect(store.draws(0)).toBe(false);
   });
 });

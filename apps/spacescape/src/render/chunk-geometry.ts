@@ -81,7 +81,15 @@ export type SlotMesh =
       readonly kind: "drawn";
       readonly geometry: BufferGeometry;
       readonly mesh: Mesh;
-    };
+      /** The arrays the geometry was built from, for a superchunk to merge. */
+      readonly raw: ChunkMesh;
+    }
+  /**
+   * A chunk whose vertices live in a superchunk's merged geometry rather than in a geometry
+   * of its own. The raw arrays are still held here because the superchunk is rebuilt from
+   * its members whenever one of them changes.
+   */
+  | { readonly kind: "merged"; readonly raw: ChunkMesh };
 
 /** One slot's uploaded mesh, and the bookkeeping that keeps it honest. */
 export interface SlotGeometry {
@@ -102,8 +110,28 @@ export const installChunkMesh = (
   slot: SlotGeometry,
   mesh: ChunkMesh,
   material: Material,
+  /**
+   * Keep the arrays for a superchunk to merge, and build no geometry for this slot.
+   *
+   * **The chunk still owns its vertices; it just does not own a draw call.** The store's
+   * superchunk rebuild reads every member's `raw` arrays, concatenates them, and uploads one
+   * mesh for the group. A per-slot geometry in that case would be buffers nothing draws.
+   */
+  merged = false,
 ): void => {
   releaseSlotGeometry(slot);
+
+  if (mesh.vertexCount === 0) {
+    slot.state = { kind: "air" };
+    slot.triangles = 0;
+    return;
+  }
+
+  if (merged) {
+    slot.state = { kind: "merged", raw: mesh };
+    slot.triangles = mesh.triangleCount;
+    return;
+  }
 
   const geometry = toChunkGeometry(mesh);
   if (geometry === undefined) {
@@ -113,7 +141,7 @@ export const installChunkMesh = (
   }
 
   const drawn = new Mesh(geometry, material);
-  slot.state = { kind: "drawn", geometry, mesh: drawn };
+  slot.state = { kind: "drawn", geometry, mesh: drawn, raw: mesh };
   slot.triangles = mesh.triangleCount;
 };
 
@@ -144,10 +172,61 @@ export const emptySlotGeometry = (): SlotGeometry => ({
  * Whether a slot has something to draw.
  *
  * False for air as well as unmeshed, and that is the point: both draw nothing, and every
- * caller that walks the scene asking this wants the answer rather than the reason.
+ * caller that walks the scene asking this wants the answer rather than the reason. A
+ * merged chunk counts as drawing even though its vertices are in the superchunk's mesh.
  */
 export const slotDraws = (slot: SlotGeometry): boolean =>
-  slot.state.kind === "drawn";
+  slot.state.kind === "drawn" || slot.state.kind === "merged";
+
+/**
+ * Concatenates chunk meshes into one, re-basing each chunk's indices.
+ *
+ * **World positions, so there is nothing to translate.** A chunk mesh is already built in
+ * world coordinates by the mesher, so a 2×2×2 group is the eight arrays one after another
+ * with an index offset — no member origin, no transform, and no chance of a member being
+ * placed a chunk away from its surface.
+ *
+ * Returns `undefined` when every member is empty, which is the common answer for a group of
+ * eight chunks high above a landscape.
+ */
+export const mergeChunkMeshes = (
+  meshes: readonly ChunkMesh[],
+): ChunkMesh | undefined => {
+  let vertices = 0;
+  let triangles = 0;
+  for (const mesh of meshes) {
+    vertices += mesh.vertexCount;
+    triangles += mesh.triangleCount;
+  }
+  if (vertices === 0) return undefined;
+
+  const positions = new Float32Array(vertices * 3);
+  const normalOct = new Int16Array(vertices * 2);
+  const colours = new Uint8Array(vertices * 4);
+  const indices = new Uint32Array(triangles * 3);
+  let vertexAt = 0;
+  let indexAt = 0;
+  for (const mesh of meshes) {
+    if (mesh.vertexCount === 0) continue;
+    const base = vertexAt / 3;
+    positions.set(mesh.positions, vertexAt);
+    normalOct.set(mesh.normalOct, (vertexAt / 3) * 2);
+    colours.set(mesh.colours, (vertexAt / 3) * 4);
+    for (let i = 0; i < mesh.indices.length; i++) {
+      indices[indexAt++] = (mesh.indices[i] as number) + base;
+    }
+    vertexAt += mesh.positions.length;
+  }
+
+  return {
+    positions,
+    normalOct,
+    colours,
+    indices,
+    vertexCount: vertices,
+    triangleCount: triangles,
+  };
+};
 
 /** How many slots among these hold a drawable mesh. */
 export const countDrawn = (slots: readonly SlotGeometry[]): number =>

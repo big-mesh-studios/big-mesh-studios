@@ -53,7 +53,7 @@
  */
 
 import { boundsOf } from "@big-mesh-studios/csg";
-import type { Operation } from "@big-mesh-studios/csg";
+import type { Operation, OperationShape } from "@big-mesh-studios/csg";
 import { placeOperation } from "../place-registry";
 import type { PlaceRegistry } from "../place-registry";
 import type { Bounds, Quat, Vec3 } from "@big-mesh-studios/core";
@@ -93,6 +93,91 @@ const materialOf = (name: string | undefined): { material?: number } => {
   if (name === undefined) return {};
   const id = materialId(name);
   return id === undefined ? {} : { material: id };
+};
+
+/**
+ * Whether two operations describe the same geometry, ignoring their fold index.
+ *
+ * **The question an apply has to ask before it marks a chunk stale.** A plan is a new object
+ * on every edit, so identity cannot answer it; without a comparison every `setLevel` would
+ * report *every* shape as changed, and a person resizing one cutout would re-mesh every chunk
+ * the whole level reaches. Exact equality is right here: the editor writes the numbers it
+ * means, and a value that did not move does not change the surface.
+ *
+ * The index is deliberately left out. `PlaceHandle.set` keeps the old one, because an edit must
+ * not move a shape within the fold (ADR 0016), so a differing index is never a geometry change.
+ */
+const sameOperation = (a: Operation, b: Operation): boolean =>
+  a.combine === b.combine &&
+  a.softness === b.softness &&
+  a.opacity === b.opacity &&
+  a.material === b.material &&
+  sameVec3(a.origin, b.origin) &&
+  sameVec3(a.orientation, b.orientation) &&
+  sameColour(a.colour, b.colour) &&
+  sameShape(a.shape, b.shape);
+
+const sameVec3 = (
+  a: { readonly x: number; readonly y: number; readonly z: number },
+  b: { readonly x: number; readonly y: number; readonly z: number },
+): boolean => a.x === b.x && a.y === b.y && a.z === b.z;
+
+const sameColour = (
+  a: { readonly r: number; readonly g: number; readonly b: number } | undefined,
+  b: { readonly r: number; readonly g: number; readonly b: number } | undefined,
+): boolean =>
+  a === undefined || b === undefined
+    ? a === b
+    : a.r === b.r && a.g === b.g && a.b === b.b;
+
+const sameShape = (a: OperationShape, b: OperationShape): boolean => {
+  if (a.type !== b.type) return false;
+  switch (a.type) {
+    case "Sphere": {
+      const other = b as Extract<OperationShape, { type: "Sphere" }>;
+      return a.radius === other.radius;
+    }
+    case "Ellipsoid": {
+      const other = b as Extract<OperationShape, { type: "Ellipsoid" }>;
+      return sameVec3(a.radius, other.radius);
+    }
+    case "Box": {
+      const other = b as Extract<OperationShape, { type: "Box" }>;
+      return sameVec3(a.len, other.len);
+    }
+    case "RoundBox": {
+      const other = b as Extract<OperationShape, { type: "RoundBox" }>;
+      return sameVec3(a.len, other.len) && a.radius === other.radius;
+    }
+    case "Capsule":
+    case "Cone":
+    case "Cylinder":
+    case "HexPrism": {
+      const other = b as Extract<
+        OperationShape,
+        { type: "Capsule" | "Cone" | "Cylinder" | "HexPrism" }
+      >;
+      return a.len === other.len && a.radius === other.radius;
+    }
+    case "Torus": {
+      const other = b as Extract<OperationShape, { type: "Torus" }>;
+      return (
+        a.majorRadius === other.majorRadius &&
+        a.minorRadius === other.minorRadius
+      );
+    }
+    case "Polygon": {
+      const other = b as Extract<OperationShape, { type: "Polygon" }>;
+      return (
+        a.len === other.len &&
+        a.points.length === other.points.length &&
+        a.points.every(
+          (point, at) =>
+            point.x === other.points[at]!.x && point.z === other.points[at]!.z,
+        )
+      );
+    }
+  }
 };
 
 /**
@@ -149,7 +234,14 @@ const wallOptions = (
 });
 
 export const createLevelApplier = (target: LevelTarget) => {
-  let placedFigureIds: string[] = [];
+  /**
+   * The figures this applier put in the world, by namespaced id.
+   *
+   * **A signature and the box it reached, not the item.** The signature is what tells an
+   * unchanged figure from a moved one, and the box is the only record of where a figure that
+   * is about to be removed used to be — which is exactly what an emptied level has to re-mesh.
+   */
+  let appliedFigures = new Map<string, { signature: string; bounds: Bounds }>();
   /** The operations as they were last applied, by id — so an edit can be a `set` not a rebuild. */
   let applied = new Map<string, Operation>();
 
@@ -237,29 +329,62 @@ export const createLevelApplier = (target: LevelTarget) => {
       ...materialOf(item.material),
     });
 
-  const applyFigures = (plan: LevelPlan): void => {
+  /**
+   * Brings the figure set up to date, returning the box the *changed* figures reach.
+   *
+   * **Only changed figures count, and that is what keeps a shape edit local.** A figure is
+   * its own mesh and does not fold with the level, so an unchanged figure under a moving wall
+   * has no geometry to rebuild — but reporting its box anyway would widen the invalidation to
+   * every chunk a prop happens to stand in. The signature covers everything that changes the
+   * mesh or its placement; a figure that matches its previous signature is left exactly where
+   * it is and reported nowhere.
+   *
+   * A changed figure is removed and added again rather than moved, because the model, the
+   * scale and the resolution can all change as well as the position. That is cheap — a figure
+   * shares its model's geometry — and it cannot leave a renamed model's old mesh standing.
+   */
+  const applyFigures = (plan: LevelPlan): Bounds | undefined => {
     const figures = target.figures;
     const models = target.models;
-    if (figures === undefined) return;
+    if (figures === undefined) return undefined;
 
-    // Take the last apply's figures down first, so a renamed model does not leave the old
-    // one standing. Ids are the ones we put there, not every figure in the world.
-    for (const id of placedFigureIds) figures.remove(id);
-    placedFigureIds = [];
+    const wanted = new Map<string, { signature: string; bounds: Bounds }>();
+    let changed: Bounds | undefined;
 
-    if (models === undefined) return;
-    for (const item of plan.items) {
-      if (!isLevelFigure(item)) continue;
-      const model = models.get(item.model);
-      // **Skipped rather than refused.** A level is being edited, not loaded from a
-      // stranger's zip; a model the place has not carried yet should not stop the rest of
-      // the level from standing up. `parseLevelPlan` is where a file is judged whole; this
-      // is a live session, and the person editing it can see the missing model in the list.
-      if (model === undefined) continue;
-      const id = levelFigureId(item.id);
-      figures.add(figureSpecOf(item, model, id, pointOf(item.at)));
-      placedFigureIds.push(id);
+    if (models !== undefined) {
+      for (const item of plan.items) {
+        if (!isLevelFigure(item)) continue;
+        const model = models.get(item.model);
+        // **Skipped rather than refused.** A level is being edited, not loaded from a
+        // stranger's zip; a model the place has not carried yet should not stop the rest of
+        // the level from standing up. `parseLevelPlan` is where a file is judged whole; this
+        // is a live session, and the person editing it can see the missing model in the list.
+        if (model === undefined) continue;
+        const id = levelFigureId(item.id);
+        const signature = figureSignature(item);
+        const bounds = figureBoundsOf(item, model);
+        wanted.set(id, { signature, bounds });
+
+        const previous = appliedFigures.get(id);
+        if (previous?.signature === signature) continue;
+        if (previous !== undefined) {
+          figures.remove(id);
+          changed = unionWith(changed, previous.bounds);
+        }
+        figures.add(figureSpecOf(item, model, id, pointOf(item.at)));
+        changed = unionWith(changed, bounds);
+      }
     }
+
+    // Any figure that was ours and is no longer in the plan. `models` being absent empties
+    // the set, which is the same statement the previous version made by returning early.
+    for (const [id, previous] of appliedFigures) {
+      if (wanted.has(id)) continue;
+      if (figures.remove(id)) changed = unionWith(changed, previous.bounds);
+    }
+
+    appliedFigures = wanted;
+    return changed;
   };
 
   return {
@@ -273,12 +398,6 @@ export const createLevelApplier = (target: LevelTarget) => {
      * moved.
      */
     apply(plan: LevelPlan): void {
-      // What the *last* apply put in the world, read before this one replaces it. An
-      // emptied level still has to re-mesh what it removed, so "was there anything" is a
-      // question about before, not after.
-      const hadShapes = applied.size > 0;
-      const hadFigures = placedFigureIds.length > 0;
-
       const place = target.places.create(LEVEL_PLACE);
 
       const touched: Operation[] = [];
@@ -340,62 +459,75 @@ export const createLevelApplier = (target: LevelTarget) => {
                 item.combine,
                 wallOptions(item, part),
               );
-              if (place.set(part.id, operation)) {
-                touched.push(previous);
-                applied.set(part.id, { ...operation, index: previous.index });
-              }
+              const next = { ...operation, index: previous.index };
+              if (sameOperation(previous, next)) continue;
+              place.set(part.id, operation);
+              // **Both boxes, because an edit can move or grow a shape as well as shrink
+              // it.** The old one is where the surface used to be and the new one is where
+              // it is now, and invalidating only the old would leave the added part
+              // unmeshed until something else happened to ask for it.
+              touched.push(previous, next);
+              applied.set(part.id, next);
             }
             continue;
           }
           const previous = applied.get(item.id);
           if (previous === undefined) continue;
-          const operation = operationOf(item);
-          if (place.set(item.id, operation)) {
-            touched.push(previous);
-            applied.set(item.id, { ...operation, index: previous.index });
-          }
+          const next = { ...operationOf(item), index: previous.index };
+          if (sameOperation(previous, next)) continue;
+          place.set(item.id, next);
+          touched.push(previous, next);
+          applied.set(item.id, next);
         }
       }
 
-      applyFigures(plan);
+      const figureBounds = applyFigures(plan);
 
       // The figures are not in the fold, so their boxes are not in `boundsOf` — but a
       // figure that moved still has to be re-meshed around it, and the host cannot know
       // that from the operations alone.
-      const wasEmpty = !hadShapes && !hadFigures && touched.length === 0;
-      if (!wasEmpty) {
-        target.geometryChanged(
-          unionWith(
-            unionWith(boundsOf(removed), boundsOf(touched)),
-            figuresBounds(target, plan),
-          ),
-        );
-      }
+      //
+      // **`undefined` is not passed on unless something really changed everything.** It is
+      // this codebase's word for "re-mesh the whole window", so a no-op apply — two
+      // identical plans, or a change to an item that reports no box — has to say nothing
+      // rather than say everything.
+      const changed = unionWith(
+        unionWith(boundsOf(removed), boundsOf(touched)),
+        figureBounds,
+      );
+      if (changed !== undefined) target.geometryChanged(changed);
     },
   };
 };
 
-/** How wide a level's figures reach, so a moved one re-meshes what is under it. */
-const figuresBounds = (
-  target: LevelTarget,
-  plan: LevelPlan,
-): Bounds | undefined => {
-  const { figures, models } = target;
-  if (figures === undefined || models === undefined) return undefined;
-  let bounds: Bounds | undefined;
-  for (const item of plan.items) {
-    if (!isLevelFigure(item)) continue;
-    const model = models.get(item.model);
-    if (model === undefined) continue;
-    const box = model.bounds;
-    const at = item.at;
-    bounds = unionWith(bounds, {
-      min: { x: box.min.x + at[0], y: box.min.y + at[1], z: box.min.z + at[2] },
-      max: { x: box.max.x + at[0], y: box.max.y + at[1], z: box.max.z + at[2] },
-    });
-  }
-  return bounds;
+/** The world box one placed figure reaches, for the chunks its removal or move touches. */
+const figureBoundsOf = (item: LevelFigure, model: FigureModel): Bounds => {
+  const box = model.bounds;
+  const at = item.at;
+  return {
+    min: { x: box.min.x + at[0], y: box.min.y + at[1], z: box.min.z + at[2] },
+    max: { x: box.max.x + at[0], y: box.max.y + at[1], z: box.max.z + at[2] },
+  };
 };
+
+/**
+ * Everything about a figure that changes what stands in the world.
+ *
+ * **A tuple rather than the item's own JSON**, so the comparison cannot depend on the order
+ * keys happen to be written in. Absent values become `null` because `undefined` disappears
+ * from a JSON array — `at: [1, 2, 3], yaw: undefined` and `at: [1, 2, 3]` are the same figure.
+ */
+const figureSignature = (item: LevelFigure): string =>
+  JSON.stringify([
+    item.figure,
+    item.model,
+    item.at,
+    item.yaw ?? null,
+    item.scale ?? null,
+    item.meshResolution ?? null,
+    item.solid ?? null,
+    item.name ?? null,
+  ]);
 
 const unionWith = (
   a: Bounds | undefined,

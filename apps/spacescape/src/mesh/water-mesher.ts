@@ -170,7 +170,7 @@ export const outOfTheGround =
  * Water is only ever where the ground is open and the point is below sea level, so a box
  * whose radius range misses the sea level cannot hold any — and on a planet almost every
  * box does, which is the point: deep rock and high sky are answered here rather than by
- * 34,304 samples each.
+ * 5,832 samples each.
  *
  * **Conservative in the safe direction only**, for the reason `couldHoldSurface` gives: a
  * `false` for a box that does hold water puts a hole in the sea that nothing re-meshes,
@@ -227,7 +227,7 @@ export class WaterChunkMesher implements ChunkMesher {
     // Bound once, because it is called once per crossing cell and a closure built per chunk is
     // a small cost for a predicate that never changes shape.
     this.gate = outOfTheGround(WATER_OVERLAP);
-    // Bound once, because it is called 34,304 times a chunk and a property read on a
+    // Bound once, because it is called 5,832 times a chunk and a property read on a
     // `this` per call is a cost this does not need to pay.
     //
     // **`base.ground` rather than `base`, and this is the whole of what caves changed here.**

@@ -251,7 +251,7 @@ export interface MeshField {
  *
  * Holds its scratch buffers and its output builder for its whole life, because both
  * are sized for a chunk and reused for every chunk thereafter. Allocating them per
- * chunk would put two multi-megabyte allocations in the path of a 34,304-sample loop.
+ * chunk would put two multi-megabyte allocations in the path of a 5,832-sample loop.
  *
  * **Vertex normals come from the mesh's own faces, except on the chunk's outer layer,
  * which keeps the field's gradient.** Measured on this landscape at LOD 0, the gradient for
@@ -394,7 +394,7 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
    *
    * The cheap half of streaming. A chunk entirely above the tallest thing the field can
    * produce has no sign change in it, and answering that costs one box test instead of
-   * 34,304 field evaluations. `couldHoldSurface` returns true when it cannot tell, so
+   * 5,832 field evaluations. `couldHoldSurface` returns true when it cannot tell, so
    * this never produces a wrong answer — only a missed saving.
    */
   couldHaveMesh(cell: CellCoord, lod: Lod, overlap?: OverlapMask): boolean {

@@ -224,7 +224,7 @@ export interface PlayerConfig {
 /**
  * The movement defaults, sized against this project's `VOXEL_SIZE` of ten world
  * units rather than the sibling project's two: the player is about one voxel
- * across, steps one voxel, and crosses the 320-unit chunk in a few seconds.
+ * across, steps one voxel, and crosses the 160-unit chunk in a few seconds.
  */
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   halfSize: 5,

@@ -127,9 +127,11 @@ const worldWithFigures = (): {
   target: LevelTarget;
   registry: PlaceRegistry;
   figures: FigureSet;
+  told: Array<Bounds | undefined>;
 } => {
   const registry = new PlaceRegistry(new SculptDocument().order);
   const figures = new FigureSet(new NodeMaterial() as never);
+  const told: Array<Bounds | undefined> = [];
   const models = new Map([
     ["lantern.sdfmod", model("lantern.sdfmod", 3)],
     ["fridge.sdfmod", model("fridge.sdfmod", 5)],
@@ -137,11 +139,12 @@ const worldWithFigures = (): {
   return {
     registry,
     figures,
+    told,
     target: {
       places: registry,
       figures,
       models: { get: (name) => models.get(name) },
-      geometryChanged: () => {},
+      geometryChanged: (bounds) => told.push(bounds),
     },
   };
 };
@@ -359,6 +362,63 @@ describe("changing a shape does not move it in the fold", () => {
     apply.apply(aPlan([aShape("a"), aShape("b", 30, "Paint")]));
     apply.apply(aPlan([aShape("a"), aShape("b", 34, "Paint")]));
     expect(registry.get(LEVEL_PLACE)!.get("b")?.combine).toBe("Paint");
+  });
+
+  it("reports only the box of the shape that changed", () => {
+    // **The cost of an edit is the box it reports, not the size of the level.** Every item
+    // is re-`set` on every apply because the plan is a fresh value, so the question is
+    // whether each one actually changed. Without this every cutout resize re-meshes every
+    // chunk the building reaches, which is what made the hospital editor feel stuck.
+    const { target, told } = world();
+    const apply = createLevelApplier(target);
+    const low = aShape("low", 20);
+    const high = aShape("high", 400);
+
+    apply.apply(aPlan([low, high]));
+    told.length = 0;
+
+    apply.apply(
+      aPlan([
+        low,
+        {
+          ...high,
+          shape: { type: "Box", len: { x: 60, y: 6, z: 40 } },
+        } as LevelItem,
+      ]),
+    );
+
+    expect(told).toHaveLength(1);
+    // The low shape is at y 20; a box reported around the high one cannot reach it.
+    expect(told[0]!.min.y).toBeGreaterThan(300);
+  });
+
+  it("says nothing at all when the plan did not change", () => {
+    // `geometryChanged(undefined)` means "re-mesh the whole window", so an identical apply
+    // has to stay silent rather than infer that an unchanged level changed everything.
+    const { target, told } = world();
+    const apply = createLevelApplier(target);
+    const plan = aPlan([aShape("floor"), aShape("roof", 80)]);
+    apply.apply(plan);
+    told.length = 0;
+    apply.apply(plan);
+    expect(told).toEqual([]);
+  });
+
+  it("does not widen a shape edit to figures that did not move", () => {
+    // A figure is its own mesh. Reporting every prop's box on every apply would re-mesh the
+    // chunks every chair stands in for a wall that changed somewhere else.
+    const { target, told } = worldWithFigures();
+    const apply = createLevelApplier(target);
+    const lamp = aFigure("lamp", { at: [400, 0, 400] });
+    const floor = aShape("floor");
+    apply.apply(aPlan([floor, lamp]));
+    told.length = 0;
+
+    apply.apply(aPlan([{ ...floor, at: [0, 24, 0] } as LevelItem, lamp]));
+
+    expect(told).toHaveLength(1);
+    expect(told[0]!.max.x).toBeLessThan(300);
+    expect(told[0]!.max.z).toBeLessThan(300);
   });
 });
 

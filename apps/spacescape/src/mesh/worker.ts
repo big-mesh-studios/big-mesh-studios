@@ -197,7 +197,7 @@ const meshChunk = (
 
     // A chunk holding neither is meshed zero times rather than once, which is the whole
     // cost of a planet's window: most of a large volume near the surface is deep rock or
-    // open sky, and neither is worth 34,304 samples.
+    // open sky, and neither is worth 5,832 samples.
     if (!groundWanted && !seaWanted) {
       return {
         state: { ...pending, pending: undefined, meshed: pending.meshed + 1 },

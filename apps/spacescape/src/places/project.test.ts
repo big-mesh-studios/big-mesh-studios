@@ -259,7 +259,7 @@ describe("a project published as a record", () => {
     // **The same round trip as the world, for the same kind of failure.** A record that named a
     // fine grid and came back at the default would open with thin walls missing — a place that
     // loads and is wrong, rather than one that refuses.
-    const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+    const fine = { lodSampleSizes: [3.2, 6.4, 16] } as const;
     const detailed = project({
       manifest: { ...project().manifest, mesh: fine },
     });

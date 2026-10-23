@@ -155,6 +155,7 @@ import { SurfaceMaterial } from "./render/surface-material";
 import { createViewport, type Viewport } from "./render/viewport";
 import { VERTEX_BYTES } from "./render/spike-geometry";
 import {
+  EDITOR_WINDOW,
   GAME_WINDOW,
   Session,
   starterOperations,
@@ -1630,9 +1631,12 @@ export default function App() {
      */
     const applyWindow = (): void => {
       const base = gameWindow();
+      // The editor has its own spherical reach rather than widening the game's flat one:
+      // eight chunks is where the fog closes, and a window of that shape covers a building
+      // while costing half the slots a ten-chunk ball would.
       session.reshapeWindow(
-        base.radius,
-        levelEditorOpen() ? base.radius : base.yRadius,
+        levelEditorOpen() ? EDITOR_WINDOW.radius : base.radius,
+        levelEditorOpen() ? EDITOR_WINDOW.yRadius : base.yRadius,
       );
     };
 
@@ -2772,14 +2776,14 @@ export default function App() {
               : `built | quality ${layer.quality} | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
         },
         // The window's reach, adapted the same way the world's shape is. `applyWindow` is what
-        // turns the stored shape into a reshape, so the command and the editor widen the same
-        // one and neither can drift from the other.
+        // turns the stored game shape into a reshape. The editor ignores the game's reach
+        // while it is open, so a change made here is remembered for the close.
         windowSize: {
           radius: (value) => {
             if (value !== undefined) {
               setGameWindow((current) => ({ ...current, radius: value }));
-              // **Reshaped at once only when the editor is shut**, because the editor's own
-              // window is a function of this one and rewrites it on open and close anyway.
+              // **Reshaped at once only when the editor is shut**, because the editor has its
+              // own reach and does not want the game's window applied under it.
               if (!levelEditorOpen()) applyWindow();
             }
             return `window radius ${gameWindow().radius} chunks in x and z`;
@@ -2792,7 +2796,9 @@ export default function App() {
             return `window radius ${gameWindow().yRadius} chunks in y`;
           },
           state: () =>
-            `window ${gameWindow().radius} chunks in x and z, ${gameWindow().yRadius} in y${levelEditorOpen() ? " (widened to match while the editor is open)" : ""}`,
+            levelEditorOpen()
+              ? `editor window ${EDITOR_WINDOW.radius} chunks in x and z, ${EDITOR_WINDOW.yRadius} in y`
+              : `window ${gameWindow().radius} chunks in x and z, ${gameWindow().yRadius} in y`,
         },
         // The world's shape, adapted the same way the clouds are: `setWorldShape` lives with
         // the scene it rebuilds and the module-scope readers it replaces, and this is the

@@ -249,7 +249,7 @@ describe("meshing a chunk through the field", () => {
     // this replaced, at 2.34 ms a chunk; a gradient on none is a 72-degree shading seam
     // along every chunk boundary in the world. So the count is asserted to be both
     // non-zero and a small minority of the vertices.
-    const { field, calls } = at({ x: 140, y: -10, z: 5 });
+    const { field, calls } = at({ x: 70, y: -10, z: 5 });
     const mesh = new SurfaceNetsChunkMesher(field).mesh({
       cell: { x: 0, y: 0, z: 0 },
       lod: LOD0,
@@ -273,35 +273,36 @@ describe("meshing a chunk through the field", () => {
     const plain = chunkRegion({ x: 0, y: 0, z: 0 }, LOD0);
     const seam = boundaryCells(plain);
 
-    // 32 samples a side, no overlap: cells 0, 1 and 32 touch a face; 2 to 31 are whole.
-    // Cell 31 is whole because the chunk's high plane is where cell 32 *ends*.
+    // Sixteen samples a side, no overlap: cells 0, 1 and 16 touch a face; 2 to 15 are
+    // whole. Cell 15 is whole because the chunk's high plane is where cell 16 *ends*.
+    const middle = CHUNK_VOXELS / 2;
     for (const cell of [
       [0, 0, 0],
       [1, 5, 5],
-      [0, 16, 16],
-      [32, 5, 5],
-      [16, 0, 16],
-      [16, 32, 16],
-      [16, 16, 1],
-      [16, 16, 32],
+      [0, middle, middle],
+      [CHUNK_VOXELS, 5, 5],
+      [middle, 0, middle],
+      [middle, CHUNK_VOXELS, middle],
+      [middle, middle, 1],
+      [middle, middle, CHUNK_VOXELS],
     ]) {
       expect(seam(cell[0]!, cell[1]!, cell[2]!), `cell ${cell}`).toBe(true);
     }
     for (const cell of [
-      [2, 16, 16],
-      [30, 16, 16],
-      [31, 16, 16],
-      [16, 2, 16],
-      [16, 30, 16],
-      [16, 16, 2],
-      [16, 16, 30],
+      [2, middle, middle],
+      [CHUNK_VOXELS - 2, middle, middle],
+      [CHUNK_VOXELS - 1, middle, middle],
+      [middle, 2, middle],
+      [middle, CHUNK_VOXELS - 2, middle],
+      [middle, middle, 2],
+      [middle, middle, CHUNK_VOXELS - 2],
     ]) {
       expect(seam(cell[0]!, cell[1]!, cell[2]!), `cell ${cell}`).toBe(false);
     }
 
     // The overlap case, which is the one a test written against the mask would get wrong:
     // a chunk reaching *below* its own extent runs from one cell lower, so its own cells
-    // are 2..33 and the cell below them is padding rather than the chunk's low face.
+    // are 2..17 and the cell below them is padding rather than the chunk's low face.
     const overlapping = chunkRegion(
       { x: 0, y: 0, z: 0 },
       LOD0,
@@ -309,12 +310,12 @@ describe("meshing a chunk through the field", () => {
     );
     expect(overlapping.origin.y).toBeLessThan(overlapping.bounds.min.y);
     const shifted = boundaryCells(overlapping);
-    expect(shifted(16, 0, 16)).toBe(true);
-    expect(shifted(16, 1, 16)).toBe(true);
-    expect(shifted(16, 2, 16)).toBe(true);
-    expect(shifted(16, 33, 16)).toBe(true);
-    expect(shifted(16, 3, 16)).toBe(false);
-    expect(shifted(16, 32, 16)).toBe(false);
+    expect(shifted(middle, 0, middle)).toBe(true);
+    expect(shifted(middle, 1, middle)).toBe(true);
+    expect(shifted(middle, 2, middle)).toBe(true);
+    expect(shifted(middle, CHUNK_VOXELS + 1, middle)).toBe(true);
+    expect(shifted(middle, 3, middle)).toBe(false);
+    expect(shifted(middle, CHUNK_VOXELS, middle)).toBe(false);
   });
 
   it("leaves no vertex at the builder's placeholder normal", () => {
@@ -323,7 +324,7 @@ describe("meshing a chunk through the field", () => {
     // could be left are the ones on a chunk boundary, which is where nobody looks during a
     // smoke test.
     const mesh = new SurfaceNetsChunkMesher(
-      at({ x: 140, y: -10, z: 5 }).field,
+      at({ x: 70, y: -10, z: 5 }).field,
     ).mesh({
       cell: { x: 0, y: 0, z: 0 },
       lod: LOD0,
@@ -497,7 +498,7 @@ describe("meshing a chunk through the field", () => {
 
   it("keeps every vertex inside its chunk's extent plus padding", () => {
     const mesher = new SurfaceNetsChunkMesher(
-      at({ x: 150, y: 150, z: 150 }).field,
+      at({ x: 70, y: 70, z: 70 }).field,
     );
     const cell: CellCoord = { x: 0, y: 0, z: 0 };
     const region = chunkRegion(cell, LOD0);
@@ -671,7 +672,10 @@ describe("the seam, through the field", () => {
       // that the surface genuinely has to cross from one chunk's cells into the other's.
       const centre = { x: 40, y: 40, z: 40 };
       centre[AXES[axis]] = BLOCK_WORLD / 2;
-      const mesher = new SurfaceNetsChunkMesher(at(centre, 60).field);
+      // A radius that crosses the seam but stays inside the other two chunk faces. The
+      // chunk is only half as wide as it used to be, so the old sixty-unit sphere reached
+      // into an unmeshed neighbour and the open boundary there was counted as a seam.
+      const mesher = new SurfaceNetsChunkMesher(at(centre, 35).field);
 
       const low: CellCoord = { x: 0, y: 0, z: 0 };
       const high: CellCoord = { x: 0, y: 0, z: 0 };
@@ -703,7 +707,9 @@ describe("the seam, through the field", () => {
     // Straddling the corner where the four chunks meet, and flat in z so it stays within
     // the one row of chunks being tiled.
     const centre = { x: BLOCK_WORLD / 2, y: BLOCK_WORLD / 2, z: 0 };
-    const mesher = new SurfaceNetsChunkMesher(at(centre, 90).field);
+    // Radius sixty crosses both seams of the four-chunk tile and stays inside the z
+    // faces; ninety would reach a z chunk the tile does not mesh and leave an open edge.
+    const mesher = new SurfaceNetsChunkMesher(at(centre, 60).field);
 
     const tiled = (
       [
@@ -873,22 +879,22 @@ describe("where chunks are", () => {
  * the chunk extent is that nothing else in the world has to move.
  */
 describe("a place's own sample grid", () => {
-  const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+  const fine = { lodSampleSizes: [3.2, 6.4, 16] } as const;
 
   it("changes the samples inside a chunk without changing the chunk", () => {
     const cell = { x: 1, y: -1, z: 2 };
     const coarse = chunkRegion(cell, LOD0);
     const finer = chunkRegion(cell, LOD0, undefined, fine);
 
-    expect(coarse.samples).toBe(32);
-    expect(coarse.sampleSize).toBe(10);
-    expect(finer.samples).toBe(100);
+    expect(coarse.samples).toBe(CHUNK_VOXELS);
+    expect(coarse.sampleSize).toBe(VOXEL_SIZE);
+    expect(finer.samples).toBe(50);
     expect(finer.sampleSize).toBe(3.2);
     expect(finer.bounds).toEqual(coarse.bounds);
     expect(finer.sampleBounds.min.x).toBeCloseTo(coarse.bounds.min.x - 3.2, 9);
-    expect(sampleCount(0, fine)).toBe(102 ** 3);
+    expect(sampleCount(0, fine)).toBe(52 ** 3);
     expect(chunkSpan(0, fine)).toBeCloseTo(BLOCK_WORLD, 9);
-    expect(sampleSizeAt(2, fine)).toBe(12.8);
+    expect(sampleSizeAt(2, fine)).toBe(16);
   });
 
   it("captures a wall that falls between the default samples", () => {

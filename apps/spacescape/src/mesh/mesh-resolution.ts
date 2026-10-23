@@ -3,7 +3,7 @@
  *
  * ## Why this is a value rather than a constant
  *
- * The engine's default is sized for its landscape: a ten-unit voxel, thirty-two samples a
+ * The engine's default is sized for its landscape: a ten-unit voxel, sixteen samples a
  * chunk, and three levels of detail. A **place** is often a much smaller thing than a
  * landscape — a building a few hundred units across — and a wall in it is a handful of
  * units thick. At the landscape's ten-unit sampling a wall thinner than a sample can fall
@@ -150,7 +150,7 @@ export const MIN_MESH_SAMPLES = 4;
  *
  * **A memory bound rather than a quality one.** The scratch grid is `(samples + 2)³`
  * floats in two arrays, so 128 samples is already about 17 MiB per mesher and a place can
- * run several workers. The finest spacing this allows over a 320-unit chunk is 2.5 units,
+ * run several workers. The finest spacing this allows over a 160-unit chunk is 1.25 units,
  * which captures walls a couple of units thick; anything thinner than that is below the
  * terrain's own smallest feature and is a sign the level should be modelled differently.
  */

@@ -72,6 +72,17 @@ const aTile = (
 };
 
 describe("building the meshers from a model message", () => {
+  it("builds one set of meshers per message, so a chunk reuses its scratch", () => {
+    // **A worker meshes many chunks against one model.** Rebuilding the mesher per request
+    // would allocate its multi-megabyte scratch buffers per chunk and rebuild the operation
+    // BVH every time, which is the whole cost `SurfaceNetsChunkMesher` exists to avoid.
+    const message = model([aSphere(45)]);
+    expect(meshersFor(message)).toBe(meshersFor(message));
+    // A new model is a new message even when it carries the same operations, so it must not
+    // answer from the old field.
+    expect(meshersFor({ ...message })).not.toBe(meshersFor(message));
+  });
+
   it("reads operations back out of the serialised form", () => {
     // The whole point of the description: what the main thread sends has to become a
     // field the worker can sample. A round trip that loses an operation would mesh a
@@ -95,7 +106,7 @@ describe("building the meshers from a model message", () => {
     });
     const finer = meshersFor({
       ...model(operations),
-      mesh: { lodSampleSizes: [3.2, 6.4, 12.8] },
+      mesh: { lodSampleSizes: [3.2, 6.4, 16] },
     }).ground.mesh({ cell: cell(0), lod: 0 });
     expect(finer.vertexCount).toBeGreaterThan(coarse.vertexCount);
   });

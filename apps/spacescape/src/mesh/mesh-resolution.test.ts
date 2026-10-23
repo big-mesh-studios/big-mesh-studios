@@ -18,7 +18,7 @@ import {
 describe("a place's mesh resolution", () => {
   it("accepts the default grid and a finer one that divides the chunk", () => {
     expect(isMeshResolution(DEFAULT_MESH_RESOLUTION)).toBe(true);
-    expect(isMeshResolution({ lodSampleSizes: [3.2, 6.4, 12.8] })).toBe(true);
+    expect(isMeshResolution({ lodSampleSizes: [3.2, 6.4, 16] })).toBe(true);
     // Equal levels are a legitimate way to say "no coarsening".
     expect(isMeshResolution({ lodSampleSizes: [4, 4, 4] })).toBe(true);
   });
@@ -31,7 +31,7 @@ describe("a place's mesh resolution", () => {
     expect(meshSampleSize(0, { sharpEdges: 35 })).toBe(
       DEFAULT_MESH_RESOLUTION.lodSampleSizes[0],
     );
-    expect(meshSamples(2, { splitColours: true })).toBe(8);
+    expect(meshSamples(2, { splitColours: true })).toBe(4);
     // Naming the default explicitly is the same request as leaving it out, so loading a
     // place must not re-mesh for it.
     expect(
@@ -44,7 +44,7 @@ describe("a place's mesh resolution", () => {
     expect(
       sameMeshResolution(
         { sharpEdges: 35 },
-        { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 35 },
+        { lodSampleSizes: [3.2, 6.4, 16], sharpEdges: 35 },
       ),
     ).toBe(false);
   });
@@ -52,7 +52,7 @@ describe("a place's mesh resolution", () => {
   it("accepts a sharp-edge angle on any grid it accepts", () => {
     expect(
       isMeshResolution({
-        lodSampleSizes: [3.2, 6.4, 12.8],
+        lodSampleSizes: [3.2, 6.4, 16],
         sharpEdges: 35,
       }),
     ).toBe(true);
@@ -86,13 +86,13 @@ describe("a place's mesh resolution", () => {
   it("accepts colour cutting as a boolean and refuses anything else", () => {
     expect(
       isMeshResolution({
-        lodSampleSizes: [3.2, 6.4, 12.8],
+        lodSampleSizes: [3.2, 6.4, 16],
         splitColours: true,
       }),
     ).toBe(true);
     expect(
       isMeshResolution({
-        lodSampleSizes: [3.2, 6.4, 12.8],
+        lodSampleSizes: [3.2, 6.4, 16],
         splitColours: false,
       }),
     ).toBe(true);
@@ -131,7 +131,7 @@ describe("a place's mesh resolution", () => {
   it("accepts baked occlusion as a strength from zero to one and refuses anything else", () => {
     expect(
       isMeshResolution({
-        lodSampleSizes: [3.2, 6.4, 12.8],
+        lodSampleSizes: [3.2, 6.4, 16],
         bakeOcclusion: 0.8,
       }),
     ).toBe(true);
@@ -185,26 +185,26 @@ describe("a place's mesh resolution", () => {
   });
 
   it("derives the sample counts from the chunk, not from the number of levels", () => {
-    expect(meshSamples(0)).toBe(32);
-    expect(meshSamples(1)).toBe(16);
-    expect(meshSamples(2)).toBe(8);
+    expect(meshSamples(0)).toBe(16);
+    expect(meshSamples(1)).toBe(8);
+    expect(meshSamples(2)).toBe(4);
     expect(
       [0, 1, 2].map((lod) =>
-        meshSamples(lod, { lodSampleSizes: [3.2, 6.4, 12.8] }),
+        meshSamples(lod, { lodSampleSizes: [3.2, 6.4, 16] }),
       ),
-    ).toEqual([100, 50, 25]);
-    expect(meshSampleSize(1, { lodSampleSizes: [3.2, 6.4, 12.8] })).toBe(6.4);
+    ).toEqual([50, 25, 10]);
+    expect(meshSampleSize(1, { lodSampleSizes: [3.2, 6.4, 16] })).toBe(6.4);
   });
 
   it("refuses a spacing that does not tile the chunk", () => {
-    // 320 / 3 is 106.67, so a chunk would leave a third of a sample at its edge.
+    // 160 / 3 is 53.33, so a chunk would leave a third of a sample at its edge.
     expect(isMeshResolution({ lodSampleSizes: [3, 6, 12] })).toBe(false);
   });
 
   it("refuses a grid outside the sample bounds", () => {
-    // 320 / 1 = 320 samples, past the scratch memory bound.
+    // 160 / 1 = 160 samples, past the scratch memory bound.
     expect(isMeshResolution({ lodSampleSizes: [1, 2, 4] })).toBe(false);
-    // 320 / 100 = 3.2 samples, fewer than Surface Nets needs to describe a surface.
+    // 160 / 100 = 1.6 samples, fewer than Surface Nets needs to describe a surface.
     expect(isMeshResolution({ lodSampleSizes: [100, 200, 400] })).toBe(false);
     expect(
       MAX_MESH_SAMPLES,
@@ -243,7 +243,7 @@ describe("a place's mesh resolution", () => {
     ).toBe(true);
     expect(
       sameMeshResolution(DEFAULT_MESH_RESOLUTION, {
-        lodSampleSizes: [3.2, 6.4, 12.8],
+        lodSampleSizes: [3.2, 6.4, 16],
       }),
     ).toBe(false);
     // **A changed angle is a changed surface**, even when the samples are identical.

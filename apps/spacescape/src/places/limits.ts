@@ -50,7 +50,7 @@ export const MAX_NAME_LENGTH = 256;
  * How far from the origin a place's geometry may reach, in world units.
  *
  * **Ten million, and the reason is the chunk window rather than the world.** The window
- * is five chunks of 320 units (`GAME_WINDOW`), so geometry beyond a few thousand units is
+ * is ten chunks of 160 units (`GAME_WINDOW`), so geometry beyond a few thousand units is
  * never meshed — but it is still folded, because the operation's box is tested per sample
  * and a box a long way out is cheap. The real reason to bound it is that a coordinate is
  * used in arithmetic, and at `1e9` a distance stops being representable in the float the
@@ -65,7 +65,7 @@ export const MAX_COORDINATE = 1e7;
  * Smaller than `MAX_COORDINATE` deliberately: a shape ten million units across is not a
  * shape, it is a number, and it defeats the candidate cache in `csg/bvh.ts` because its
  * box overlaps every chunk. A kilometre is larger than the fog's far distance
- * (`FOG_FAR` = four chunks) by a factor of eight, so nothing visible is lost.
+ * (`FOG_FAR` = eight chunks) by a factor of eight, so nothing visible is lost.
  */
 export const MAX_SHAPE_SIZE = 1e6;
 

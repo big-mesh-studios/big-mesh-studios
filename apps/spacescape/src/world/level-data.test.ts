@@ -333,7 +333,7 @@ describe("overlap masks", () => {
   it("is empty where every neighbour is at the same level", () => {
     // A same-level seam is watertight, so there is nothing to reach into and nothing to pay
     // for. This is most faces in most of the world.
-    expect(overlapMaskAt({ x: 0, y: 5, z: 0 }, focus)).toBe(0);
+    expect(overlapMaskAt({ x: 0, y: 3, z: 0 }, focus)).toBe(0);
   });
 
   it("sets the face whose neighbour is one band finer, and only that one", () => {
@@ -344,10 +344,11 @@ describe("overlap masks", () => {
     // The other three vertical faces are coarser or equal neighbours, and the mask says so
     // by not being set: only one of the two chunks either side of a level step reaches
     // across, and it is always the coarse one (ADR 0035).
-    const { coarse } = DEFAULT_LOD_BANDS;
-    const mask = overlapMaskAt({ x: coarse, y: 0, z: 0 }, focus);
-    expect(lodAt({ x: coarse, y: 0, z: 0 }, focus)).toBe(1);
-    expect(lodAt({ x: coarse - 1, y: 0, z: 0 }, focus)).toBe(0);
+    const { full } = DEFAULT_LOD_BANDS;
+    const edge = full + 1;
+    const mask = overlapMaskAt({ x: edge, y: 0, z: 0 }, focus);
+    expect(lodAt({ x: edge, y: 0, z: 0 }, focus)).toBe(1);
+    expect(lodAt({ x: full, y: 0, z: 0 }, focus)).toBe(0);
     expect(mask & OVERLAP_X_NEG).toBe(OVERLAP_X_NEG);
     expect(mask & OVERLAP_X_POS).toBe(0);
     expect(mask & OVERLAP_Z_NEG).toBe(0);
@@ -386,8 +387,8 @@ describe("overlap masks", () => {
 
   it("does not mark a face where the level matches, only where it steps", () => {
     const mask = overlapMaskAt({ x: 0, y: 6, z: 0 }, focus);
-    // (0,5,0) is level 2 at distance 5, so is its neighbour above; (0,4,0) is also level 2,
-    // so no face reports a change.
+    // At distance six this cell is in the coarse band, and its neighbours above and below
+    // are too, so no face reports a change.
     expect(mask).toBe(0);
   });
 

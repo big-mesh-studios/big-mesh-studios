@@ -5,6 +5,7 @@ import { Scene, type Material } from "@random-mesh/rmsl/scene";
 import { Operation } from "@big-mesh-studios/csg";
 import type { BaseFieldSpec } from "@big-mesh-studios/csg";
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
+import { BLOCK_WORLD } from "./constants";
 import type { FromWorker, ModelMessage, PoolWorker, ToWorker } from "./mesh";
 import { Session, starterOperations, type SessionStats } from "./session";
 
@@ -392,9 +393,9 @@ describe("a session scrolling", () => {
     const { session, fakes } = newSession({ radius: 2, workers: 1 });
     drain(fakes);
 
-    // Two cells east of the origin, so the window is centred on cell 3 and the chunks
+    // Three cells east of the origin, so the window is centred on cell 3 and the chunks
     // around it have never been asked for.
-    session.follow({ x: 960, y: 0, z: 0 });
+    session.follow({ x: 3 * BLOCK_WORLD, y: 0, z: 0 });
 
     const held = fakes[0].requests().at(-1);
     expect(held).toBeDefined();
@@ -414,7 +415,7 @@ describe("a session scrolling", () => {
     drain(fakes);
 
     const before = fakes[0].requests().length;
-    session.follow({ x: 960, y: 0, z: 0 });
+    session.follow({ x: 3 * BLOCK_WORLD, y: 0, z: 0 });
 
     const held = fakes[0].requests().at(-1);
     expect(held).toBeDefined();
@@ -432,10 +433,14 @@ describe("a session scrolling", () => {
       for (const request of pending) replyWith(fakes[0], request);
     }
 
-    const focus = { x: 960, y: 0, z: 0 };
+    const focus = { x: 3 * BLOCK_WORLD, y: 0, z: 0 };
     const distance = (cell: string): number => {
       const [x, y, z] = cell.split(",").map(Number);
-      return Math.hypot(x * 320 - focus.x, y * 320, z * 320);
+      return Math.hypot(
+        x * BLOCK_WORLD - focus.x,
+        y * BLOCK_WORLD,
+        z * BLOCK_WORLD,
+      );
     };
     // Only the requests made by the scroll. A fake's log is its whole history, and the
     // drain ordered its chunks around where the window *was*, so distance from the new
@@ -630,7 +635,7 @@ describe("the whole window filling", () => {
   it("reaches more than one level of detail across a window that hits the far band", () => {
     // Coarse chunks are dispatched last, which is why this needs the window drained rather
     // than merely started.
-    const { session, fakes, stats } = newSession({ radius: 3, workers: 2 });
+    const { session, fakes, stats } = newSession({ radius: 5, workers: 2 });
     drain(fakes);
     const levels = new Set(
       fakes.flatMap((fake) => fake.requests().map((r) => r.lod)),
@@ -645,7 +650,7 @@ describe("the whole window filling", () => {
     drain(fakes);
     expect(stats().filled).toBe(stats().chunks);
 
-    for (const at of [3200, -3200, 6400]) {
+    for (const at of [20 * BLOCK_WORLD, -20 * BLOCK_WORLD, 40 * BLOCK_WORLD]) {
       session.follow({ x: at, y: 0, z: at });
       drain(fakes);
     }
@@ -719,12 +724,12 @@ describe("invalidating what an edit touched", () => {
     const { session, fakes } = newSession({ radius: 2, workers: 1 });
     drain(fakes);
 
-    // Chunks are centred on multiples of BLOCK_WORLD, so cell 0 covers -160 to 160 and a
+    // Chunks are centred on multiples of BLOCK_WORLD, so cell 0 covers -80 to 80 and a
     // box well inside that is one chunk.
     expect(
       session.invalidateBox({
         min: { x: 0, y: 0, z: 0 },
-        max: { x: 100, y: 100, z: 100 },
+        max: { x: 50, y: 50, z: 50 },
       }),
     ).toBe(1);
     drain(fakes);
@@ -732,15 +737,15 @@ describe("invalidating what an edit touched", () => {
   });
 
   it("invalidates every chunk a box spans", () => {
-    // A box reaching 320 on all three axes crosses a chunk boundary on each, so it covers
-    // eight. Getting this wrong in the cheap direction is the failure that matters: too few
-    // leaves part of an edit's chunk showing the old surface.
+    // A box reaching a whole chunk on all three axes crosses a chunk boundary on each, so
+    // it covers eight. Getting this wrong in the cheap direction is the failure that
+    // matters: too few leaves part of an edit's chunk showing the old surface.
     const { session, fakes } = newSession({ radius: 2, workers: 1 });
     drain(fakes);
     expect(
       session.invalidateBox({
         min: { x: 0, y: 0, z: 0 },
-        max: { x: 320, y: 320, z: 320 },
+        max: { x: BLOCK_WORLD, y: BLOCK_WORLD, z: BLOCK_WORLD },
       }),
     ).toBe(8);
     session.dispose();
@@ -914,7 +919,7 @@ describe("setMeshSettings", () => {
     drain(fakes);
     expect(stats().drawn).toBe(stats().chunks);
 
-    const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+    const fine = { lodSampleSizes: [3.2, 6.4, 16] } as const;
     session.setMeshSettings(fine);
 
     expect(session.mesh).toEqual(fine);

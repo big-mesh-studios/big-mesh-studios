@@ -245,12 +245,14 @@ describe("spawning on a planet", () => {
 
 describe("the window on a planet", () => {
   it("addresses the chunk the player is standing in", () => {
-    // The lattice's origin is the planet's centre, so a cell index near twelve is the surface's
-    // neighbourhood and one near zero is deep rock. Nothing in `chunkCellOf` had to change for
-    // that to be true, which is the point of anchoring the planet at the origin (ADR 0036).
+    // The lattice's origin is the planet's centre, so the surface's cell index is the radius
+    // divided by the chunk size and one near zero is deep rock. Nothing in `chunkCellOf` had
+    // to change for that to be true, which is the point of anchoring the planet at the origin
+    // (ADR 0036).
     const atSurface = chunkCellOf(onPlanet([1, 0, 0]));
-    expect(Math.abs(atSurface.x)).toBeGreaterThanOrEqual(12);
-    expect(atSurface.x).toBeLessThanOrEqual(13);
+    const surfaceCell = Math.floor(SEA_RADIUS / BLOCK_WORLD);
+    expect(Math.abs(atSurface.x)).toBeGreaterThanOrEqual(surfaceCell);
+    expect(atSurface.x).toBeLessThanOrEqual(surfaceCell + 1);
     // And the centre of that cell is within a chunk of the player, because the cell is a cube in
     // the lattice and the player is on its surface.
     const centre = cellCentre(atSurface);

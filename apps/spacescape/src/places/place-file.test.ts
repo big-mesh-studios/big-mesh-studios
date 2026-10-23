@@ -259,7 +259,7 @@ describe("a manifest this can open", () => {
     expect(
       isPlaceManifest({
         ...good(),
-        mesh: { lodSampleSizes: [3.2, 6.4, 12.8] },
+        mesh: { lodSampleSizes: [3.2, 6.4, 16] },
       }),
     ).toBe(true);
     // **A field inside `mesh` is also allowed to be absent.** Naming only what the place
@@ -280,13 +280,13 @@ describe("a manifest this can open", () => {
     expect(
       isPlaceManifest({
         ...good(),
-        mesh: { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 35 },
+        mesh: { lodSampleSizes: [3.2, 6.4, 16], sharpEdges: 35 },
       }),
     ).toBe(true);
     expect(
       isPlaceManifest({
         ...good(),
-        mesh: { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 0 },
+        mesh: { lodSampleSizes: [3.2, 6.4, 16], sharpEdges: 0 },
       }),
     ).toBe(false);
   });

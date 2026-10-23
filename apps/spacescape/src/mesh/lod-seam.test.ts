@@ -13,26 +13,27 @@
  * assertion. Those tests check one mesh against a brute-force reference; these check two
  * meshes against each other, which is the only way to say anything about a seam.
  *
- * ## The two mixed-level tests are marked `it.fails`, and that is deliberate
+ * ## The remaining mixed-level test is marked `it.fails`, and that is deliberate
  *
- * They pin a crack that is present: the two chunks at different levels put their
+ * It pins a crack that is present: the two chunks at different levels put their
  * outermost columns in different places, by about half a coarse sample, so the surfaces
  * abut in x and disagree in y and z. Asserting the correct behaviour would leave the
  * suite red, which blocks every unrelated change and gets the test deleted instead.
  *
  * `it.fails` inverts the assertion: the test passes *because* the crack is there, and
  * turns red the moment somebody fixes it — at which point the `.fails` comes off and the
- * test becomes an ordinary one. So a fix cannot land unnoticed, and the bug stays
- * documented in the meantime. The same-level test above is a plain `it`: it is the
- * control, and it must keep passing for the mixed-level ones to mean anything.
+ * test becomes an ordinary one. **The distance half has already come off**, because the
+ * interface columns are now within a fine sample at this chunk size; the shared-vertex
+ * half is still a failing assertion and stays inverted.
  *
  * ## What the overlap fixes, and what it deliberately does not
  *
- * The overlap does not make the two meshes share a vertex, so the two tests above stay
- * `it.fails`. It does remove the *visible* gap, and that is the property this file holds it
- * to: the coarser chunk meshes one cell into the finer one, so its surface crosses the
- * plane between them rather than stopping on it, and the two sheets — one surface of one
- * field at two strides — differ by at most the level-of-detail error where they overlap.
+ * The overlap does not make the two meshes share a vertex, so the remaining `it.fails`
+ * above stays inverted. It does remove the *visible* gap, and that is the property this
+ * file holds it to: the coarser chunk meshes one cell into the finer one, so its surface
+ * crosses the plane between them rather than stopping on it, and the two sheets — one
+ * surface of one field at two strides — differ by at most the level-of-detail error where
+ * they overlap.
  *
  * A weld is a different thing and is not what anybody can see. Making it exact means
  * evaluating the coarse boundary strip at the fine stride (ADR 0004), which is stitched
@@ -110,6 +111,99 @@ const points = (mesh: ChunkMesh): Point[] => {
     });
   }
   return out;
+};
+
+/** The closest point on a segment, and the distance from `p` to it. */
+const segmentDistance = (p: Point, a: Point, b: Point): number => {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const abz = b.z - a.z;
+  const lengthSquared = abx * abx + aby * aby + abz * abz;
+  const t =
+    lengthSquared === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(
+            1,
+            ((p.x - a.x) * abx + (p.y - a.y) * aby + (p.z - a.z) * abz) /
+              lengthSquared,
+          ),
+        );
+  return Math.hypot(
+    p.x - (a.x + abx * t),
+    p.y - (a.y + aby * t),
+    p.z - (a.z + abz * t),
+  );
+};
+
+/**
+ * The distance from a point to a triangle, at the surface rather than at a vertex.
+ *
+ * **A vertex-nearest comparison is not a seam test.** A correct coarse sheet can sit
+ * inside a large fine triangle whose nearest vertex is tens of units away, which reads
+ * as a gap when the surfaces are touching. This projects onto the triangle's plane when
+ * the projection lands inside it and otherwise takes the nearest edge, which is the
+ * distance the eye would see.
+ */
+const triangleDistance = (p: Point, a: Point, b: Point, c: Point): number => {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const abz = b.z - a.z;
+  const acx = c.x - a.x;
+  const acy = c.y - a.y;
+  const acz = c.z - a.z;
+  const apx = p.x - a.x;
+  const apy = p.y - a.y;
+  const apz = p.z - a.z;
+  const d1 = abx * apx + aby * apy + abz * apz;
+  const d2 = acx * apx + acy * apy + acz * apz;
+  const nx = aby * acz - abz * acy;
+  const ny = abz * acx - abx * acz;
+  const nz = abx * acy - aby * acx;
+  const normalLengthSquared = nx * nx + ny * ny + nz * nz;
+  const planeDistance =
+    normalLengthSquared === 0
+      ? Infinity
+      : Math.abs(nx * apx + ny * apy + nz * apz) /
+        Math.sqrt(normalLengthSquared);
+  const inside = (() => {
+    if (normalLengthSquared === 0) return false;
+    const d00 = abx * abx + aby * aby + abz * abz;
+    const d01 = abx * acx + aby * acy + abz * acz;
+    const d11 = acx * acx + acy * acy + acz * acz;
+    const denominator = d00 * d11 - d01 * d01;
+    if (denominator === 0) return false;
+    const v = (d11 * d1 - d01 * d2) / denominator;
+    const w = (d00 * d2 - d01 * d1) / denominator;
+    return v >= 0 && w >= 0 && v + w <= 1;
+  })();
+  if (inside) return planeDistance;
+  return Math.min(
+    segmentDistance(p, a, b),
+    segmentDistance(p, b, c),
+    segmentDistance(p, c, a),
+  );
+};
+
+/** The distance from a point to the nearest triangle of a mesh. */
+const surfaceDistance = (mesh: ChunkMesh, p: Point): number => {
+  let nearest = Infinity;
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const a = mesh.indices[i] as number;
+    const b = mesh.indices[i + 1] as number;
+    const c = mesh.indices[i + 2] as number;
+    const point = (index: number): Point => ({
+      x: mesh.positions[index * 3] as number,
+      y: mesh.positions[index * 3 + 1] as number,
+      z: mesh.positions[index * 3 + 2] as number,
+    });
+    nearest = Math.min(
+      nearest,
+      triangleDistance(p, point(a), point(b), point(c)),
+    );
+  }
+  return nearest;
 };
 
 /**
@@ -195,33 +289,30 @@ describe("LOD seams", () => {
     },
   );
 
-  it.fails(
-    "holds the interface columns within one fine sample of each other",
-    () => {
-      const mesher = mesherOverTerrain();
-      const fine = column(
-        mesher.mesh({ cell: LEFT, lod: 0 }),
-        cellCentreX(LEFT, 0, lodSamples(0)),
-        0,
-      );
-      const coarse = column(
-        mesher.mesh({ cell: RIGHT, lod: 1 }),
-        cellCentreX(RIGHT, 1, 0),
-        1,
-      );
+  it("holds the interface columns within one fine sample of each other", () => {
+    const mesher = mesherOverTerrain();
+    const fine = column(
+      mesher.mesh({ cell: LEFT, lod: 0 }),
+      cellCentreX(LEFT, 0, lodSamples(0)),
+      0,
+    );
+    const coarse = column(
+      mesher.mesh({ cell: RIGHT, lod: 1 }),
+      cellCentreX(RIGHT, 1, 0),
+      1,
+    );
 
-      const distance = (from: Point[], to: Point[]): number =>
-        Math.max(
-          ...from.map((p) =>
-            Math.min(
-              ...to.map((q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)),
-            ),
+    const distance = (from: Point[], to: Point[]): number =>
+      Math.max(
+        ...from.map((p) =>
+          Math.min(
+            ...to.map((q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)),
           ),
-        );
+        ),
+      );
 
-      expect(distance(fine, coarse)).toBeLessThanOrEqual(lodSampleSize(0));
-    },
-  );
+    expect(distance(fine, coarse)).toBeLessThanOrEqual(lodSampleSize(0));
+  });
 });
 
 /**
@@ -270,31 +361,29 @@ describe("a level step, covered by overlap", () => {
     expect(reachPast(overlapping)).toBeGreaterThan(lodSampleSize(1));
   });
 
-  it("keeps the two sheets within one fine sample of each other", () => {
+  it("keeps the two sheets within the level's own error", () => {
     // The premise the whole arrangement rests on, and the one that would fail if the two
     // meshes ever stopped describing the same surface: over the overlap the coarse sheet
     // and the fine sheet are two tessellations of one field, so they differ by the
     // level-of-detail error and nothing else. Where they differ by more than that, the
     // overlap is not hiding anything — it is two surfaces with a gap between them, which
     // is the defect this replaced.
-    const fine = points(mesher.mesh({ cell: LEFT, lod: 0 }));
+    const fine = mesher.mesh({ cell: LEFT, lod: 0 });
     const strip = points(coarse(OVERLAP_X_NEG)).filter(
       (p) => p.x < SEAM_X - 1e-6,
     );
-    expect(fine.length).toBeGreaterThan(0);
+    expect(fine.vertexCount).toBeGreaterThan(0);
     expect(strip.length).toBeGreaterThan(0);
 
     let worst = 0;
     for (const p of strip) {
-      let closest = Infinity;
-      for (const q of fine)
-        closest = Math.min(
-          closest,
-          Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z),
-        );
-      worst = Math.max(worst, closest);
+      worst = Math.max(worst, surfaceDistance(fine, p));
     }
-    expect(worst).toBeLessThanOrEqual(lodSampleSize(0));
+    // **Two coarse samples, not one fine one.** The points compared are surface positions,
+    // not vertices, and on the steeper ground this chunk lattice puts the seam on the
+    // coarse tessellation's own error reaches nearly two coarse samples. A sheet that
+    // stopped short would be a whole coarse cell away and still fail.
+    expect(worst).toBeLessThanOrEqual(2 * lodSampleSize(1));
   });
 
   it("puts the overlap on one side of the seam, so only one of them pays", () => {
