@@ -28,14 +28,24 @@
 import { BLOCK_WORLD, LOD_COUNT, LOD_STRIDE, VOXEL_SIZE } from "../constants";
 
 /**
- * The world units between samples at each level of detail, finest first.
+ * What a place may say about its sample grid.
  *
- * **Three numbers, because there are three levels** — `LOD_STRIDE` is the default's
- * `[1, 2, 4]`, and a place naming its own spacing is naming the result of that stride
- * rather than a different number of levels.
+ * **The spacing is optional, because a place may want to change only the look.** A manifest
+ * that names `sharpEdges` and nothing else is asking for hard edges on the engine's default
+ * grid, and requiring it to restate `[10, 20, 40]` would be a second spelling of the default
+ * that could drift from it. The other fields were already optional for the same reason: a
+ * place says what it wants and inherits the rest.
  */
-export interface MeshResolution {
-  readonly lodSampleSizes: readonly [number, number, number];
+export interface MeshSettings {
+  /**
+   * The world units between samples at each level of detail, finest first; absent means the
+   * engine's default grid.
+   *
+   * **Three numbers, because there are three levels** — `LOD_STRIDE` is the default's
+   * `[1, 2, 4]`, and a place naming its own spacing is naming the result of that stride
+   * rather than a different number of levels.
+   */
+  readonly lodSampleSizes?: readonly [number, number, number];
   /**
    * How far apart two faces may point before the mesher treats their edge as hard, in
    * degrees; absent means the ground is meshed and shaded exactly as it always was.
@@ -102,13 +112,27 @@ export interface MeshResolution {
   readonly bakeOcclusion?: number;
 }
 
+/**
+ * A mesh whose spacing has been resolved.
+ *
+ * **What a session and every mesher hold**, because they cannot derive a grid from a request
+ * that did not name one. The untrusted manifest stops at {@link MeshSettings}; the boundary
+ * between the two is {@link resolveMeshResolution}.
+ */
+export interface MeshResolution extends MeshSettings {
+  readonly lodSampleSizes: readonly [number, number, number];
+}
+
 /** The landscape's own spacing: ten units at LOD 0, then twenty and forty. */
+const DEFAULT_LOD_SAMPLE_SIZES = [
+  VOXEL_SIZE,
+  VOXEL_SIZE * LOD_STRIDE[1],
+  VOXEL_SIZE * LOD_STRIDE[2],
+] as const;
+
+/** The landscape's own grid, which an absent or partial `mesh` inherits. */
 export const DEFAULT_MESH_RESOLUTION: MeshResolution = {
-  lodSampleSizes: [
-    VOXEL_SIZE,
-    VOXEL_SIZE * LOD_STRIDE[1],
-    VOXEL_SIZE * LOD_STRIDE[2],
-  ],
+  lodSampleSizes: DEFAULT_LOD_SAMPLE_SIZES,
 };
 
 /**
@@ -135,63 +159,89 @@ export const MAX_MESH_SAMPLES = 128;
 const clampLod = (lod: number): 0 | 1 | 2 =>
   Math.max(0, Math.min(lod, LOD_COUNT - 1)) as 0 | 1 | 2;
 
+/**
+ * Fills an absent spacing with the landscape's own.
+ *
+ * **The one place a partial request becomes a grid.** A manifest may name `sharpEdges` and
+ * leave the spacing out; a session and a mesher may not, because every sample coordinate is
+ * derived from a number that has to exist. Resolving at that boundary keeps the default in
+ * one tuple rather than letting each caller invent its own.
+ */
+export const resolveMeshResolution = (
+  mesh: MeshSettings = DEFAULT_MESH_RESOLUTION,
+): MeshResolution => ({
+  ...mesh,
+  lodSampleSizes: mesh.lodSampleSizes ?? DEFAULT_LOD_SAMPLE_SIZES,
+});
+
 /** World units between samples at a level of detail. */
 export const meshSampleSize = (
   lod: number,
-  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
-): number => mesh.lodSampleSizes[clampLod(lod)] as number;
+  mesh: MeshSettings = DEFAULT_MESH_RESOLUTION,
+): number =>
+  (mesh.lodSampleSizes ?? DEFAULT_LOD_SAMPLE_SIZES)[clampLod(lod)] as number;
 
 /** Samples a chunk holds per axis at a level of detail. */
 export const meshSamples = (
   lod: number,
-  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
+  mesh: MeshSettings = DEFAULT_MESH_RESOLUTION,
 ): number => Math.round(BLOCK_WORLD / meshSampleSize(lod, mesh));
 
 /** Whether two settings ask for the same grid. */
 export const sameMeshResolution = (
-  a: MeshResolution,
-  b: MeshResolution,
-): boolean =>
-  a.lodSampleSizes[0] === b.lodSampleSizes[0] &&
-  a.lodSampleSizes[1] === b.lodSampleSizes[1] &&
-  a.lodSampleSizes[2] === b.lodSampleSizes[2] &&
-  // **Compared, not remembered.** A place that changes its angle is asking for a different
-  // surface, and `Session.setMeshSettings` only re-meshes when this says the grid moved.
-  a.sharpEdges === b.sharpEdges &&
-  // A place that turns colour cutting on or off is asking for a different mesh, even at the
-  // same grid: the triangles are literally different.
-  (a.splitColours === true) === (b.splitColours === true) &&
-  // Absent and zero are the same request; any other change moves the colours.
-  (a.bakeOcclusion ?? 0) === (b.bakeOcclusion ?? 0);
+  a: MeshSettings,
+  b: MeshSettings,
+): boolean => {
+  const aSizes = a.lodSampleSizes ?? DEFAULT_LOD_SAMPLE_SIZES;
+  const bSizes = b.lodSampleSizes ?? DEFAULT_LOD_SAMPLE_SIZES;
+  return (
+    aSizes[0] === bSizes[0] &&
+    aSizes[1] === bSizes[1] &&
+    aSizes[2] === bSizes[2] &&
+    // **Compared, not remembered.** A place that changes its angle is asking for a different
+    // surface, and `Session.setMeshSettings` only re-meshes when this says the grid moved.
+    a.sharpEdges === b.sharpEdges &&
+    // A place that turns colour cutting on or off is asking for a different mesh, even at the
+    // same grid: the triangles are literally different.
+    (a.splitColours === true) === (b.splitColours === true) &&
+    // Absent and zero are the same request; any other change moves the colours.
+    (a.bakeOcclusion ?? 0) === (b.bakeOcclusion ?? 0)
+  );
+};
 
 /**
- * Whether a value names a mesh grid this engine can build.
+ * Whether a value names mesh settings this engine can build.
  *
- * Everything is checked and nothing is coerced, matching the manifest's own rule: a place
- * that arrives with `"3.2"` where a number belongs is a place whose author has a bug, and
- * guessing what they meant would move every wall they drew.
+ * **An absent spacing is a request for the default grid**, not a malformed one: a place that
+ * names only `sharpEdges` is saying what it wants to change and inheriting the rest, which
+ * is the same rule the other fields already follow. When a spacing is present, everything is
+ * checked and nothing is coerced, matching the manifest's own rule: a place that arrives with
+ * `"3.2"` where a number belongs is a place whose author has a bug, and guessing what they
+ * meant would move every wall they drew.
  */
-export const isMeshResolution = (value: unknown): value is MeshResolution => {
+export const isMeshResolution = (value: unknown): value is MeshSettings => {
   if (typeof value !== "object" || value === null) return false;
   const sizes = (value as { lodSampleSizes?: unknown }).lodSampleSizes;
-  if (!Array.isArray(sizes) || sizes.length !== LOD_COUNT) return false;
+  if (sizes !== undefined) {
+    if (!Array.isArray(sizes) || sizes.length !== LOD_COUNT) return false;
 
-  let previous = 0;
-  for (const size of sizes) {
-    if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
-      return false;
+    let previous = 0;
+    for (const size of sizes) {
+      if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+        return false;
+      }
+      // **Coarse levels may equal fine ones**, because a place that wants every chunk at
+      // one resolution is a legitimate request; a coarse level finer than a fine one is not.
+      if (size < previous) return false;
+      const samples = BLOCK_WORLD / size;
+      if (!Number.isFinite(samples)) return false;
+      const rounded = Math.round(samples);
+      if (rounded < MIN_MESH_SAMPLES || rounded > MAX_MESH_SAMPLES) return false;
+      // A tolerance rather than `Number.isInteger`, because a decimal spacing that divides
+      // evenly can land a few ulps away from an integer under floating-point division.
+      if (Math.abs(rounded * size - BLOCK_WORLD) > 1e-6) return false;
+      previous = size;
     }
-    // **Coarse levels may equal fine ones**, because a place that wants every chunk at
-    // one resolution is a legitimate request; a coarse level finer than a fine one is not.
-    if (size < previous) return false;
-    const samples = BLOCK_WORLD / size;
-    if (!Number.isFinite(samples)) return false;
-    const rounded = Math.round(samples);
-    if (rounded < MIN_MESH_SAMPLES || rounded > MAX_MESH_SAMPLES) return false;
-    // A tolerance rather than `Number.isInteger`, because a decimal spacing that divides
-    // evenly can land a few ulps away from an integer under floating-point division.
-    if (Math.abs(rounded * size - BLOCK_WORLD) > 1e-6) return false;
-    previous = size;
   }
 
   // **A threshold of zero would flat-shade every triangle and one above ninety is

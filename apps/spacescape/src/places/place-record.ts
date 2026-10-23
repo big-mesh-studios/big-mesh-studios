@@ -54,7 +54,7 @@ import {
   type PlaceSpawn,
   type WorldShape,
 } from "./place-file";
-import type { MeshResolution } from "../mesh/mesh-resolution";
+import type { MeshSettings } from "../mesh/mesh-resolution";
 import { MAX_PLACE_SOURCE, MAX_SCRIPT_SOURCE } from "./limits";
 
 /** The collection published places are written to. */
@@ -118,7 +118,7 @@ export type PlaceRecord = {
    * are.** An absent field means the default grid, which is what every record written before
    * this existed meant.
    */
-  mesh?: MeshResolution;
+  mesh?: MeshSettings;
   entry: string;
   createdAt: string;
   scripts: readonly PlaceScriptRecord[];

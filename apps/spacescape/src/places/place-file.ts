@@ -62,7 +62,7 @@
 export { WORLD_SHAPES, isWorldShape } from "../world/world-geometry";
 export type { WorldShape } from "../world/world-geometry";
 
-import { isMeshResolution, type MeshResolution } from "../mesh/mesh-resolution";
+import { isMeshResolution, type MeshSettings } from "../mesh/mesh-resolution";
 import { isWorldShape, type WorldShape } from "../world/world-geometry";
 
 /** The file inside a zip that carries a place's manifest. */
@@ -218,9 +218,10 @@ export interface PlaceManifest {
    * lattice under everything else.
    *
    * **Absent means the engine's default grid**, so a place written before this field existed
-   * opens exactly as it did.
+   * opens exactly as it did. A field inside it may also be absent: a place that names only
+   * `sharpEdges` inherits the default spacing rather than having to restate it.
    */
-  readonly mesh?: MeshResolution;
+  readonly mesh?: MeshSettings;
   /** The file that runs, relative to the zip's root. Must be one of `scripts`. */
   readonly entry: string;
   /**

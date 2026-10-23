@@ -262,6 +262,15 @@ describe("a manifest this can open", () => {
         mesh: { lodSampleSizes: [3.2, 6.4, 12.8] },
       }),
     ).toBe(true);
+    // **A field inside `mesh` is also allowed to be absent.** Naming only what the place
+    // wants to change — the hospital's hard edges, say — inherits the default grid rather
+    // than requiring the author to write it out again.
+    expect(
+      isPlaceManifest({
+        ...good(),
+        mesh: { sharpEdges: 35, splitColours: true, bakeOcclusion: 0.8 },
+      }),
+    ).toBe(true);
   });
 
   it("accepts the sharp-edge angle a place's geometry needs", () => {

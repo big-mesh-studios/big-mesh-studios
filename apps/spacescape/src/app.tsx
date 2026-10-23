@@ -167,7 +167,7 @@ import {
   LOD_OFF,
   lodIsOff,
   type LodBands,
-  type MeshResolution,
+  type MeshSettings,
 } from "./world";
 import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
@@ -308,8 +308,9 @@ interface StartPlace {
    * **Absent means the engine's default**, unlike `world`'s absent-means-keep: a place that
    * never chose a grid is a place that expects the landscape's, and carrying the previous
    * place's finer grid into it would leave the session meshing a world nobody asked for.
+   * A partial setting inherits the default spacing, as it does in the manifest.
    */
-  readonly mesh?: MeshResolution;
+  readonly mesh?: MeshSettings;
 }
 
 /** The largest step a frame is allowed to advance the world, in seconds. */

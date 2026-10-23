@@ -23,6 +23,32 @@ describe("a place's mesh resolution", () => {
     expect(isMeshResolution({ lodSampleSizes: [4, 4, 4] })).toBe(true);
   });
 
+  it("inherits the default grid when a place names only a look", () => {
+    // **The spacing is a request, not a required restatement of the default.** A place that
+    // wants hard edges on the landscape's grid should be able to say just that.
+    expect(isMeshResolution({})).toBe(true);
+    expect(isMeshResolution({ sharpEdges: 35 })).toBe(true);
+    expect(meshSampleSize(0, { sharpEdges: 35 })).toBe(
+      DEFAULT_MESH_RESOLUTION.lodSampleSizes[0],
+    );
+    expect(meshSamples(2, { splitColours: true })).toBe(8);
+    // Naming the default explicitly is the same request as leaving it out, so loading a
+    // place must not re-mesh for it.
+    expect(
+      sameMeshResolution(
+        { sharpEdges: 35 },
+        { lodSampleSizes: [10, 20, 40], sharpEdges: 35 },
+      ),
+    ).toBe(true);
+    // A different grid is still a different request.
+    expect(
+      sameMeshResolution(
+        { sharpEdges: 35 },
+        { lodSampleSizes: [3.2, 6.4, 12.8], sharpEdges: 35 },
+      ),
+    ).toBe(false);
+  });
+
   it("accepts a sharp-edge angle on any grid it accepts", () => {
     expect(
       isMeshResolution({
@@ -197,7 +223,7 @@ describe("a place's mesh resolution", () => {
       undefined,
       10,
       "10",
-      {},
+      { lodSampleSizes: null },
       { lodSampleSizes: [10, 20] },
       { lodSampleSizes: [10, 20, 40, 80] },
       { lodSampleSizes: [10, "20", 40] },

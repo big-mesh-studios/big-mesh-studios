@@ -56,13 +56,14 @@ export {
   meshSampleSize,
   meshSamples,
   overlapMaskAt,
+  resolveMeshResolution,
   sameCell,
   sameMeshResolution,
   sampleIndexIn,
   sampleWorld,
   sphereCells,
 } from "./level-data";
-export type { MeshResolution } from "./level-data";
+export type { MeshResolution, MeshSettings } from "./level-data";
 
 export { CoordinateMap } from "./coordinate-map";
 

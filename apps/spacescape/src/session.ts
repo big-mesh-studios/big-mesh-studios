@@ -34,10 +34,11 @@ import {
   type CellCoord,
   type LodBands,
   type MeshResolution,
+  type MeshSettings,
   ChunkWindow,
-  DEFAULT_MESH_RESOLUTION,
   cellDistance,
   chunkCellOf,
+  resolveMeshResolution,
   sameCell,
   sameMeshResolution,
 } from "./world";
@@ -104,8 +105,11 @@ export interface SessionOptions {
    * **Per session rather than per chunk**, because a place is the thing that knows how thin
    * its walls are and the whole window should agree about the grid it is measuring them on.
    * A place opened later can change it with {@link setMeshSettings}.
+   *
+   * **A partial setting is a request, not a grid.** An absent spacing means the landscape's
+   * own, so a place that only names `sharpEdges` does not have to restate the default.
    */
-  readonly mesh?: MeshResolution;
+  readonly mesh?: MeshSettings;
   /** How many meshing workers to run. Defaults to one per hardware thread, capped. */
   readonly workers?: number;
   /**
@@ -223,7 +227,7 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.baseFieldSpec = options.baseField;
-    this.meshSettings = options.mesh ?? DEFAULT_MESH_RESOLUTION;
+    this.meshSettings = resolveMeshResolution(options.mesh);
     this.store = new ChunkMeshStore(
       options.scene,
       options.material,
@@ -320,9 +324,10 @@ export class Session {
    * re-meshing a window for a setting that did not move would be a visible stall on a
    * "play again".
    */
-  setMeshSettings(mesh: MeshResolution): void {
-    if (sameMeshResolution(this.meshSettings, mesh)) return;
-    this.meshSettings = mesh;
+  setMeshSettings(mesh: MeshSettings): void {
+    const resolved = resolveMeshResolution(mesh);
+    if (sameMeshResolution(this.meshSettings, resolved)) return;
+    this.meshSettings = resolved;
     if (this.disposed) return;
     this.invalidateAll();
     this.setOperations(this.currentOperations);

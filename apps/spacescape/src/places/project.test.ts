@@ -267,6 +267,17 @@ describe("a project published as a record", () => {
     expect(published.mesh).toEqual(fine);
     expect(projectFromRecord(published)?.manifest.mesh).toEqual(fine);
 
+    // **A partial grid is carried as written rather than filled in.** Naming only the angle
+    // means the default spacing, and a record that replaced it with `[10, 20, 40]` would
+    // still open correctly but would no longer round trip byte for byte.
+    const look = { sharpEdges: 35 } as const;
+    const withLook = project({
+      manifest: { ...project().manifest, mesh: look },
+    });
+    const lookRecord = makePlaceRecord(withLook, "2026-10-08T09:00:00.000Z");
+    expect(lookRecord.mesh).toEqual(look);
+    expect(projectFromRecord(lookRecord)?.manifest.mesh).toEqual(look);
+
     expect(
       makePlaceRecord(project(), "2026-10-08T09:00:00.000Z"),
     ).not.toHaveProperty("mesh");
