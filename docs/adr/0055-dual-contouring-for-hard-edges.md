@@ -33,20 +33,33 @@ triangles are split into flat-shaded copies.**
 - **A crossing normally takes its normal from its own cell's eight samples** — the trilinear
   interpolant's gradient, which costs arithmetic rather than field calls and is seam-safe
   because both chunks own the same eight numbers. A cell whose samples deviate from a linear
-  function, or whose corners were filled by the broad pass, refines with a tetrahedral field
-  difference: four samples, a quarter of the finest spacing, capped at one world unit. The
-  feature test is the mixed difference of the eight corners, which is zero for a plane, about a
-  hundredth of a cell for a resolved sphere, and most of a cell for a box corner.
+  function, or whose corners were filled by the broad pass, refines with a finite difference of
+  the field: a quarter of the finest spacing, capped at one world unit. The feature test is the
+  mixed difference of the eight corners, which is zero for a plane, about a hundredth of a cell
+  for a resolved sphere, and most of a cell for a box corner.
+
+  **The difference was originally four tetrahedral samples; it is now six central ones.** The
+  tetrahedron was cheaper, but at the real hospital's wall/ceiling junction it straddles both
+  planes and returns a diagonal blend. The QEF then placed vertices up to 1.9 world units off
+  the zero set — a visible fin. Six central samples at the same step put the wall-region worst
+  measured vertex 0.26 units off it and removed the fin, for a few percent on the sharp chunk.
+  This is still asked only at crossings whose cell gradient cannot describe the surface.
+
 - **Geometry alone is not the whole fix.** A crease that is geometrically sharp is still lit as
   a curve when the two faces share a vertex and the rasteriser interpolates its bisector.
   `splitSharpNormals` copies the three corners of any triangle whose face normal disagrees with
   a stored corner normal by more than the angle, and writes the face normal to the copies. It
   runs after the averaged normals and before anything else duplicates a vertex.
-- **The QEF is regularised and clamped.** A flat cell has a rank-one normal matrix with no single
-  minimum; a small `λI` toward the crossing mean selects the nearest point on the plane. The
-  solution is clamped into the cell with a ten-thousandth of a cell inset, because a box corner
-  that lands exactly on a grid point would otherwise put eight coincident vertices in eight
-  cells and eight zero-area quads between them.
+- **The QEF is regularised and constrained.** A flat cell has a rank-one normal matrix with no
+  single minimum; a small `λI` toward the crossing mean selects the nearest point on the plane.
+  When the unconstrained minimum leaves the cell, the solver minimizes on each of the six faces
+  and keeps the best boundary point, rather than clamping each coordinate independently. That
+  is the constrained face/edge/corner QEF: it keeps a hard crease on the boundary instead of
+  letting the separate clamps cut the corner off. The chosen point is compared with the field's
+  own absolute distance, and the boundary candidate is rejected when it would move further off
+  the zero set. The final point is inset a ten-thousandth of a cell from any shared face, because
+  a box corner that lands exactly on a grid point would otherwise put eight coincident vertices
+  in eight cells and eight zero-area quads between them.
 
 ## Consequences
 

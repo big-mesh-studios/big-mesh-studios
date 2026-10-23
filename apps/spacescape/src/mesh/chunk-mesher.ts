@@ -447,36 +447,30 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
           ? undefined
           : (x: number, y: number, z: number) => {
               /**
-               * **A tetrahedral difference, not `Field.gradient`'s six central samples.**
+               * **A central difference, rather than the old four-point tetrahedron.**
                *
-               * The four probes sit at the corners of a tetrahedron around the crossing,
-               * which is the fewest points that give an unbiased first derivative in three
-               * dimensions: a one-sided difference costs three and is biased towards
-               * whichever side it looked, while six central differences cost half again as
-               * much as this for an accuracy a QEF plane does not need. It is asked only for
-               * the cells the corner gradient cannot describe, so the difference between
-               * four and six samples is a difference in the right direction without being
-               * the whole budget.
+               * The tetrahedron was chosen for four field samples instead of six, on the
+               * argument that a QEF plane did not need the extra accuracy. The hospital
+               * says otherwise: at a wall/ceiling junction the tetrahedron straddles both
+               * planes and returns a diagonal blend, and the QEF then places vertices up to
+               * 1.9 units off the zero set — a visible fin. Six central samples at the same
+               * step cut the wall-region worst case to about 0.26 units and remove the fin,
+               * for a measured few-percent cost on the sharp chunk. This is still asked only at
+               * the crossings whose cell gradient cannot describe the surface.
                *
                * The step is a quarter of the finest sample and never more than a unit, so
-               * the tetrahedron stays inside the cell the normal belongs to.
+               * the probes stay inside the cell the normal belongs to.
                */
-              const h = this.gradientStep;
-              const a = this.field.distance(x + h, y + h, z + h);
-              const b = this.field.distance(x - h, y - h, z + h);
-              const c = this.field.distance(x - h, y + h, z - h);
-              const d = this.field.distance(x + h, y - h, z - h);
-              const nx = a - b - c + d;
-              const ny = a - b + c - d;
-              const nz = a + b - c - d;
-              const length = Math.hypot(nx, ny, nz);
+              const gradient = this.field.gradient(x, y, z, this.gradientStep);
+              const length = Math.hypot(gradient.x, gradient.y, gradient.z);
               if (!(length > 0) || !Number.isFinite(length)) {
-                // The project's own answer where a field has no direction. It is a fallback
-                // for a medial axis, not a surface normal, and any unit vector would be as
-                // wrong as this one; +Y is what `Field` already chooses.
                 return [0, 1, 0] as const;
               }
-              return [nx / length, ny / length, nz / length] as const;
+              return [
+                gradient.x / length,
+                gradient.y / length,
+                gradient.z / length,
+              ] as const;
             };
 
       surfaceNets({

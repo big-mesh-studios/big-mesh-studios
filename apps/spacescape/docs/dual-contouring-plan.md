@@ -160,15 +160,15 @@ Wire into `SurfaceNetsChunkMesher.mesh`, after `resolveNormals` and before `fini
 
 ## What landed
 
-| Area             | Where                                                      | What                                                                                                                                                                                                                                                                                                            |
-| ---------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| QEF solver       | `packages/meshing/src/qef.ts`                              | Regularised 3×3 solve relative to the crossing mean, clamped into the cell with a ten-thousandth inset; falls back to the mean on a degenerate solve.                                                                                                                                                           |
-| Vertex placement | `packages/meshing/src/surface-nets.ts`                     | `vertexPlacement: "centroid" \| "qef"` and `normalAt`; one vertex per cell and one quad per edge as before. Works for both separable and warped grids. The default remains `"centroid"`.                                                                                                                        |
-| Hermite normals  | `packages/meshing/src/surface-nets.ts`                     | A crossing takes its normal from its own cell's eight samples: the trilinear interpolant's gradient, free and seam-safe. A cell whose samples deviate from linear (or touch a broad-pass fill) refines with a tetrahedral field difference — four samples, a quarter of the finest spacing, capped at one unit. |
-| Sharp shading    | `packages/meshing/src/sharp-normals.ts`                    | `splitSharpNormals` duplicates the three corners of any triangle whose face normal disagrees with a stored corner normal by more than the threshold, and writes the face normal to the copies. Returns the input unchanged when there is nothing to cut.                                                        |
-| Opt-in           | `apps/spacescape/src/mesh/mesh-resolution.ts`              | `sharpEdges?: number`, validated 0 < degrees ≤ 90 and compared by `sameMeshResolution`; carried in `ModelMessage` already.                                                                                                                                                                                      |
-| Manifest         | `~/GitHub/spacescape-places/animal-hospital/manifest.json` | `"sharpEdges": 35` under `mesh`.                                                                                                                                                                                                                                                                                |
-| Profile          | `apps/spacescape/tools/mesh-profile.ts`                    | `--sharp [degrees]` profiles the same path.                                                                                                                                                                                                                                                                     |
+| Area             | Where                                                      | What                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| QEF solver       | `packages/meshing/src/qef.ts`                              | Regularised 3×3 solve relative to the crossing mean; if the minimum leaves the cell, a constrained face/edge/corner solve picks the best boundary point, and a field residual rejects a boundary candidate that moves further off the zero set. Falls back to the mean on a degenerate solve, with a ten-thousandth inset.                                                                                                                                   |
+| Vertex placement | `packages/meshing/src/surface-nets.ts`                     | `vertexPlacement: "centroid" \| "qef"` and `normalAt`; one vertex per cell and one quad per edge as before. Works for both separable and warped grids. The default remains `"centroid"`.                                                                                                                                                                                                                                                                     |
+| Hermite normals  | `packages/meshing/src/surface-nets.ts`                     | A crossing takes its normal from its own cell's eight samples: the trilinear interpolant's gradient, free and seam-safe. A cell whose samples deviate from linear (or touch a broad-pass fill) refines with a central field difference — six samples, a quarter of the finest spacing, capped at one unit. It was four tetrahedral samples; the hospital's wall/ceiling junction measured that as up to 1.9 units off the zero set, versus 0.26 for central. |
+| Sharp shading    | `packages/meshing/src/sharp-normals.ts`                    | `splitSharpNormals` duplicates the three corners of any triangle whose face normal disagrees with a stored corner normal by more than the threshold, and writes the face normal to the copies. Returns the input unchanged when there is nothing to cut.                                                                                                                                                                                                     |
+| Opt-in           | `apps/spacescape/src/mesh/mesh-resolution.ts`              | `sharpEdges?: number`, validated 0 < degrees ≤ 90 and compared by `sameMeshResolution`; carried in `ModelMessage` already.                                                                                                                                                                                                                                                                                                                                   |
+| Manifest         | `~/GitHub/spacescape-places/animal-hospital/manifest.json` | `"sharpEdges": 35` under `mesh`.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Profile          | `apps/spacescape/tools/mesh-profile.ts`                    | `--sharp [degrees]` profiles the same path.                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Measurements
 
@@ -190,10 +190,27 @@ fixture's wall is embedded two units into the floor, because two solids that tou
 an internal zero plane in `min`; the animal hospital's wall base is exactly on its floor top but
 does not land on a sample plane, so its sign is solid on both sides and no sheet is produced.
 
+### Feature pass after the first plan
+
+The first QEF used a four-point tetrahedral normal at feature crossings. A close-up of the
+hospital's wall/ceiling junction measured that as leaving vertices up to **1.88 units off the
+zero set**, with a visible fin. The normal is now a six-point central difference at the same
+step: the wall-region worst case fell to **0.26 units**, the fin disappeared, and the sharp
+chunk cost did not move measurably (the extra samples are paid only at feature crossings).
+
+The QEF itself is now constrained rather than independently clamped. When the unconstrained
+minimum leaves the cell, it minimizes on each of the six faces and keeps the best boundary
+point; a field residual rejects a boundary candidate that would move further off the zero set.
+On the hospital wall region the worst measured residual moved from **0.262 to 0.242 units**.
+This is a real but small improvement. It does **not** remove the cell-sized staircase along a
+flat boundary; that is a topology problem (one vertex per cell), not a vertex-placement one.
+The next geometry route is therefore one of: local adaptive refinement, or exact planar
+geometry for hard level items. Keep the one-vertex-per-cell topology as a separate decision.
+
 ### Tests added
 
 - `packages/meshing/src/qef.test.ts` — plane, crease, corner, degenerate normals, clamping,
-  cell-face inset.
+  cell-face inset, constrained face solve.
 - `packages/meshing/src/surface-nets.test.ts` — QEF corner and edge sharpness, vertex
   containment, tiled-versus-whole seam, plane fallback, corner-gradient placement and its
   seam, feature refinement, refusal without normals and for a warped cheap-grid cell.

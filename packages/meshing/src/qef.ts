@@ -218,6 +218,7 @@ export class QefScratch {
     highY: number,
     highZ: number,
     bias: number = QEF_BIAS,
+    residual?: (x: number, y: number, z: number) => number,
   ): QefPoint {
     const count = this.count;
     const positions = this.positions;
@@ -321,9 +322,65 @@ export class QefScratch {
     const dy = (c01 * b0 + c11 * b1 + c12 * b2) * inverse;
     const dz = (c02 * b0 + c12 * b1 + c22 * b2) * inverse;
 
-    point.x = clamp(mx + dx, lowX, highX);
-    point.y = clamp(my + dy, lowY, highY);
-    point.z = clamp(mz + dz, lowZ, highZ);
+    // **The constrained solve, when the unconstrained minimum is outside the cell.**
+    // Clamping each coordinate independently is the cheap answer, but it is not the QEF
+    // minimum on the cell boundary: a vertex clamped onto a face still has two free
+    // coordinates, and the feature it belongs to may be an edge or a corner of that face.
+    // Solving the faces and edges and choosing the lowest error is the constrained
+    // face/edge/corner QEF; it keeps a hard crease on the cell boundary instead of letting
+    // the independent clamps cut the corner off.
+    const unconstrainedX = mx + dx;
+    const unconstrainedY = my + dy;
+    const unconstrainedZ = mz + dz;
+    const clampedX = clamp(unconstrainedX, lowX, highX);
+    const clampedY = clamp(unconstrainedY, lowY, highY);
+    const clampedZ = clamp(unconstrainedZ, lowZ, highZ);
+    const inside =
+      unconstrainedX === clampedX &&
+      unconstrainedY === clampedY &&
+      unconstrainedZ === clampedZ;
+    if (inside) {
+      point.x = unconstrainedX;
+      point.y = unconstrainedY;
+      point.z = unconstrainedZ;
+    } else {
+      point.x = clampedX;
+      point.y = clampedY;
+      point.z = clampedZ;
+      this.solveBoundary(
+        point,
+        clampedX,
+        clampedY,
+        clampedZ,
+        lowX,
+        lowY,
+        lowZ,
+        highX,
+        highY,
+        highZ,
+        mx,
+        my,
+        mz,
+        bias,
+      );
+      // **The field is the authority on whether a constrained point is better.** QEF
+      // error only measures agreement with the crossing planes; a face/edge solve can
+      // lower that error while moving off the actual zero set. Keep the constrained point
+      // only when the field's absolute value does not get worse, which is exactly the
+      // check a feature vertex needs.
+      if (residual !== undefined) {
+        const before = residual(clampedX, clampedY, clampedZ);
+        const after = residual(point.x, point.y, point.z);
+        if (
+          !Number.isFinite(after) ||
+          (Number.isFinite(before) && after > before + 1e-6)
+        ) {
+          point.x = clampedX;
+          point.y = clampedY;
+          point.z = clampedZ;
+        }
+      }
+    }
     if (
       !Number.isFinite(point.x) ||
       !Number.isFinite(point.y) ||
@@ -334,6 +391,170 @@ export class QefScratch {
       point.z = mz;
     }
     return point;
+  }
+
+  /** The QEF value at a point, in the same normalised sense as the solve. */
+  private errorAt(x: number, y: number, z: number): number {
+    const count = this.count;
+    const positions = this.positions;
+    const normals = this.normals;
+    let error = 0;
+    for (let i = 0; i < count; i++) {
+      const at = i * 3;
+      const nx = normals[at] as number;
+      const ny = normals[at + 1] as number;
+      const nz = normals[at + 2] as number;
+      const length = Math.hypot(nx, ny, nz);
+      if (!(length > 0) || !Number.isFinite(length)) continue;
+      const along =
+        (nx * (x - (positions[at] as number)) +
+          ny * (y - (positions[at + 1] as number)) +
+          nz * (z - (positions[at + 2] as number))) /
+        length;
+      error += along * along;
+    }
+    return error;
+  }
+
+  /**
+   * Minimises the QEF with one coordinate fixed to a cell face.
+   *
+   * The fixed coordinate is `axis` and its value is `value`; the other two are solved from
+   * the same normal equations. The result is clamped to the remaining cell extents, which
+   * can push the point onto an edge or corner; the caller compares the error against the
+   * independent clamp and keeps the better answer.
+   */
+  private solveFace(
+    axis: 0 | 1 | 2,
+    value: number,
+    lowX: number,
+    lowY: number,
+    lowZ: number,
+    highX: number,
+    highY: number,
+    highZ: number,
+    mx: number,
+    my: number,
+    mz: number,
+    bias: number,
+  ): readonly [number, number, number] | undefined {
+    const free = ([0, 1, 2] as const).filter((candidate) => candidate !== axis);
+    const bAxis = free[0]!;
+    const cAxis = free[1]!;
+    const mass = [mx, my, mz] as const;
+    const fixedDelta = value - mass[axis]!;
+    let a00 = 0;
+    let a01 = 0;
+    let a11 = 0;
+    let b0 = 0;
+    let b1 = 0;
+    const count = this.count;
+    const positions = this.positions;
+    const normals = this.normals;
+    for (let i = 0; i < count; i++) {
+      const at = i * 3;
+      const nx = normals[at] as number;
+      const ny = normals[at + 1] as number;
+      const nz = normals[at + 2] as number;
+      const length = Math.hypot(nx, ny, nz);
+      if (!(length > 0) || !Number.isFinite(length)) continue;
+      const n = [nx / length, ny / length, nz / length] as const;
+      const along =
+        n[0] * ((positions[at] as number) - mx) +
+        n[1] * ((positions[at + 1] as number) - my) +
+        n[2] * ((positions[at + 2] as number) - mz);
+      const residual = along - n[axis]! * fixedDelta;
+      a00 += n[bAxis]! * n[bAxis]!;
+      a01 += n[bAxis]! * n[cAxis]!;
+      a11 += n[cAxis]! * n[cAxis]!;
+      b0 += n[bAxis]! * residual;
+      b1 += n[cAxis]! * residual;
+    }
+    const trace = a00 + a11;
+    const lambda = Math.max(trace / 2, Number.MIN_VALUE) * bias;
+    a00 += lambda;
+    a11 += lambda;
+    const det = a00 * a11 - a01 * a01;
+    if (
+      !Number.isFinite(det) ||
+      Math.abs(det) <= Math.max(trace, Number.MIN_VALUE) ** 2 * 1e-18
+    ) {
+      return undefined;
+    }
+    const d0 = (b0 * a11 - b1 * a01) / det;
+    const d1 = (a00 * b1 - a01 * b0) / det;
+    const solved = [0, 0, 0];
+    solved[axis] = value;
+    solved[bAxis] = mass[bAxis]! + d0;
+    solved[cAxis] = mass[cAxis]! + d1;
+    solved[0] = clamp(solved[0]!, lowX, highX);
+    solved[1] = clamp(solved[1]!, lowY, highY);
+    solved[2] = clamp(solved[2]!, lowZ, highZ);
+    return [solved[0]!, solved[1]!, solved[2]!];
+  }
+
+  /**
+   * Chooses the best cell-boundary point among the faces and edges the unconstrained
+   * minimum lies beyond, falling back to the independent clamp when none improves on it.
+   */
+  private solveBoundary(
+    point: QefPoint,
+    clampedX: number,
+    clampedY: number,
+    clampedZ: number,
+    lowX: number,
+    lowY: number,
+    lowZ: number,
+    highX: number,
+    highY: number,
+    highZ: number,
+    mx: number,
+    my: number,
+    mz: number,
+    bias: number,
+  ): void {
+    // **All six faces, not only the axes the unconstrained point overshot.** A tilted
+    // plane can make the best boundary point lie on a face the unconstrained minimum did
+    // not cross; enumerating the whole boundary is what makes this a constrained QEF
+    // rather than a smarter clamp. Each face solve is clamped to its own extents, so an
+    // edge or a corner is reached as the limit of two faces and no separate case is needed.
+    let bestX = clampedX;
+    let bestY = clampedY;
+    let bestZ = clampedZ;
+    let best = this.errorAt(bestX, bestY, bestZ);
+    const faces: readonly [0 | 1 | 2, number][] = [
+      [0, lowX],
+      [0, highX],
+      [1, lowY],
+      [1, highY],
+      [2, lowZ],
+      [2, highZ],
+    ];
+    for (const [axis, value] of faces) {
+      const candidate = this.solveFace(
+        axis,
+        value,
+        lowX,
+        lowY,
+        lowZ,
+        highX,
+        highY,
+        highZ,
+        mx,
+        my,
+        mz,
+        bias,
+      );
+      if (candidate === undefined) continue;
+      const error = this.errorAt(candidate[0], candidate[1], candidate[2]);
+      if (error < best) {
+        best = error;
+        [bestX, bestY, bestZ] = candidate;
+      }
+    }
+    point.x = bestX;
+    point.y = bestY;
+    point.z = bestZ;
   }
 }
 

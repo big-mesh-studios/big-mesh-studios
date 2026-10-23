@@ -1332,6 +1332,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
             highY,
             highZ,
             params.qefBias,
+            (x, y, z) => Math.abs(sampler.distance(x, y, z)),
           );
           worldX = placed.x;
           worldY = placed.y;

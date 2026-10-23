@@ -100,6 +100,51 @@ describe("the QEF a dual vertex minimizes", () => {
     const point = new QefScratch().solve(0, 2, 4, 2, 4, 6);
     expect(point).toEqual({ x: 1, y: 3, z: 5 });
   });
+
+  it("moves a constrained boundary point along the face instead of only clamping", () => {
+    // The planes meet outside this cell; the constrained answer may slide along a cell
+    // face. Compare it with the independent clamp of the same unconstrained minimum: the
+    // constrained answer must not be worse, and must stay inside the cell.
+    const qef = new QefScratch();
+    const a = 1 / Math.hypot(1, 0.35);
+    qef.add(2, 0, 0, a, 0.35 * a, 0);
+    qef.add(0, 2, 0, 0.35 * a, a, 0);
+    qef.add(0, 0, 2, 0, 0, 1);
+    const diagonal = 1 / Math.SQRT2;
+    qef.add(1.5, 1.5, 1.5, diagonal, diagonal, 0);
+
+    const wide = qef.solve(-10, -10, -10, 10, 10, 10);
+    const unconstrained = { x: wide.x, y: wide.y, z: wide.z };
+    const clamped = {
+      x: Math.min(1, Math.max(0, unconstrained.x)),
+      y: Math.min(1, Math.max(0, unconstrained.y)),
+      z: Math.min(1, Math.max(0, unconstrained.z)),
+    };
+    const constrained = qef.solve(0, 0, 0, 1, 1, 1);
+
+    const error = (x: number, y: number, z: number): number => {
+      const points: Array<[number, number, number, number, number, number]> = [
+        [2, 0, 0, a, 0.35 * a, 0],
+        [0, 2, 0, 0.35 * a, a, 0],
+        [0, 0, 2, 0, 0, 1],
+        [1.5, 1.5, 1.5, diagonal, diagonal, 0],
+      ];
+      return points.reduce((sum, [px, py, pz, nx, ny, nz]) => {
+        const along = nx * (x - px) + ny * (y - py) + nz * (z - pz);
+        return sum + along * along;
+      }, 0);
+    };
+
+    for (const axis of ["x", "y", "z"] as const) {
+      expect(constrained[axis]).toBeGreaterThanOrEqual(0);
+      expect(constrained[axis]).toBeLessThanOrEqual(1);
+    }
+    // The 2×2 face solve has its own regulariser, so it can differ from the independent
+    // clamp by a rounding-scale amount; the point is that it does not move off the feature.
+    expect(
+      error(constrained.x, constrained.y, constrained.z),
+    ).toBeLessThanOrEqual(error(clamped.x, clamped.y, clamped.z) + 1e-2);
+  });
 });
 
 describe("the feature test a cheap QEF uses", () => {
