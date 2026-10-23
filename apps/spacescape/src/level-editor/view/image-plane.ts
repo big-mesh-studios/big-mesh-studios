@@ -139,6 +139,20 @@ export const createImagePlaneOverlay = (scene: Scene): ImagePlaneOverlay => {
   /** The image's height ÷ width, so `width` alone sizes it. 1 until an image arrives. */
   let aspect = 1;
   let texture: Texture | undefined;
+  /**
+   * The pose last applied, so a texture can resize the quad once its aspect is known.
+   *
+   * **The decode is async and the pose is not**, so on the first frame after a pick this overlay
+   * is posed while `aspect` is still its square fallback; without remembering the pose, the
+   * picture would stay square until something happened to call `setPose` again.
+   */
+  let pose: ImagePlanePose | undefined;
+
+  const applyScale = (next: ImagePlanePose): void => {
+    // rmsl applies scale, then rotation, then translation, so a unit quad scaled to the
+    // image's reach and turned about its own middle stays centred on `at`.
+    mesh.scale.set(next.width, next.width / aspect, 1);
+  };
 
   return {
     mesh,
@@ -152,15 +166,17 @@ export const createImagePlaneOverlay = (scene: Scene): ImagePlaneOverlay => {
       material.map = next;
       material.needsUpdate = true;
       aspect = nextAspect > 0 ? nextAspect : 1;
+      // **The aspect is only now known**, so re-apply the current pose's scale; otherwise the
+      // quad keeps the square fallback it was laid down with while the picture decoded.
+      if (pose !== undefined) applyScale(pose);
     },
 
-    setPose(pose): void {
-      mesh.position.set(pose.at.x, pose.at.y, pose.at.z);
-      const turn = imagePlaneQuaternion(pose.up, pose.yaw);
+    setPose(next): void {
+      pose = next;
+      mesh.position.set(next.at.x, next.at.y, next.at.z);
+      const turn = imagePlaneQuaternion(next.up, next.yaw);
       mesh.quaternion.set(turn.x, turn.y, turn.z, turn.w);
-      // rmsl applies scale, then rotation, then translation, so a unit quad scaled to the
-      // image's reach and turned about its own middle stays centred on `at`.
-      mesh.scale.set(pose.width, pose.width / aspect, 1);
+      applyScale(next);
     },
 
     setOpacity(opacity): void {

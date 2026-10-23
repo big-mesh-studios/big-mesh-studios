@@ -90,6 +90,21 @@ describe("the image plane overlay", () => {
     overlay.dispose();
   });
 
+  it("resizes the quad when the aspect arrives after the pose", () => {
+    // The decode is async, so the pose is applied first, while the overlay still has its square
+    // fallback aspect. When the texture lands the quad must reshape itself then and there — not
+    // wait for the next width, move or turn, which is the bug where a picture stayed square until
+    // it was touched.
+    const scene = new Scene();
+    const overlay = createImagePlaneOverlay(scene);
+    overlay.setPose({ at: { x: 0, y: 0, z: 0 }, up: UP, yaw: 0, width: 10 });
+    expect(overlay.mesh.scale).toMatchObject({ x: 10, y: 10 });
+
+    overlay.setImage(new Texture(), 2);
+    expect(overlay.mesh.scale).toMatchObject({ x: 10, y: 5 });
+    overlay.dispose();
+  });
+
   it("carries the pose's turn onto the mesh", () => {
     const scene = new Scene();
     const overlay = createImagePlaneOverlay(scene);
