@@ -118,10 +118,7 @@ export {
   resolveMeshResolution,
   sameMeshResolution,
 } from "../mesh/mesh-resolution";
-export type {
-  MeshResolution,
-  MeshSettings,
-} from "../mesh/mesh-resolution";
+export type { MeshResolution, MeshSettings } from "../mesh/mesh-resolution";
 
 /** The world units a chunk spans, which is the same at every level of detail. */
 export const lodExtent = (_lod: Lod): number => BLOCK_WORLD;

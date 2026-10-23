@@ -236,7 +236,8 @@ export const isMeshResolution = (value: unknown): value is MeshSettings => {
       const samples = BLOCK_WORLD / size;
       if (!Number.isFinite(samples)) return false;
       const rounded = Math.round(samples);
-      if (rounded < MIN_MESH_SAMPLES || rounded > MAX_MESH_SAMPLES) return false;
+      if (rounded < MIN_MESH_SAMPLES || rounded > MAX_MESH_SAMPLES)
+        return false;
       // A tolerance rather than `Number.isInteger`, because a decimal spacing that divides
       // evenly can land a few ulps away from an integer under floating-point division.
       if (Math.abs(rounded * size - BLOCK_WORLD) > 1e-6) return false;
