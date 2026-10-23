@@ -187,7 +187,7 @@ export function createLevelEditor(
   const [selectedIndex, setSelectedIndex] = createSignal<number | undefined>(
     undefined,
   );
-  const [tool, setTool] = createSignal<ToolKind>("shape");
+  const [tool, setTool] = createSignal<ToolKind>("select");
   /**
    * Which gizmo the world shows. See the note on the returned `gizmo`.
    *

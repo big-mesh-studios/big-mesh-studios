@@ -2643,10 +2643,19 @@ export default function App() {
           : "editor open — write a place, then run it";
       },
       toggleLevel: () => {
-        setLevelEditorOpen((open) => !open);
-        return levelEditorOpen()
-          ? "level editor closed"
-          : "level editor open — click the world to place things, ctrl-Z to undo";
+        // **The next state, not a re-read.** Reading `levelEditorOpen()` straight after the
+        // setter reports the value it had before the write, so the console said "closed" on
+        // the open and the tool reset ran on the close.
+        const open = !levelEditorOpen();
+        setLevelEditorOpen(open);
+        if (!open) return "level editor closed";
+        /**
+         * **Select on every open, not just the first.** The editor outlives its overlay, so a
+         * tool left over from the last visit would otherwise be the one that greets the next
+         * one — and opening the level editor to look around should not place a shape.
+         */
+        levelEditor.setTool("select");
+        return "level editor open — click the world to place things, ctrl-Z to undo";
       },
 
       /**
