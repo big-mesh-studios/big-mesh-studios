@@ -69,6 +69,7 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
     },
     "entity-remove": { id: "fridge" },
     "entity-move": { id: "fridge", at: [0, 0, 8] },
+    "entity-use-duration": { id: "fridge", seconds: 1 },
     "light-add": {
       id: "lamp",
       at: [4, 5, 6],
