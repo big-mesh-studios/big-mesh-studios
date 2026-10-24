@@ -125,11 +125,17 @@ export const PlaceOverlay: Component<PlaceOverlayProps> = (props) => {
       <For each={props.images()}>
         {(image) => {
           let canvas: HTMLCanvasElement | undefined;
-          createEffect(() => {
+          // **Two arguments, because Solid 2 has no one-argument form.** The first reads the
+          // dependency and the second does the work; a one-argument call throws
+          // `MISSING_EFFECT_FN` at the next flush, which is what made taking a photo crash the
+          // moment the shutter added the first HUD image.
+          createEffect(
             // Read, not used: the counter is the whole dependency.
-            props.revision();
-            if (canvas !== undefined) props.drawImage(image, canvas);
-          });
+            () => props.revision(),
+            () => {
+              if (canvas !== undefined) props.drawImage(image, canvas);
+            },
+          );
           return (
             <canvas
               ref={(element) => (canvas = element)}
