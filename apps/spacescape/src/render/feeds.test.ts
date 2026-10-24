@@ -158,7 +158,11 @@ describe("the screens in the world", () => {
 
     const feeds = layer.feeds({ x: 0, y: 0, z: 0 });
     expect(feeds).toHaveLength(MAX_LIVE_FEEDS);
-    expect(feeds.map((feed) => feed.screen.id)).toEqual(["near", "middle", "far"]);
+    expect(feeds.map((feed) => feed.screen.id)).toEqual([
+      "near",
+      "middle",
+      "far",
+    ]);
     layer.dispose();
   });
 
