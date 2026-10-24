@@ -1710,7 +1710,7 @@ export function App() {
   const openFromDisk = async (
     picker: HTMLInputElement | undefined,
   ): Promise<void> =>
-    attempt(setFileNotice, "opened", async () => {
+    attempt(setFileNotice, undefined, async () => {
       // **No filter on this one, and that is the fix rather than an omission.** `.sdfmod` is
       // not a media type, so a dialog told to show `application/zip → .sdfmod` shows the zips
       // the device knows about and greys the model out — on a phone, Open opens a dialog with
@@ -1733,6 +1733,7 @@ export function App() {
           "this file holds parts or ids this application cannot use — see the parts limit",
         );
       }
+      setStatus("opened");
       // **A file with no handle — an opened download — has no home**, which means the next Save
       // asks rather than downloading a second copy under a name the browser invented.
       setHome(
@@ -1754,7 +1755,7 @@ export function App() {
 
   /** Opens a file this browser has opened before, asking for permission in the click. */
   const openRecent = async (file: RecentFile): Promise<void> =>
-    attempt(setFileNotice, "opened", async () => {
+    attempt(setFileNotice, undefined, async () => {
       const blob = await readThrough(file.handle);
       // **One sentence for every reason it could not be read** — permission refused, the file
       // moved, the disk unplugged — because the caller does one thing about all of them and a
@@ -1773,6 +1774,7 @@ export function App() {
           "this file holds parts or ids this application cannot use — see the parts limit",
         );
       }
+      setStatus("opened");
       setHome({
         kind: "file",
         id: file.id,
