@@ -97,10 +97,11 @@ describe("the guest library the editor serves", () => {
     // carries a level can read it, and that is the only way a script can find out what its own
     // place is made of. The count is a tripwire — it fails when a function is added and someone
     // has to look at the number rather than let it drift, which is what it is for.
-    // **61 after cameras, photos, screens and HUD images**, which added eleven between them:
-    // four camera verbs, two photo verbs, three screen verbs and two HUD verbs. Everything a
+    // **62 after cameras, photos, screens, HUD images and entity-use duration**. The count is a
+    // tripwire: it fails when a function is added and someone has to look at the number rather
+    // than let it drift. Everything a
     // place can call on a picture is in that group, and none of it is an event.
-    expect(declared).toHaveLength(61);
+    expect(declared).toHaveLength(62);
     expect(new Set(declared).size).toBe(declared.length);
     // **And the names a place is most likely to reach for first**, so the count above cannot pass
     // on a file that has the right number of exports and none of them callable from a place.

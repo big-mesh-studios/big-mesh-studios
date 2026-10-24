@@ -146,17 +146,19 @@ describe("the screens in the world", () => {
       ["a", camera("a")],
       ["b", camera("b")],
       ["c", camera("c")],
+      ["d", camera("d")],
     ]);
     const screens = [
       screen("far", { camera: "a" }, { x: 0, y: 0, z: 100 }),
       screen("near", { camera: "b" }, { x: 0, y: 0, z: 1 }),
       screen("middle", { camera: "c" }, { x: 0, y: 0, z: 10 }),
+      screen("farthest", { camera: "d" }, { x: 0, y: 0, z: 200 }),
     ];
     layer.sync(screens, cameras, new Map(), view);
 
     const feeds = layer.feeds({ x: 0, y: 0, z: 0 });
     expect(feeds).toHaveLength(MAX_LIVE_FEEDS);
-    expect(feeds.map((feed) => feed.screen.id)).toEqual(["near", "middle"]);
+    expect(feeds.map((feed) => feed.screen.id)).toEqual(["near", "middle", "far"]);
     layer.dispose();
   });
 
@@ -195,7 +197,7 @@ describe("the screens in the world", () => {
       false,
       false,
     ]);
-    expect(layer.feeds({ x: 0, y: 0, z: 0 })).toHaveLength(MAX_LIVE_FEEDS);
+    expect(layer.feeds({ x: 0, y: 0, z: 0 })).toHaveLength(2);
 
     layer.hideShowing("hall", false);
     expect(scene.children.map((child) => child.visible)).toEqual([true, true]);
