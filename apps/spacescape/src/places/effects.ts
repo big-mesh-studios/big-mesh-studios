@@ -140,6 +140,7 @@ export const EFFECT_TAGS = [
   "entity-add",
   "entity-remove",
   "entity-move",
+  "entity-use-duration",
   // Light. The first effect that is not geometry and not text — it changes how the world is lit
   // rather than what is in it, which is why it is a separate pair rather than a shape with a
   // colour on it.
@@ -416,6 +417,23 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
         name: "yaw",
         kind: "yaw",
         about: "a turn about up, in radians; omitted keeps the old one",
+      },
+    ],
+  },
+
+  "entity-use-duration": {
+    tag: "entity-use-duration",
+    about:
+      "Sets how long the player must hold use on an entity before its use completes; zero is instant.",
+    fields: [
+      nameField("id"),
+      {
+        name: "seconds",
+        kind: "number",
+        min: 0,
+        max: 120,
+        required: true,
+        about: "hold duration in seconds, from 0 to 120",
       },
     ],
   },
@@ -1290,6 +1308,10 @@ export type ParsedEffect =
   | { readonly tag: "entity-add"; readonly payload: EntityAdd }
   | { readonly tag: "entity-remove"; readonly payload: IdOnly }
   | { readonly tag: "entity-move"; readonly payload: EntityMove }
+  | {
+      readonly tag: "entity-use-duration";
+      readonly payload: IdOnly & { readonly seconds: number };
+    }
   | { readonly tag: "light-add"; readonly payload: LightAdd }
   | { readonly tag: "light-remove"; readonly payload: IdOnly }
   | { readonly tag: "medium-add"; readonly payload: MediumAdd }

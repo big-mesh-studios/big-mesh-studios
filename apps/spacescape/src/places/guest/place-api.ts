@@ -498,6 +498,11 @@ export const moveEntity = (id: string, at: Vec3Like, yaw?: number): void => {
   });
 };
 
+/** Sets the hold time before using this entity completes. A duration of zero keeps use instant. */
+export const setEntityUseDuration = (id: string, seconds: number): void => {
+  ask("entity-use-duration", { id, seconds });
+};
+
 /**
  * Takes whatever is standing under `id` out of the world.
  *

@@ -490,6 +490,8 @@ export class PlaceHost {
   private readonly log = new EventLog();
   private readonly zones = new Map<string, Zone>();
   private readonly lights = new Map<string, Light>();
+  /** Configured hold duration per entity, in milliseconds. */
+  private readonly entityUseDurations = new Map<string, number>();
   /**
    * The fields, in insertion order.
    *
@@ -561,6 +563,11 @@ export class PlaceHost {
    */
   get heldItem(): string | undefined {
     return this.inventory.heldItem;
+  }
+
+  /** Hold time for an entity; absent declarations mean ordinary instant use. */
+  useDuration(entityId: string): number {
+    return this.entityUseDurations.get(entityId) ?? 0;
   }
 
   /** What the player is carrying. See `script-inventory.ts`. */
@@ -1331,6 +1338,17 @@ export class PlaceHost {
         // not there changed nothing, and a script that removes defensively should not be told
         // off for it.
         figures?.remove(name("id"));
+        this.entityUseDurations.delete(name("id"));
+        return;
+      }
+
+      case "entity-use-duration": {
+        const id = name("id");
+        if (this.options.world.figures?.get(id) === undefined)
+          throw new Error(`there is nothing called "${id}" to configure`);
+        const seconds = number("seconds");
+        if (seconds === 0) this.entityUseDurations.delete(id);
+        else this.entityUseDurations.set(id, seconds * 1000);
         return;
       }
 

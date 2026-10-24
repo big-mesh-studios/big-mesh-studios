@@ -38,6 +38,8 @@ const snapshot = (over: Partial<InputSnapshot> = {}): InputSnapshot => ({
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
+  useHeld: false,
+  useReleased: false,
   use: false,
   ...over,
 });

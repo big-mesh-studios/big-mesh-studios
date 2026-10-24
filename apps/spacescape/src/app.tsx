@@ -688,6 +688,7 @@ export default function App() {
   const [placeBanner, setPlaceBanner] = createSignal<string | undefined>();
   /** A toast a place asked for, since there is no HUD to show it in. */
   const [placeToast, setPlaceToast] = createSignal<string | undefined>();
+  const [useProgress, setUseProgress] = createSignal<number | undefined>();
   /**
    * The last thing a place said, and who said it.
    *
@@ -1894,6 +1895,14 @@ export default function App() {
     // frame; this is only what the very first one is drawn with.
     const skyColour = new Color(0.53, 0.81, 0.92);
     viewport.setBackground(skyColour);
+    let activeUse:
+      | {
+          entityId: string;
+          startedAt: number;
+          duration: number;
+          item: string | undefined;
+        }
+      | undefined;
     const game = new Game({
       session,
       sculpt,
@@ -1917,8 +1926,7 @@ export default function App() {
       // what lets the player stand on a figure rather than through it.
       figureDistanceAt: (p) => figures.solidDistanceAt(p),
       /**
-       * What a press of use means, which is the whole of this application's interaction with
-       * anything a place has put in the world.
+       * What a use press and hold mean for anything a place has put in the world.
        *
        * **A callback rather than an action `Game` performs**, because everything a use needs is
        * owned by somebody else: the ray is the camera's, the figures are a place's, and the held
@@ -1926,7 +1934,11 @@ export default function App() {
        * for the frame — and nothing about what it is for.
        */
       onUse: (input) => {
-        if (!input.use || host === undefined) return;
+        if (host === undefined) {
+          activeUse = undefined;
+          setUseProgress(undefined);
+          return;
+        }
         const camera = viewport.camera;
         const forward = camera.getWorldDirection(TMP_FORWARD);
         // **The eye, not the body.** `player.position` is the cube's centre, so tracing from
@@ -1941,8 +1953,50 @@ export default function App() {
         });
 
         const held = host.heldItem;
-        if (aimed !== undefined) host.use(aimed.figure.id, held);
-        else host.useItem(held);
+        const targetId = aimed?.figure.id;
+        const duration =
+          targetId === undefined ? 0 : host.useDuration(targetId);
+        const now = performance.now();
+        if (
+          activeUse !== undefined &&
+          (!input.useHeld ||
+            targetId !== activeUse.entityId ||
+            duration !== activeUse.duration)
+        ) {
+          activeUse = undefined;
+          setUseProgress(undefined);
+        }
+        if (duration === 0) {
+          if (input.use && targetId !== undefined) host.use(targetId, held);
+          else if (input.use) host.useItem(held);
+          return;
+        }
+        if (input.use && targetId !== undefined) {
+          activeUse = {
+            entityId: targetId,
+            startedAt: now,
+            duration,
+            item: held,
+          };
+          setUseProgress(0);
+        }
+        const active = activeUse;
+        if (active === undefined) return;
+        if (!input.useHeld || targetId !== active.entityId) {
+          activeUse = undefined;
+          setUseProgress(undefined);
+          return;
+        }
+        const progress = Math.min(
+          1,
+          (now - active.startedAt) / active.duration,
+        );
+        setUseProgress(progress);
+        if (progress >= 1) {
+          activeUse = undefined;
+          setUseProgress(undefined);
+          host.use(active.entityId, active.item);
+        }
       },
     });
     // The clouds, built once their field has been baked — on a worker, because the bake
@@ -4714,6 +4768,29 @@ export default function App() {
         </div>
       </Show>
       <Show when={isGame()}>
+        <Show when={useProgress() !== undefined}>
+          <div
+            role="progressbar"
+            aria-label={`Use progress ${Math.round((useProgress() ?? 0) * 100)}%`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((useProgress() ?? 0) * 100)}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: "30px",
+              height: "30px",
+              transform: "translate(-50%, -50%)",
+              "border-radius": "50%",
+              background: `conic-gradient(rgba(255,255,255,0.95) ${(useProgress() ?? 0) * 100}%, rgba(255,255,255,0.2) 0)`,
+              "-webkit-mask":
+                "radial-gradient(farthest-side, transparent 68%, #000 71%)",
+              mask: "radial-gradient(farthest-side, transparent 68%, #000 71%)",
+              "pointer-events": "none",
+            }}
+          />
+        </Show>
         <div
           style={{
             position: "absolute",

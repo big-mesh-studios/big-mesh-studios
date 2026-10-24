@@ -40,16 +40,10 @@ export interface InputSnapshot {
   secondaryHeld: boolean;
   /** Edge-triggered: true only on the frame the place button went up. */
   secondaryReleased: boolean;
-  /**
-   * Edge-triggered: true only on the frame the use action fired.
-   *
-   * **A third action rather than a mode of the two there are, and never held.** Digging and
-   * placing are things you *do to the world* and they are held so that a drag keeps carving;
-   * using something is a single gesture at a single instant, and a hold would fire the same
-   * interaction every frame while the button was down. It is also the only one of the three a
-   * place reads — `Game` hands it to whoever owns the figures rather than acting on it.
-   */
+  /** A use press edge, for ordinary instant interactions. */
   use: boolean;
+  useHeld: boolean;
+  useReleased: boolean;
 }
 
 /** A snapshot with nothing pressed, for a frame that has no input. */
@@ -65,6 +59,8 @@ export const neutralInput = (): InputSnapshot => ({
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
+  useHeld: false,
+  useReleased: false,
   use: false,
 });
 
@@ -135,8 +131,8 @@ export interface InputController {
   setTouchSecondary(held: boolean): void;
   /** The on-screen jump button's held state. */
   setTouchJump(held: boolean): void;
-  /** The on-screen use button. Edge-triggered: a press is a use. */
-  setTouchUse(): void;
+  /** The on-screen use button's held state. */
+  setTouchUse(held: boolean): void;
   /** Edge-triggered jump, for a button that only needs the press. */
   queueJump(): void;
   /** Accumulates a drag-to-look delta, in client pixels. */
@@ -179,6 +175,7 @@ export const createInput = (): InputController => {
   let secondaryQueued = false;
   let secondaryReleasedQueued = false;
   let useQueued = false;
+  let useReleasedQueued = false;
 
   /** Which sources hold each action, so releasing one never clears another. */
   const sources = {
@@ -189,6 +186,7 @@ export const createInput = (): InputController => {
     secondaryMouse: false,
     secondaryTouch: false,
     useKey: false,
+    useTouch: false,
   };
   let enabled = true;
   let canvas: HTMLCanvasElement | undefined;
@@ -297,6 +295,7 @@ export const createInput = (): InputController => {
         }
         if (USE_KEYS.has(event.code)) {
           event.preventDefault();
+          if (sources.useKey) useReleasedQueued = true;
           sources.useKey = false;
           return;
         }
@@ -413,6 +412,10 @@ export const createInput = (): InputController => {
     controller = null;
     canvas = undefined;
     lookPointer = undefined;
+    if (sources.useKey || sources.useTouch) useReleasedQueued = true;
+    sources.useKey = false;
+
+    sources.useTouch = false;
     locked = false;
     holders.clear();
     syncSuspension();
@@ -441,6 +444,9 @@ export const createInput = (): InputController => {
         keyMoveY = 0;
         touchMoveX = 0;
         touchMoveY = 0;
+        if (sources.useKey || sources.useTouch) useReleasedQueued = true;
+        sources.useKey = false;
+        sources.useTouch = false;
       }
     },
 
@@ -462,6 +468,8 @@ export const createInput = (): InputController => {
         secondaryHeld: nextSecondary,
         secondaryReleased: secondaryReleasedQueued,
         use: useQueued,
+        useHeld: sources.useKey || sources.useTouch,
+        useReleased: useReleasedQueued,
       };
 
       jumpQueued = false;
@@ -471,6 +479,7 @@ export const createInput = (): InputController => {
       secondaryQueued = false;
       secondaryReleasedQueued = false;
       useQueued = false;
+      useReleasedQueued = false;
       return snapshot;
     },
 
@@ -490,11 +499,10 @@ export const createInput = (): InputController => {
       sources.secondaryTouch = held;
     },
 
-    setTouchUse() {
-      // **Edge-triggered with no held state at all**, because a use is a gesture rather than a
-      // mode. There is nothing to hold down and nothing to release, so there is nothing here to
-      // remember between frames either.
-      useQueued = true;
+    setTouchUse(held) {
+      if (held && !sources.useTouch) useQueued = true;
+      if (!held && sources.useTouch) useReleasedQueued = true;
+      sources.useTouch = held;
     },
 
     setTouchJump(held) {

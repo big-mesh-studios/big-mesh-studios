@@ -865,6 +865,26 @@
       "returns": "void"
     },
     {
+      "name": "setEntityUseDuration",
+      "signature": "(id: string, seconds: number): void",
+      "doc": "Sets the hold time before using this entity completes. A duration of zero keeps use instant.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "seconds",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "setFlying",
       "signature": "(on: boolean): void",
       "doc": "Lets the player fly, or stops them doing so. The one movement verb a place owns outright.",
