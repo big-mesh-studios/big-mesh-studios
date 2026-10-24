@@ -38,12 +38,16 @@
 
 import {
   CAUSE_LIMIT,
+  CAMERA_LIMITS,
   COMBINES,
   DATA_LIMITS,
+  HUD_LIMITS,
   LIGHT_LIMITS,
   MATERIAL_NAMES,
   MEDIUM_LIMITS,
+  PHOTO_LIMITS,
   PLAYER_LIMITS,
+  SCREEN_LIMITS,
   SOFTNESS_LIMIT,
   TIMER_LIMITS,
   ZONE_LIMITS,
@@ -76,6 +80,20 @@ import { MAX_OPERATIONS_PER_PLACE } from "./place-registry";
  * to. A name the reader can refuse is a name the reader can refuse.
  */
 const ENTITY_KINDS = ["prop", "npc"] as const;
+
+/**
+ * Where a HUD image may sit, as the wire names the corners.
+ *
+ * **Four words rather than two fractions**, because a corner is what somebody placing a feed is
+ * thinking about and `{x: 0.02, y: 0.98}` is a number they would have to work out from the size of
+ * something they cannot see. The overlay turns one of these into the inset it draws.
+ */
+export const HUD_CORNERS = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+] as const;
 
 /**
  * How small and how large a figure may be scaled.
@@ -143,6 +161,20 @@ export const EFFECT_TAGS = [
   // The camera.
   "camera-look",
   "camera-clear",
+  // Virtual cameras: where a place keeps a viewpoint, and which one the player is behind.
+  "camera-add",
+  "camera-move",
+  "camera-remove",
+  "camera-watch",
+  // Photos. The one effect family whose result never leaves this machine.
+  "photo-take",
+  "photo-remove",
+  // Screens and HUD images: the two surfaces a camera or a photo can be shown on.
+  "screen-add",
+  "screen-move",
+  "screen-remove",
+  "image-show",
+  "image-hide",
   // Text out.
   "log",
   "toast",
@@ -598,6 +630,234 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
     fields: [],
   },
 
+  "camera-add": {
+    tag: "camera-add",
+    about:
+      "Places a virtual camera looking at a point. Nothing looks through it until something " +
+      "watches it or a screen shows it, so a place can declare one per room and pay only for " +
+      "the ones being drawn.",
+    fields: [
+      nameField("id"),
+      {
+        name: "at",
+        kind: "vec3",
+        required: true,
+        about: "where the camera is",
+      },
+      {
+        name: "target",
+        kind: "vec3",
+        required: true,
+        about: "the point it looks at",
+      },
+      {
+        name: "fov",
+        kind: "number",
+        min: CAMERA_LIMITS.minFov,
+        max: CAMERA_LIMITS.maxFov,
+        about: `field of view in degrees, ${CAMERA_LIMITS.minFov} to ${CAMERA_LIMITS.maxFov}; omitted uses the player's`,
+      },
+    ],
+  },
+
+  "camera-move": {
+    tag: "camera-move",
+    about:
+      "Moves a virtual camera. Any field left out keeps the value it had, so panning a " +
+      "camera is one field rather than a full definition repeated.",
+    fields: [
+      nameField("id"),
+      { name: "at", kind: "vec3", about: "its new position" },
+      { name: "target", kind: "vec3", about: "its new look-at point" },
+      {
+        name: "fov",
+        kind: "number",
+        min: CAMERA_LIMITS.minFov,
+        max: CAMERA_LIMITS.maxFov,
+        about: `a new field of view, ${CAMERA_LIMITS.minFov} to ${CAMERA_LIMITS.maxFov}`,
+      },
+    ],
+  },
+
+  "camera-remove": {
+    tag: "camera-remove",
+    about:
+      "Removes a virtual camera by id, and anything that was showing it. A screen or HUD " +
+      "image whose camera is gone has no picture and no way to get one, so it goes too.",
+    fields: [nameField("id")],
+  },
+
+  "camera-watch": {
+    tag: "camera-watch",
+    about:
+      "Puts the player's own view at a virtual camera until `clearCamera` gives it back. " +
+      "This player only: two peers watching the same camera are two cameras, not one.",
+    fields: [nameField("id")],
+  },
+
+  "photo-take": {
+    tag: "photo-take",
+    about:
+      "Renders one frame and keeps it under an id the script chose. The pixels arrive a " +
+      "frame or two later; showing the id before then shows nothing. The picture is of the " +
+      "world, so it never contains the crosshair, a dialog or the HUD.",
+    fields: [
+      nameField("id"),
+      nameField(
+        "camera",
+        false,
+        "which virtual camera to take it from; omitted means the player's own view",
+      ),
+      {
+        name: "width",
+        kind: "count",
+        min: PHOTO_LIMITS.minSize,
+        max: PHOTO_LIMITS.maxSize,
+        about: `how wide in pixels, ${PHOTO_LIMITS.minSize} to ${PHOTO_LIMITS.maxSize}; omitted is 1280`,
+      },
+      {
+        name: "height",
+        kind: "count",
+        min: PHOTO_LIMITS.minSize,
+        max: PHOTO_LIMITS.maxSize,
+        about: `how tall in pixels, ${PHOTO_LIMITS.minSize} to ${PHOTO_LIMITS.maxSize}; omitted is 720`,
+      },
+    ],
+  },
+
+  "photo-remove": {
+    tag: "photo-remove",
+    about:
+      "Forgets a photo by id, freeing its pixels, and removes anything that was showing it.",
+    fields: [nameField("id")],
+  },
+
+  "screen-add": {
+    tag: "screen-add",
+    about:
+      "Puts a screen in the world showing a camera or a photo. Its resolution follows its " +
+      "size on screen rather than being chosen, and only the screens nearest the player are " +
+      "redrawn in a frame.",
+    fields: [
+      nameField("id"),
+      {
+        name: "source",
+        kind: "image-source",
+        required: true,
+        about: "what it shows: {camera} for a live feed, {photo} for a still",
+      },
+      {
+        name: "at",
+        kind: "vec3",
+        required: true,
+        about: "the centre of the screen, in world units",
+      },
+      {
+        name: "yaw",
+        kind: "yaw",
+        required: true,
+        about: "which way it faces, in radians",
+      },
+      {
+        name: "width",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        required: true,
+        about: `how wide, ${SCREEN_LIMITS.minSize} to ${SCREEN_LIMITS.maxSize} world units`,
+      },
+      {
+        name: "height",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        required: true,
+        about: `how tall, ${SCREEN_LIMITS.minSize} to ${SCREEN_LIMITS.maxSize} world units`,
+      },
+    ],
+  },
+
+  "screen-move": {
+    tag: "screen-move",
+    about:
+      "Moves or resizes a screen, or changes what it shows. Any field left out keeps its " +
+      "value.",
+    fields: [
+      nameField("id"),
+      {
+        name: "source",
+        kind: "image-source",
+        about: "what it shows from now on",
+      },
+      { name: "at", kind: "vec3", about: "its new centre" },
+      { name: "yaw", kind: "yaw", about: "its new facing" },
+      {
+        name: "width",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        about: "its new width",
+      },
+      {
+        name: "height",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        about: "its new height",
+      },
+    ],
+  },
+
+  "screen-remove": {
+    tag: "screen-remove",
+    about: "Removes a screen by id.",
+    fields: [nameField("id")],
+  },
+
+  "image-show": {
+    tag: "image-show",
+    about:
+      "Shows a camera or a photo on this player's screen, in a corner. This player only: a " +
+      "HUD is what one person sees, not something the world has in it.",
+    fields: [
+      nameField("id"),
+      {
+        name: "source",
+        kind: "image-source",
+        required: true,
+        about: "what it shows",
+      },
+      {
+        name: "corner",
+        kind: "enum",
+        values: HUD_CORNERS,
+        about: `which corner, one of ${HUD_CORNERS.join(", ")}; omitted is top-right`,
+      },
+      {
+        name: "width",
+        kind: "count",
+        min: HUD_LIMITS.minSize,
+        max: HUD_LIMITS.maxSize,
+        required: true,
+        about: `how wide in CSS pixels, ${HUD_LIMITS.minSize} to ${HUD_LIMITS.maxSize}`,
+      },
+      {
+        name: "height",
+        kind: "count",
+        min: HUD_LIMITS.minSize,
+        max: HUD_LIMITS.maxSize,
+        required: true,
+        about: `how tall in CSS pixels, ${HUD_LIMITS.minSize} to ${HUD_LIMITS.maxSize}`,
+      },
+    ],
+  },
+
+  "image-hide": {
+    tag: "image-hide",
+    about: "Takes a HUD image away by id.",
+    fields: [nameField("id")],
+  },
+
   log: {
     tag: "log",
     about: "Writes a line to the console scrollback.",
@@ -1042,6 +1302,17 @@ export type ParsedEffect =
   | { readonly tag: "player-fly"; readonly payload: PlayerFly }
   | { readonly tag: "camera-look"; readonly payload: CameraLook }
   | { readonly tag: "camera-clear"; readonly payload: EmptyPayload }
+  | { readonly tag: "camera-add"; readonly payload: CameraAdd }
+  | { readonly tag: "camera-move"; readonly payload: CameraMove }
+  | { readonly tag: "camera-remove"; readonly payload: IdOnly }
+  | { readonly tag: "camera-watch"; readonly payload: IdOnly }
+  | { readonly tag: "photo-take"; readonly payload: PhotoTake }
+  | { readonly tag: "photo-remove"; readonly payload: IdOnly }
+  | { readonly tag: "screen-add"; readonly payload: ScreenAdd }
+  | { readonly tag: "screen-move"; readonly payload: ScreenMove }
+  | { readonly tag: "screen-remove"; readonly payload: IdOnly }
+  | { readonly tag: "image-show"; readonly payload: ImageShow }
+  | { readonly tag: "image-hide"; readonly payload: IdOnly }
   | { readonly tag: "log"; readonly payload: Text }
   | { readonly tag: "toast"; readonly payload: Toast }
   | { readonly tag: "timer"; readonly payload: Timer }
@@ -1254,6 +1525,69 @@ export interface PlayerFly {
 export interface CameraLook {
   readonly at: readonly [number, number, number];
   readonly fov?: number;
+}
+
+/** `camera-add`. */
+export interface CameraAdd {
+  readonly id: string;
+  readonly at: readonly [number, number, number];
+  readonly target: readonly [number, number, number];
+  readonly fov?: number;
+}
+
+/** `camera-move`. Every field but the id is optional, and one that is absent is unchanged. */
+export interface CameraMove {
+  readonly id: string;
+  readonly at?: readonly [number, number, number];
+  readonly target?: readonly [number, number, number];
+  readonly fov?: number;
+}
+
+/**
+ * What a screen or a HUD image shows: a camera, or a photo.
+ *
+ * **A union of two one-key objects, which is what the `image-source` kind checks.** Written as a
+ * union rather than two optional fields so a reader of the type cannot construct the shape the
+ * checker refuses.
+ */
+export type ImageSourcePayload =
+  { readonly camera: string } | { readonly photo: string };
+
+/** `photo-take`. The camera is absent when the picture is of the player's own view. */
+export interface PhotoTake {
+  readonly id: string;
+  readonly camera?: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+/** `screen-add`. */
+export interface ScreenAdd {
+  readonly id: string;
+  readonly source: ImageSourcePayload;
+  readonly at: readonly [number, number, number];
+  readonly yaw: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** `screen-move`. Every field but the id is optional, and one that is absent is unchanged. */
+export interface ScreenMove {
+  readonly id: string;
+  readonly source?: ImageSourcePayload;
+  readonly at?: readonly [number, number, number];
+  readonly yaw?: number;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+/** `image-show`. */
+export interface ImageShow {
+  readonly id: string;
+  readonly source: ImageSourcePayload;
+  readonly corner?: string;
+  readonly width: number;
+  readonly height: number;
 }
 /** `log`. */
 export interface Text {

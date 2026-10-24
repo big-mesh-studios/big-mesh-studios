@@ -67,11 +67,16 @@ import {
   type PlaceHandle,
 } from "./place-registry";
 import {
+  MAX_CAMERAS,
   MAX_CHANNEL,
   MAX_DATA_KEYS,
+  MAX_HUD_IMAGES,
   MAX_LIGHTS,
   MAX_MEDIUMS,
   MAX_PENDING_TIMERS,
+  MAX_PHOTOS,
+  MAX_PHOTO_PIXELS,
+  MAX_SCREENS,
   MAX_ZONES,
 } from "./limits";
 import { Operation, OperationShape } from "@big-mesh-studios/csg";
@@ -97,6 +102,16 @@ import { materialId } from "../render/material-names";
  * no way out. A place that needs more is a place that wants restructuring rather than budget.
  */
 export const MAX_CASCADE_STEPS = 8;
+
+/**
+ * How big a photo is when the script does not say.
+ *
+ * **1280 by 720, the same shape as a screen and inside the pixel budget**, so a place that only
+ * wants a picture does not have to choose a resolution, and one that does has a number to move
+ * rather than a default to discover.
+ */
+const DEFAULT_PHOTO_WIDTH = 1280;
+const DEFAULT_PHOTO_HEIGHT = 720;
 
 /** What a script found when it cast a ray. Mirrors the guest library's `RayHit`. */
 export interface RayHit {
@@ -216,6 +231,27 @@ export interface HostEffects {
   setFlying(on: boolean): void;
   lookAt(at: Vec3, fov?: number): void;
   clearCamera(): void;
+  /**
+   * Puts the player's view at a virtual camera.
+   *
+   * **A callback rather than something the application reads from `cameraList`**, because which
+   * camera the player is behind is not a property of the camera — it is a property of the player,
+   * and the same place watched by two peers is two different answers. `clearCamera` is the way
+   * back, so there is one way to stop watching rather than two.
+   */
+  watchCamera(camera: HostCamera): void;
+  /**
+   * Renders one frame and keeps it under `request.id` on this machine.
+   *
+   * **The only effect whose result never travels.** A photo is a local artifact in the same sense a
+   * narration is a local moment: the place asked for it here, and a peer running the same script
+   * asked for its own. Nothing about the pixels is replicated (ADR 0016).
+   */
+  takePhoto(request: PhotoRequest): void;
+  /** A HUD image appeared or changed. */
+  showImage(image: HostImage): void;
+  /** A HUD image went away. A no-op when there was none. */
+  hideImage(id: string): void;
 }
 
 /**
@@ -256,6 +292,93 @@ export interface Light {
    * Zero means it lights nothing.
    */
   readonly intensity: number;
+}
+
+/**
+ * A virtual camera the host owns: a place to look from, and what to look at.
+ *
+ * **Data, like a light.** A camera has no GPU object and no frame of its own — the application
+ * makes whatever it needs to draw through one — so the host can own the whole definition, and two
+ * peers running the same script arrive at the same cameras without either sending a picture
+ * (ADR 0019, ADR 0016).
+ */
+export interface HostCamera {
+  readonly id: string;
+  readonly at: Vec3;
+  readonly target: Vec3;
+  /**
+   * The vertical field of view in degrees, or `undefined` for the player's.
+   *
+   * **`undefined` rather than a copied default**, because the player's own field of view is the
+   * renderer's and can be changed by a place through `camera-look`. A camera that copied it at
+   * creation would be a camera that stopped agreeing with the player the moment they looked
+   * somewhere with a different lens.
+   */
+  readonly fov: number | undefined;
+}
+
+/**
+ * What a screen or a HUD image shows.
+ *
+ * **A camera is a live feed and a photo is a still**, and the difference is not a flag: a camera
+ * source is redrawn every frame it is near enough to be seen, and a photo source is a canvas that
+ * already exists. That is why the two are separate names in one union rather than a `live: boolean`
+ * beside an id — the application has to resolve the id to two different things.
+ */
+export type ImageSource =
+  { readonly camera: string } | { readonly photo: string };
+
+/** A screen the host owns: a picture in the world, facing a direction. */
+export interface HostScreen {
+  readonly id: string;
+  readonly source: ImageSource;
+  readonly at: Vec3;
+  /** A turn about up, in radians. The screen's own +Z faces this way. */
+  readonly yaw: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Where a HUD image sits. Mirrors `HUD_CORNERS` in `effects.ts`. */
+export type HudCorner =
+  "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+/** A picture on this player's screen. **Not in the world**, so nothing else can see it. */
+export interface HostImage {
+  readonly id: string;
+  readonly source: ImageSource;
+  readonly corner: HudCorner;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * A photo the host has allocated: an id and a size.
+ *
+ * **The pixels are not here, and cannot be.** They live in a canvas the application owns, because
+ * a host is a plain object with no DOM (see the file header) and because a photo is this machine's
+ * picture rather than the world's. What the host keeps is the record that authorises the id, so a
+ * second `photo-take` with the same id is refused rather than quietly replacing the first.
+ */
+export interface HostPhoto {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * What the application is asked to render for a `photo-take`.
+ *
+ * **A resolved camera rather than an id**, so the application does not have to look one up and
+ * cannot disagree with the host about which camera a photo came from. `camera` is `undefined` for
+ * the player's own view, which is the same "absent means the local player" rule the rest of the
+ * vocabulary follows.
+ */
+export interface PhotoRequest {
+  readonly id: string;
+  readonly camera: HostCamera | undefined;
+  readonly width: number;
+  readonly height: number;
 }
 
 /**
@@ -377,6 +500,16 @@ export class PlaceHost {
    * less predictable and no more deterministic.
    */
   private readonly mediums = new Map<string, OwnedMedium>();
+  /** The virtual cameras, in the order they were added. */
+  private readonly cameras = new Map<string, HostCamera>();
+  /** The screens in the world, in the order they were added. */
+  private readonly screens = new Map<string, HostScreen>();
+  /** The photos this place has allocated on this machine. The pixels are the application's. */
+  private readonly photos = new Map<string, HostPhoto>();
+  /** This player's HUD images, in the order they were shown. */
+  private readonly images = new Map<string, HostImage>();
+  /** The camera the player's view was taken over by, if any. */
+  private watched: HostCamera | undefined;
   /** Zones the player is inside, so a move can tell an entry from a stay. */
   private inside = new Set<string>();
   private timers: PendingTimer[] = [];
@@ -497,6 +630,55 @@ export class PlaceHost {
   /** How many lights exist, for a readout. */
   get lightCount(): number {
     return this.lights.size;
+  }
+
+  /** The virtual cameras, in the order they were added. Read by the application every frame. */
+  get cameraList(): readonly HostCamera[] {
+    return [...this.cameras.values()];
+  }
+
+  /** The camera the player's view was taken over by, or `undefined` for their own. */
+  get watchedCamera(): HostCamera | undefined {
+    return this.watched;
+  }
+
+  /**
+   * The screens a renderer should draw this frame, nearest first.
+   *
+   * **Sorted and truncated by distance, like `visibleLights`, and for the same reason**: two peers
+   * must draw the same screens from the same player position, so the tie is broken by id rather
+   * than by whatever order a `Map` happened to iterate in. A screen that is not drawn keeps its
+   * last picture; it does not go black.
+   *
+   * A *live* screen's cost is a render pass, which is why `max` is a parameter rather than every
+   * screen being drawn: a place with a camera in every room should not pay for all of them at once.
+   */
+  visibleScreens(from: Vec3 | undefined, max: number): readonly HostScreen[] {
+    if (this.screens.size === 0) return [];
+    const distance = (screen: HostScreen): number =>
+      from === undefined
+        ? 0
+        : (screen.at.x - from.x) ** 2 +
+          (screen.at.y - from.y) ** 2 +
+          (screen.at.z - from.z) ** 2;
+    return [...this.screens.values()]
+      .sort((a, b) => distance(a) - distance(b) || (a.id < b.id ? -1 : 1))
+      .slice(0, max);
+  }
+
+  /** Every screen, so the application can reconcile its meshes against the list. */
+  get screenList(): readonly HostScreen[] {
+    return [...this.screens.values()];
+  }
+
+  /** Every photo this place has allocated, so the application can drop the ones that are gone. */
+  get photoList(): readonly HostPhoto[] {
+    return [...this.photos.values()];
+  }
+
+  /** This player's HUD images, in the order they were shown. */
+  get imageList(): readonly HostImage[] {
+    return [...this.images.values()];
   }
 
   /** How many fields exist, for a readout. */
@@ -857,6 +1039,17 @@ export class PlaceHost {
     this.zones.clear();
     this.lights.clear();
     this.mediums.clear();
+    this.cameras.clear();
+    this.screens.clear();
+    this.photos.clear();
+    this.images.clear();
+    // **A place that is gone must not leave the player looking through its camera.** The same
+    // reasoning as the dialog below, and the same reason it cannot be left to the script: an
+    // unloaded place runs no more code, so nothing else would ever give the view back.
+    if (this.watched !== undefined) {
+      this.watched = undefined;
+      this.options.effects.clearCamera();
+    }
     this.inside.clear();
     this.timers = [];
     // **The whole inventory with everything else**, for the same reason and the same reason it
@@ -869,6 +1062,24 @@ export class PlaceHost {
   }
 
   /* ------------------------------------------------------------- dispatching */
+
+  /**
+   * Checks that a screen's or an image's source names something that exists.
+   *
+   * **Refused rather than deferred, so the error names the real problem.** A screen pointing at a
+   * camera that was never created is a black rectangle the place cannot explain, and the only
+   * moment the placement can say *why* is while the script is still on the stack.
+   */
+  private sourceOf(source: ImageSource): ImageSource {
+    if ("camera" in source) {
+      if (!this.cameras.has(source.camera)) {
+        throw new Error(`there is no camera called "${source.camera}"`);
+      }
+    } else if (!this.photos.has(source.photo)) {
+      throw new Error(`there is no photo called "${source.photo}"`);
+    }
+    return source;
+  }
 
   /**
    * Checks one effect and carries it out, or returns why not.
@@ -945,6 +1156,20 @@ export class PlaceHost {
     };
     const shape = (key: string): OperationShape =>
       payload[key] as OperationShape;
+    /**
+     * Reads an `image-source` field.
+     *
+     * **The table has already checked that exactly one of the two keys is there**, so this is a
+     * read rather than a decision — the same division `parseEffect` makes everywhere else. Written
+     * as a `camera` test rather than a `photo` test so the absent case is the one that reads an id
+     * out of the payload.
+     */
+    const imageSource = (key: string): ImageSource => {
+      const value = payload[key] as { camera?: string; photo?: string };
+      return value.camera !== undefined
+        ? { camera: value.camera }
+        : { photo: value.photo as string };
+    };
 
     switch (effect.tag) {
       case "shape-add": {
@@ -1251,11 +1476,212 @@ export class PlaceHost {
         return;
 
       case "camera-look":
+        // **A look target releases a watched camera**, so the host's own record agrees with what
+        // the engine has just done: `lookAt` clears the watch, and `watchedCamera` must not go on
+        // claiming a camera the player is no longer behind.
+        this.watched = undefined;
         this.options.effects.lookAt(vec3("at"), optionalNumber("fov"));
         return;
 
       case "camera-clear":
+        this.watched = undefined;
         this.options.effects.clearCamera();
+        return;
+
+      case "camera-add": {
+        const id = name("id");
+        if (this.cameras.has(id)) {
+          throw new Error(`a camera called "${id}" exists`);
+        }
+        if (this.cameras.size >= MAX_CAMERAS) {
+          throw new Error(`a world may hold ${MAX_CAMERAS} cameras at once`);
+        }
+        this.cameras.set(id, {
+          id,
+          at: vec3("at"),
+          target: vec3("target"),
+          fov: optionalNumber("fov"),
+        });
+        return;
+      }
+
+      case "camera-move": {
+        const id = name("id");
+        const camera = this.cameras.get(id);
+        if (camera === undefined) {
+          throw new Error(`there is no camera called "${id}"`);
+        }
+        const moved: HostCamera = {
+          id,
+          // **Absent means unchanged**, so panning is one field rather than a definition
+          // repeated. `undefined` cannot be confused with a value because no field of a camera
+          // is nullable.
+          at: payload["at"] === undefined ? camera.at : vec3("at"),
+          target:
+            payload["target"] === undefined ? camera.target : vec3("target"),
+          fov:
+            payload["fov"] === undefined ? camera.fov : optionalNumber("fov"),
+        };
+        this.cameras.set(id, moved);
+        // **A watched camera that moved is a view that moved**, so the application is told
+        // again rather than left looking through a definition that no longer exists.
+        if (this.watched?.id === id) {
+          this.watched = moved;
+          this.options.effects.watchCamera(moved);
+        }
+        return;
+      }
+
+      case "camera-remove": {
+        const id = name("id");
+        // **What was showing it goes with it.** A screen or a HUD image whose camera is gone has
+        // no picture and no way to get one, so leaving it would be a black rectangle the place can
+        // no longer explain or repair; removing it is the one outcome a script can predict.
+        for (const [screenId, screen] of this.screens) {
+          if ("camera" in screen.source && screen.source.camera === id) {
+            this.screens.delete(screenId);
+          }
+        }
+        for (const [imageId, image] of this.images) {
+          if ("camera" in image.source && image.source.camera === id) {
+            this.images.delete(imageId);
+            this.options.effects.hideImage(imageId);
+          }
+        }
+        if (this.watched?.id === id) {
+          this.watched = undefined;
+          this.options.effects.clearCamera();
+        }
+        this.cameras.delete(id);
+        return;
+      }
+
+      case "camera-watch": {
+        const id = name("id");
+        const camera = this.cameras.get(id);
+        if (camera === undefined) {
+          throw new Error(`there is no camera called "${id}"`);
+        }
+        this.watched = camera;
+        this.options.effects.watchCamera(camera);
+        return;
+      }
+
+      case "photo-take": {
+        const id = name("id");
+        if (this.photos.has(id)) {
+          throw new Error(`a photo called "${id}" exists`);
+        }
+        if (this.photos.size >= MAX_PHOTOS) {
+          throw new Error(`a place may hold ${MAX_PHOTOS} photos at once`);
+        }
+        const width = optionalNumber("width") ?? DEFAULT_PHOTO_WIDTH;
+        const height = optionalNumber("height") ?? DEFAULT_PHOTO_HEIGHT;
+        // **The product is checked here rather than by a field rule**, because it bounds a pair of
+        // fields and `checkPayload` reads one field at a time on purpose. Two sides inside their
+        // own bounds can still ask for a buffer four times the size of a high-definition frame.
+        if (width * height > MAX_PHOTO_PIXELS) {
+          throw new Error(
+            `a ${width} by ${height} photo is more than ${MAX_PHOTO_PIXELS} pixels`,
+          );
+        }
+        const cameraId = payload["camera"];
+        const camera =
+          cameraId === undefined ? undefined : this.cameras.get(name("camera"));
+        if (cameraId !== undefined && camera === undefined) {
+          throw new Error(`there is no camera called "${name("camera")}"`);
+        }
+        this.photos.set(id, { id, width, height });
+        this.options.effects.takePhoto({ id, camera, width, height });
+        return;
+      }
+
+      case "photo-remove": {
+        const id = name("id");
+        // **What was showing it goes with it, for the camera's reason.** A screen or a HUD image
+        // whose photo is gone has no pixels and cannot get any, so leaving it would be a black
+        // rectangle the place can no longer explain; removing it is the one predictable outcome.
+        for (const [screenId, screen] of this.screens) {
+          if ("photo" in screen.source && screen.source.photo === id) {
+            this.screens.delete(screenId);
+          }
+        }
+        for (const [imageId, image] of this.images) {
+          if ("photo" in image.source && image.source.photo === id) {
+            this.images.delete(imageId);
+            this.options.effects.hideImage(imageId);
+          }
+        }
+        this.photos.delete(id);
+        return;
+      }
+
+      case "screen-add": {
+        const id = name("id");
+        if (this.screens.has(id)) {
+          throw new Error(`a screen called "${id}" exists`);
+        }
+        if (this.screens.size >= MAX_SCREENS) {
+          throw new Error(`a world may hold ${MAX_SCREENS} screens at once`);
+        }
+        this.screens.set(id, {
+          id,
+          source: this.sourceOf(imageSource("source")),
+          at: vec3("at"),
+          yaw: number("yaw"),
+          width: number("width"),
+          height: number("height"),
+        });
+        return;
+      }
+
+      case "screen-move": {
+        const id = name("id");
+        const screen = this.screens.get(id);
+        if (screen === undefined) {
+          throw new Error(`there is no screen called "${id}"`);
+        }
+        this.screens.set(id, {
+          id,
+          source:
+            payload["source"] === undefined
+              ? screen.source
+              : this.sourceOf(imageSource("source")),
+          at: payload["at"] === undefined ? screen.at : vec3("at"),
+          yaw: payload["yaw"] === undefined ? screen.yaw : number("yaw"),
+          width:
+            payload["width"] === undefined ? screen.width : number("width"),
+          height:
+            payload["height"] === undefined ? screen.height : number("height"),
+        });
+        return;
+      }
+
+      case "screen-remove":
+        this.screens.delete(name("id"));
+        return;
+
+      case "image-show": {
+        const id = name("id");
+        if (!this.images.has(id) && this.images.size >= MAX_HUD_IMAGES) {
+          throw new Error(`a place may show ${MAX_HUD_IMAGES} images at once`);
+        }
+        const image: HostImage = {
+          id,
+          source: this.sourceOf(imageSource("source")),
+          corner: (payload["corner"] as HudCorner | undefined) ?? "top-right",
+          width: number("width"),
+          height: number("height"),
+        };
+        this.images.set(id, image);
+        this.options.effects.showImage(image);
+        return;
+      }
+
+      case "image-hide":
+        if (this.images.delete(name("id"))) {
+          this.options.effects.hideImage(name("id"));
+        }
         return;
 
       case "log":

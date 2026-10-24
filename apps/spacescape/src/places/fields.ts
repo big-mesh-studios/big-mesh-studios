@@ -35,17 +35,26 @@
 
 import {
   MAX_CAUSE_LENGTH,
+  MAX_CAMERA_FOV,
+  MAX_CAMERAS,
   MAX_CHANNEL,
   MAX_COORDINATE,
   MAX_DATA_KEY,
   MAX_DATA_KEYS,
   MAX_DATA_STRING,
+  MAX_HUD_IMAGE,
+  MAX_HUD_IMAGES,
   MAX_MOVEMENT_MULTIPLIER,
   MAX_NAME_LENGTH,
   MAX_OPACITY,
   MAX_PENDING_TIMERS,
+  MAX_PHOTO_PIXELS,
+  MAX_PHOTO_SIZE,
+  MAX_PHOTOS,
   MAX_PLAYERS,
   MAX_PLAYER_ID_LENGTH,
+  MAX_SCREENS,
+  MAX_SCREEN_SIZE,
   MAX_SHAPE_SIZE,
   MAX_SOFTNESS,
   MAX_TEXT_LENGTH,
@@ -59,6 +68,10 @@ import {
   MAX_MEDIUM_SPEED_SCALE,
   MAX_MEDIUMS,
   MAX_ZONES,
+  MIN_CAMERA_FOV,
+  MIN_HUD_IMAGE,
+  MIN_PHOTO_SIZE,
+  MIN_SCREEN_SIZE,
   MIN_SHAPE_SIZE,
 } from "./limits";
 import { Combine } from "@big-mesh-studios/csg";
@@ -101,6 +114,16 @@ export type FieldKind =
   | "enum"
   /** A boolean, and nothing else. Not 1, not "true", not null. */
   | "boolean"
+  /**
+   * What a screen or a HUD image shows: `{ camera: "id" }` or `{ photo: "id" }`.
+   *
+   * **One object with one key rather than two optional fields**, because the two are alternatives
+   * rather than two things a payload may have. A payload with both would be a screen that shows a
+   * camera and a photo, which has no meaning and which `checkPayload` cannot refuse — its rules are
+   * per-field and know nothing about each other. As a *kind*, the check owns the choice, and the
+   * refusal names the field the caller got wrong.
+   */
+  | "image-source"
   /**
    * A list of short strings, each bounded.
    *
@@ -234,6 +257,28 @@ export const checkField = (
       if (typeof value !== "boolean") return bad("is not a boolean");
       return null;
 
+    case "image-source": {
+      // **A source is a camera or a photo, and exactly one of them.** Both is not a screen
+      // showing two things; it is a script that meant one and wrote a payload this build cannot
+      // read a single meaning out of. Neither is a screen showing nothing.
+      if (!isPlainObject(value)) return bad("is not a camera or a photo");
+      const keys = Object.keys(value);
+      if (keys.length !== 1) {
+        return bad("must name exactly one of camera or photo");
+      }
+      const only = keys[0] as string;
+      if (only !== "camera" && only !== "photo") {
+        return bad(`names ${only}, which is not camera or photo`);
+      }
+      const source = value[only];
+      if (typeof source !== "string") return bad(`${only} is not a name`);
+      if (source.length === 0) return bad(`${only} is empty`);
+      if (source.length > MAX_NAME_LENGTH) {
+        return bad(`${only} is longer than ${MAX_NAME_LENGTH} characters`);
+      }
+      return null;
+    }
+
     case "text-list": {
       // **Every entry checked, and the whole list refused if any one fails.** ADR 0017's rule is
       // that a payload is accepted whole or refused whole, and a list where the fifth entry is
@@ -350,7 +395,10 @@ const boundsFor = (rule: FieldRule): [number, number] => {
     case "unit":
       return [0, rule.max ?? 1];
     case "count":
-      return [0, rule.max ?? Number.MAX_SAFE_INTEGER];
+      // **The floor is the rule's, not zero**, because a count is not always a quantity: a photo's
+      // width and a picture's height are counts of pixels, and zero of them is a render target with
+      // nothing in it. The kind's default stays zero for the counts that really are quantities.
+      return [rule.min ?? 0, rule.max ?? Number.MAX_SAFE_INTEGER];
     default:
       return [rule.min ?? -MAX_COORDINATE, rule.max ?? MAX_COORDINATE];
   }
@@ -597,6 +645,40 @@ export const LIGHT_LIMITS = {
   radius: MAX_LIGHT_RADIUS,
   intensity: MAX_LIGHT_INTENSITY,
 } as const;
+
+/** Re-exported for the same reason. */
+export const CAMERA_LIMITS = {
+  count: MAX_CAMERAS,
+  minFov: MIN_CAMERA_FOV,
+  maxFov: MAX_CAMERA_FOV,
+} as const;
+
+/** Re-exported for the same reason. */
+export const SCREEN_LIMITS = {
+  count: MAX_SCREENS,
+  minSize: MIN_SCREEN_SIZE,
+  maxSize: MAX_SCREEN_SIZE,
+} as const;
+
+/**
+ * Re-exported for the same reason, and `pixels` is the one that needs saying out loud: it bounds a
+ * *product* rather than a field, so no rule in `effects.ts` can carry it and the host is what
+ * refuses a photo past it.
+ */
+export const PHOTO_LIMITS = {
+  count: MAX_PHOTOS,
+  minSize: MIN_PHOTO_SIZE,
+  maxSize: MAX_PHOTO_SIZE,
+  pixels: MAX_PHOTO_PIXELS,
+} as const;
+
+/** Re-exported for the same reason. */
+export const HUD_LIMITS = {
+  count: MAX_HUD_IMAGES,
+  minSize: MIN_HUD_IMAGE,
+  maxSize: MAX_HUD_IMAGE,
+} as const;
+
 /** Re-exported for the same reason. */
 export const TIMER_LIMITS = {
   ms: MAX_TIMER_MS,

@@ -296,7 +296,81 @@ describe("every limit is exercised at its edge", () => {
       tag: "shape-add",
       build: (n) => ({ ...shapeAdd, colour: { r: n, g: 0, b: 0 } }),
     },
+    {
+      limit: limits.MAX_CAMERA_FOV,
+      name: "MAX_CAMERA_FOV",
+      end: "max",
+      tag: "camera-look",
+      build: (n) => ({ at: [0, 0, 0], fov: n }),
+    },
+    {
+      limit: limits.MIN_CAMERA_FOV,
+      name: "MIN_CAMERA_FOV",
+      end: "min",
+      tag: "camera-look",
+      build: (n) => ({ at: [0, 0, 0], fov: n }),
+    },
+    {
+      limit: limits.MIN_SCREEN_SIZE,
+      name: "MIN_SCREEN_SIZE",
+      end: "min",
+      tag: "screen-add",
+      build: (n) => ({ ...screenAdd, width: n }),
+    },
+    {
+      limit: limits.MAX_SCREEN_SIZE,
+      name: "MAX_SCREEN_SIZE",
+      end: "max",
+      tag: "screen-add",
+      build: (n) => ({ ...screenAdd, height: n }),
+    },
+    {
+      limit: limits.MIN_PHOTO_SIZE,
+      name: "MIN_PHOTO_SIZE",
+      end: "min",
+      tag: "photo-take",
+      build: (n) => ({ id: "shot", width: n }),
+    },
+    {
+      limit: limits.MAX_PHOTO_SIZE,
+      name: "MAX_PHOTO_SIZE",
+      end: "max",
+      tag: "photo-take",
+      build: (n) => ({ id: "shot", height: n }),
+    },
+    {
+      limit: limits.MIN_HUD_IMAGE,
+      name: "MIN_HUD_IMAGE",
+      end: "min",
+      tag: "image-show",
+      build: (n) => ({ ...imageShow, width: n }),
+    },
+    {
+      limit: limits.MAX_HUD_IMAGE,
+      name: "MAX_HUD_IMAGE",
+      end: "max",
+      tag: "image-show",
+      build: (n) => ({ ...imageShow, height: n }),
+    },
   ];
+
+  /** A well-formed `screen-add`, so a row can change one field and keep the rest. */
+  const screenAdd: Record<string, unknown> = {
+    id: "monitor",
+    source: { camera: "hall" },
+    at: [0, 0, 0],
+    yaw: 0,
+    width: 1,
+    height: 1,
+  };
+
+  /** A well-formed `image-show`, for the same reason. */
+  const imageShow: Record<string, unknown> = {
+    id: "feed",
+    source: { camera: "hall" },
+    width: 320,
+    height: 180,
+  };
 
   /** The rest of a `shape-add`, so a row can change one field and keep the rest. */
   const shapeAdd: Record<string, unknown> = {
@@ -404,6 +478,17 @@ describe("every limit is exercised at its edge", () => {
       "MAX_DATA_KEYS",
       "MAX_PLAYERS",
       "MAX_STEP_MS",
+      // A host's own collections, like `MAX_LIGHTS` — how many cameras, screens and HUD images a
+      // place has standing rather than anything one payload can say. Checked at the limit and one
+      // past it in `host.test.ts`, by a place that fills them.
+      "MAX_CAMERAS",
+      "MAX_SCREENS",
+      "MAX_HUD_IMAGES",
+      "MAX_PHOTOS",
+      // **A product rather than a field bound**, like `MAX_PLACE_SOURCE`: two sides each inside
+      // `MAX_PHOTO_SIZE` can still ask for four times a high-definition frame, so the pair is
+      // checked by the host and exercised there.
+      "MAX_PHOTO_PIXELS",
     ]);
     expect(
       declared.filter((name) => !covered.has(name) && !elsewhere.has(name)),

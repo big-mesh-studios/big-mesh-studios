@@ -303,6 +303,133 @@ export const MAX_LIGHT_RADIUS = 1e5;
 export const MAX_LIGHT_INTENSITY = 10;
 
 /**
+ * How many virtual cameras may exist at once.
+ *
+ * **Thirty-two, an eighth of `MAX_LIGHTS`.** A camera is a position, a target and a field of view:
+ * it costs nothing until something looks through it, which is why the cap is so far below the
+ * light one. The number that actually costs is `MAX_LIVE_FEEDS` in `render/feeds.ts` — how many
+ * of these are *drawn* — and the gap between the two is deliberate, for the reason `MAX_LIGHTS`
+ * and `MAX_DRAWN_LIGHTS` have one: a place that declares a camera per room should not have to
+ * reason about how many fit in a frame.
+ */
+export const MAX_CAMERAS = 32;
+
+/**
+ * How narrow and how wide a virtual camera's field of view may be, in degrees.
+ *
+ * **The same pair the player's camera accepts** (`camera-look`'s `fov`), because a security camera
+ * showing something the player's own camera could not is a difference nobody can see and a
+ * narrower value than one degree is a single pixel column. A field of view outside this pair is
+ * refused rather than clamped, as every field is.
+ */
+export const MIN_CAMERA_FOV = 1;
+
+/**
+ * How wide a virtual camera's field of view may be, in degrees.
+ *
+ * **A hundred and seventy-nine, one short of a half turn**, because a camera at exactly 180° has
+ * no forward direction to build its basis from and is the one value where a lens stops being a
+ * lens. A place wanting a fisheye gets the widest lens that still has a centre.
+ */
+export const MAX_CAMERA_FOV = 179;
+
+/**
+ * How many screens may exist at once.
+ *
+ * **Sixty-four, the same as `MAX_MEDIUMS` and for the same shape of reason**: a screen is a quad
+ * in the world plus, if it is live, a render target. The target is the expensive half, and
+ * `MAX_LIVE_FEEDS` bounds how many are redrawn in a frame, so what is left for this number to bound
+ * is the quads — which is why it is generous.
+ */
+export const MAX_SCREENS = 64;
+
+/**
+ * The smallest and largest a screen may be, in world units.
+ *
+ * **Five centimetres to a hundred metres.** The floor is about a phone screen in a room and the
+ * ceiling is a cinema, which is as large as a surface a place plausibly calls a screen — beyond it
+ * a screen is a wall that happens to be a picture, and the cost of drawing it is the same either
+ * way. Both are in *world* units, so a screen's picture is its own size in metres rather than a
+ * resolution.
+ */
+export const MIN_SCREEN_SIZE = 0.05;
+
+/**
+ * How large a screen may be, in world units.
+ *
+ * **A hundred metres, which is a cinema and not a wall.** The cost of drawing a quad does not
+ * change with its size, so this is not a performance bound: it is the point past which a screen is
+ * no longer a surface a place put somewhere and becomes a piece of the world, and the feed it shows
+ * is one bucket stretched over a hundred metres.
+ */
+export const MAX_SCREEN_SIZE = 100;
+
+/**
+ * How many photos a place may hold at once.
+ *
+ * **Sixteen, and the bound is memory rather than count.** A photo is a canvas the size of the
+ * picture, so the cost is the pixel budget below times this one: sixteen 1080p photos is about a
+ * hundred and thirty megabytes of RGBA, which is a lot for a place to pin and is the point at
+ * which the number stops being decorative. A place that wants a contact sheet reuses its ids.
+ */
+export const MAX_PHOTOS = 16;
+
+/**
+ * The smallest and largest side of a photo, in pixels.
+ *
+ * **Sixteen because a smaller picture is a colour rather than a photo**, and because a zero side is
+ * a render target with no pixels in it, which is a place that sees its own code produce nothing
+ * with no error anywhere near the cause.
+ */
+export const MIN_PHOTO_SIZE = 16;
+
+/**
+ * How long one side of a photo may be, in pixels.
+ *
+ * **2048, past which a single side is more than a high-definition frame on its own.** The product
+ * is bounded separately by `MAX_PHOTO_PIXELS`, because a square inside this side is four times the
+ * pixels of a 1080p frame and a pair of fields cannot express that.
+ */
+export const MAX_PHOTO_SIZE = 2048;
+
+/**
+ * The most pixels one photo may hold, as a product rather than a side.
+ *
+ * **1920 × 1080, and it is separate from `MAX_PHOTO_SIZE` because the two bound different
+ * misuse.** 2048 × 2048 is inside the per-side bound and is four times the pixels of a
+ * high-definition frame; a place that asks for it is asking for a buffer the GPU has to find room
+ * for per photo. The product is checked by the host, since a pair of fields cannot express it.
+ */
+export const MAX_PHOTO_PIXELS = 1920 * 1080;
+
+/**
+ * How many HUD images may be on screen at once.
+ *
+ * **Eight, which is more than fits on a phone screen and fewer than it takes to cover one.** A HUD
+ * image is drawn by the overlay rather than by the renderer, so it is cheap in GPU terms and
+ * expensive in the only currency that matters here: the player's view of the world.
+ */
+export const MAX_HUD_IMAGES = 8;
+
+/**
+ * The smallest and largest a HUD image may be, in CSS pixels.
+ *
+ * **The same pair the feed a photo is displayed from is bucketed to**, because a HUD image larger
+ * than the largest feed bucket is a picture drawn at a size its own pixels do not have, and one
+ * smaller than the smallest is a thumbnail of nothing.
+ */
+export const MIN_HUD_IMAGE = 16;
+
+/**
+ * How large a HUD image may be, in CSS pixels.
+ *
+ * **512, the largest feed bucket**, so a live HUD feed is never rendered at a size the bucket table
+ * in `render/feeds.ts` cannot give it and then scaled up by the overlay. It is also the point at
+ * which a picture in the corner of the screen stops being a picture in the corner.
+ */
+export const MAX_HUD_IMAGE = 512;
+
+/**
  * How many mediums may exist at once, across every place.
  *
  * **Sixty-four, a quarter of `MAX_ZONES`, and the difference is what a medium does.** A zone is

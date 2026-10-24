@@ -1,8 +1,37 @@
-import { createEffect, onCleanup, Show, type Component } from "solid-js";
+import { createEffect, For, onCleanup, Show, type Component } from "solid-js";
+import type { JSX } from "@solidjs/web/jsx-runtime";
 
-import type { Dialog, Ending } from "../host";
+import type { Dialog, Ending, HostImage } from "../host";
 
 import "./place-overlay.css";
+
+/**
+ * Where a HUD image sits, as a CSS inset.
+ *
+ * **A percentage rather than a fixed margin**, because a monitor in the corner should stay in the
+ * corner when the window resizes and two percent of a wide window and two percent of a narrow one
+ * are the same visual edge. The margin is on the side the corner names and nothing else, so an
+ * image in the bottom-left is not also pushed down from the top.
+ */
+const imageStyle = (image: HostImage): JSX.CSSProperties => {
+  const style: JSX.CSSProperties = {
+    position: "absolute",
+    width: `${image.width}px`,
+    height: `${image.height}px`,
+  };
+  const inset = "2%";
+  if (image.corner === "top-left" || image.corner === "bottom-left") {
+    style.left = inset;
+  } else {
+    style.right = inset;
+  }
+  if (image.corner === "top-left" || image.corner === "top-right") {
+    style.top = inset;
+  } else {
+    style.bottom = inset;
+  }
+  return style;
+};
 
 /**
  * The three things a place says rather than builds.
@@ -41,6 +70,18 @@ export interface PlaceOverlayProps {
   readonly dialog: () => Dialog | undefined;
   /** The ending to draw, or `undefined`. */
   readonly ending: () => Ending | undefined;
+  /**
+   * The pictures a place has put in a corner.
+   *
+   * **Ids, sources and sizes rather than pixels.** The pixels are a canvas the application owns —
+   * a photo's own canvas, or a HUD feed read back from the GPU — and a component that held them
+   * would be a second owner of a buffer that changes every frame.
+   */
+  readonly images: () => readonly HostImage[];
+  /** Bumped when a picture's pixels arrive, so the canvases below redraw. */
+  readonly revision: () => number;
+  /** Copies the current pixels of `image` into the overlay's own canvas. */
+  readonly drawImage: (image: HostImage, canvas: HTMLCanvasElement) => void;
   /** The player chose an option. Counted from zero, as `npc-choose` reports it. */
   readonly onChoose: (entityId: string, option: number) => void;
   /** Start the place again from the beginning. */
@@ -73,6 +114,33 @@ export const PlaceOverlay: Component<PlaceOverlayProps> = (props) => {
 
   return (
     <div class="place-overlay">
+      {/* ---- The pictures a place put in a corner ----
+       *
+       * **A canvas per image, drawn from the application's own canvas.** The overlay cannot
+       * sample a GL texture, so a live feed arrives as pixels the application has already read
+       * back; a photo is already a canvas, so it is a `drawImage` and costs nothing. The effect
+       * depends on `revision` because a feed's pixels change without its id, size or corner ever
+       * changing — a dependency a Solid signal can express and a plain object cannot.
+       */}
+      <For each={props.images()}>
+        {(image) => {
+          let canvas: HTMLCanvasElement | undefined;
+          createEffect(() => {
+            // Read, not used: the counter is the whole dependency.
+            props.revision();
+            if (canvas !== undefined) props.drawImage(image, canvas);
+          });
+          return (
+            <canvas
+              ref={(element) => (canvas = element)}
+              class="place-overlay-image"
+              width={image.width}
+              height={image.height}
+              style={imageStyle(image)}
+            />
+          );
+        }}
+      </For>
       <Show when={props.narration()}>
         {(current) => (
           <div class="place-overlay-line" role="status" aria-live="polite">

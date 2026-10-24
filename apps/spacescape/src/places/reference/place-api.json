@@ -94,6 +94,20 @@
       "returns": "void"
     },
     {
+      "name": "createCamera",
+      "signature": "(options: CreateCameraOptions): void",
+      "doc": "Places a virtual camera. Nothing looks through it until something watches it or shows it.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateCameraOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "createLight",
       "signature": "(options: CreateLightOptions): void",
       "doc": "Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.",
@@ -143,6 +157,20 @@
         {
           "name": "options",
           "type": "CreatePropOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createScreen",
+      "signature": "(options: CreateScreenOptions): void",
+      "doc": "Puts a screen in the world.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateScreenOptions",
           "optional": false,
           "doc": ""
         }
@@ -338,6 +366,20 @@
       "returns": "void"
     },
     {
+      "name": "hideImage",
+      "signature": "(id: string): void",
+      "doc": "Takes a HUD image away. A no-op when there was none.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "holdItem",
       "signature": "(item?: string | undefined): void",
       "doc": "Puts an item in the player's hands, or empties them. **Omitting the item is how a place says \"put that down\", and there is no other way.** Every name in this API is a non-empty string, so an empty string is not available as a second way to say nothing and the absence is the only one. **What a hand changes is the interaction, not the world.** A crosshair on a character is a conversation with empty hands and a use with anything in them; a crosshair on nothing does nothing at all with empty hands. So the whole of what holding a thing does is to change which of those happens, and a place that never reads `item` can hold things all day without consequence.",
@@ -452,6 +494,26 @@
       "returns": "void"
     },
     {
+      "name": "moveCamera",
+      "signature": "(id: string, options: { at?: Vec3Like | undefined; target?: Vec3Like | undefined; fov?: number | undefined; }): void",
+      "doc": "Moves a virtual camera, or changes its lens. **Every field is optional and an absent one is unchanged**, so panning is one field rather than the whole definition repeated. Moving the camera the player is watching moves their view.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "options",
+          "type": "{ at?: Vec3Like; target?: Vec3Like; fov?: number; }",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "moveEntity",
       "signature": "(id: string, at: Vec3Like, yaw?: number | undefined): void",
       "doc": "Moves whatever is standing under `id`, and optionally turns it. **One function for both kinds, because there is one id space.** `moveProp` and `moveNpc` would be the same function twice, and the pair would be a place for them to differ by accident. **`yaw` is omitted rather than defaulted to zero**, so a character walking across a room keeps the way it was facing. A move that turned everything to north would be a move that silently did something.",
@@ -504,6 +566,26 @@
           "name": "yaw",
           "type": "number | undefined",
           "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "moveScreen",
+      "signature": "(id: string, options: { readonly source?: ImageSource | undefined; readonly at?: Vec3Like | undefined; readonly yaw?: number | undefined; readonly width?: number | undefined; readonly height?: number | undefined; }): void",
+      "doc": "Moves, resizes or re-aims a screen, or changes what it shows.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "options",
+          "type": "{ readonly source?: ImageSource; readonly at?: Vec3Like; readonly yaw?: number; readonly width?: number; readonly height?: number; }",
+          "optional": false,
           "doc": ""
         }
       ],
@@ -631,6 +713,20 @@
       "returns": "RayHit | undefined"
     },
     {
+      "name": "removeCamera",
+      "signature": "(id: string): void",
+      "doc": "Removes a virtual camera, and anything that was showing it.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "removeEntity",
       "signature": "(id: string): void",
       "doc": "Takes whatever is standing under `id` out of the world. **Removing something that is not there does nothing and is not an error**, which is what a script that cleans up defensively needs.",
@@ -673,12 +769,40 @@
       "returns": "void"
     },
     {
+      "name": "removePhoto",
+      "signature": "(id: string): void",
+      "doc": "Forgets a photo, freeing its pixels and removing anything that was showing it.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "removePlace",
       "signature": "(place: string): void",
       "doc": "Removes a whole place, its shapes with it. Nothing it added is in the undo history.",
       "params": [
         {
           "name": "place",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "removeScreen",
+      "signature": "(id: string): void",
+      "doc": "Removes a screen by id.",
+      "params": [
+        {
+          "name": "id",
           "type": "string",
           "optional": false,
           "doc": ""
@@ -811,6 +935,20 @@
       "returns": "void"
     },
     {
+      "name": "showImage",
+      "signature": "(options: { readonly id: string; readonly source: ImageSource; readonly corner?: HudCorner | undefined; readonly width: number; readonly height: number; }): void",
+      "doc": "Shows a camera or a photo in a corner of this player's screen. **A HUD image is not in the world**, so nothing else can see it and nothing can walk in front of it. It is the shape of a thing a place tells *one person*, the same way a `toast` is.",
+      "params": [
+        {
+          "name": "options",
+          "type": "{ readonly id: string; readonly source: ImageSource; readonly corner?: HudCorner; readonly width: number; readonly height: number; }",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "takeItem",
       "signature": "(item: string, count?: number | undefined): void",
       "doc": "Takes items out of what the player is carrying, and never fails. **Takes whatever is there, up to `count`.** A player who has already drunk the milk has none, and that is an ordinary state rather than a failure — so this does not throw, and a script that wanted to know how much it got keeps its own count in `saveData`. **A held item that runs out is dropped**, which is the reason the held slot lives inside the inventory: a hand holding something the count says is gone is a hand the crosshair reads as occupied.",
@@ -831,12 +969,40 @@
       "returns": "void"
     },
     {
+      "name": "takePhoto",
+      "signature": "(options: { readonly id: string; readonly camera?: string | undefined; readonly width?: number | undefined; readonly height?: number | undefined; }): Photo",
+      "doc": "Renders one frame and keeps it. **Returns before the pixels exist**, so a script can show the photo immediately and watch it fill in. There is no callback and no event: a photo is a thing that becomes true a frame or two after you ask for it, exactly as a `toast` appears on the next frame. **The picture is of the world, not of the screen.** It comes from a fresh pass through the scene, so it never contains the crosshair, a dialog or the HUD, and the same call gives the same picture whatever the player had open. Omit `camera` for the player's own view.",
+      "params": [
+        {
+          "name": "options",
+          "type": "{ readonly id: string; readonly camera?: string; readonly width?: number; readonly height?: number; }",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "Photo"
+    },
+    {
       "name": "toast",
       "signature": "(text: string): void",
       "doc": "Shows a line briefly over the world, for something the player should see rather than the console.",
       "params": [
         {
           "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "watchCamera",
+      "signature": "(id: string): void",
+      "doc": "Takes the player's view over and puts it at a camera, until `clearCamera`. **This player only.** A place watched by two peers is two views of one world from the same place, which is what every other effect does too.",
+      "params": [
+        {
+          "name": "id",
           "type": "string",
           "optional": false,
           "doc": ""
@@ -858,6 +1024,39 @@
       "doc": "How a shape changes the field.",
       "members": [],
       "union": ["Add", "Subtract", "Paint"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateCameraOptions",
+      "doc": "A viewpoint the place owns, rather than one the player is inside. **`at` and `target` rather than position and rotation**, because a security camera is aimed at something — a door, a till, a corridor — and a heading in radians is a number the person placing it has to work out from a map. The two points are also what a `screen` shows without a second definition.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "A name the caller chose. Two peers running the same script must agree on it."
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "Where the camera is."
+        },
+        {
+          "name": "target",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "The point it looks at."
+        },
+        {
+          "name": "fov",
+          "type": "number",
+          "optional": true,
+          "doc": "The vertical field of view in degrees, 1 to 179. **Omitted means the player's own field of view**, which is what makes a camera view feel like the same world seen from elsewhere rather than a different lens."
+        }
+      ],
+      "union": [],
       "alternatives": [],
       "type": ""
     },
@@ -1027,6 +1226,51 @@
       "type": ""
     },
     {
+      "name": "CreateScreenOptions",
+      "doc": "Puts a screen in the world showing a camera or a photo. **The resolution is not yours to choose.** It follows the screen's size on screen, so a monitor across a room renders small and the one in front of you renders sharp, and a place cannot ask for a four-kilopixel feed it has nowhere to put. **Only the screens nearest the player are redrawn in a frame.** The rest keep their last picture rather than going black, which is what a room full of monitors should look like.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "source",
+          "type": "ImageSource",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "yaw",
+          "type": "number",
+          "optional": false,
+          "doc": "A turn about up, in radians. The picture faces this way."
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "optional": false,
+          "doc": "How wide, in world units."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "optional": false,
+          "doc": "How tall, in world units."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "CreateShapeOptions",
       "doc": "What `createShape` takes: which place and id the operation belongs to, where it sits, what it is, and how it joins the fold.",
       "members": [
@@ -1117,6 +1361,22 @@
       "type": ""
     },
     {
+      "name": "HudCorner",
+      "doc": "The corners a HUD image may sit in.",
+      "members": [],
+      "union": ["top-left", "top-right", "bottom-left", "bottom-right"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "ImageSource",
+      "doc": "What a screen or a HUD image shows. **A camera is live and a photo is still**, and the difference is the source rather than a flag. `{ camera: \"hallway\" }` is redrawn while it is near enough to be seen; `{ photo: \"shot\" }` is the picture that was taken.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": "{ readonly camera: string; } | { readonly photo: string; }"
+    },
+    {
       "name": "Medium",
       "doc": "What a field does to a player inside it. The same five numbers the physics reads.",
       "members": [
@@ -1149,6 +1409,33 @@
           "type": "number",
           "optional": false,
           "doc": "The fastest this field lets a player fall. Zero does not hold them down."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "Photo",
+      "doc": "A picture this machine has taken. **An id and a size, and deliberately nothing else.** The pixels never cross the sandbox: a script can show a photo, put it on a screen, or offer it for saving, and cannot read it, hash it, or send it anywhere. That is the whole of the guarantee, and it is why a photo is not a string of bytes or a data URL.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "optional": false,
+          "doc": ""
         }
       ],
       "union": [],
@@ -1490,6 +1777,16 @@
   ],
   "limits": [
     {
+      "name": "MAX_CAMERA_FOV",
+      "value": "179",
+      "doc": "How wide a virtual camera's field of view may be, in degrees. **A hundred and seventy-nine, one short of a half turn**, because a camera at exactly 180° has no forward direction to build its basis from and is the one value where a lens stops being a lens. A place wanting a fisheye gets the widest lens that still has a centre."
+    },
+    {
+      "name": "MAX_CAMERAS",
+      "value": "32",
+      "doc": "How many virtual cameras may exist at once. **Thirty-two, an eighth of `MAX_LIGHTS`.** A camera is a position, a target and a field of view: it costs nothing until something looks through it, which is why the cap is so far below the light one. The number that actually costs is `MAX_LIVE_FEEDS` in `render/feeds.ts` — how many of these are *drawn* — and the gap between the two is deliberate, for the reason `MAX_LIGHTS` and `MAX_DRAWN_LIGHTS` have one: a place that declares a camera per room should not have to reason about how many fit in a frame."
+    },
+    {
       "name": "MAX_CAUSE_LENGTH",
       "value": "64",
       "doc": "The longest a cause of death may be, for the same reason: it is peer-supplied and ends up in a log and in an event payload."
@@ -1507,7 +1804,7 @@
     {
       "name": "MAX_COORDINATE",
       "value": "10000000",
-      "doc": "How far from the origin a place's geometry may reach, in world units. **Ten million, and the reason is the chunk window rather than the world.** The window is five chunks of 320 units (`GAME_WINDOW`), so geometry beyond a few thousand units is never meshed — but it is still folded, because the operation's box is tested per sample and a box a long way out is cheap. The real reason to bound it is that a coordinate is used in arithmetic, and at `1e9` a distance stops being representable in the float the field carries. Ten million is four orders of magnitude beyond anything reachable and comfortably inside the range where `x - y` is still exact to the millimetre."
+      "doc": "How far from the origin a place's geometry may reach, in world units. **Ten million, and the reason is the chunk window rather than the world.** The window is ten chunks of 160 units (`GAME_WINDOW`), so geometry beyond a few thousand units is never meshed — but it is still folded, because the operation's box is tested per sample and a box a long way out is cheap. The real reason to bound it is that a coordinate is used in arithmetic, and at `1e9` a distance stops being representable in the float the field carries. Ten million is four orders of magnitude beyond anything reachable and comfortably inside the range where `x - y` is still exact to the millimetre."
     },
     {
       "name": "MAX_DATA_KEY",
@@ -1563,6 +1860,16 @@
       "name": "MAX_EVENTS",
       "value": "4000",
       "doc": "The most events the log holds. **Facts are never forgotten** — a peer joining late still needs the whole history for the log to be the same log — so this is not a ring buffer and exceeding it is a refusal rather than an eviction. Four thousand is a long session of a place emitting a fact every few seconds, and a place that needs more is a place that needs summaries."
+    },
+    {
+      "name": "MAX_HUD_IMAGE",
+      "value": "512",
+      "doc": "How large a HUD image may be, in CSS pixels. **512, the largest feed bucket**, so a live HUD feed is never rendered at a size the bucket table in `render/feeds.ts` cannot give it and then scaled up by the overlay. It is also the point at which a picture in the corner of the screen stops being a picture in the corner."
+    },
+    {
+      "name": "MAX_HUD_IMAGES",
+      "value": "8",
+      "doc": "How many HUD images may be on screen at once. **Eight, which is more than fits on a phone screen and fewer than it takes to cover one.** A HUD image is drawn by the overlay rather than by the renderer, so it is cheap in GPU terms and expensive in the only currency that matters here: the player's view of the world."
     },
     {
       "name": "MAX_ITEM_COUNT",
@@ -1635,6 +1942,21 @@
       "doc": "How many timers a place may have outstanding at once. A cap on *live* timers rather than on timers ever created, because a script in a loop could otherwise make millions that are never pending: the ones that have fired are gone, and only the ones waiting are held. Ten thousand is far more than a place needs to express and few enough that the host's table stays small."
     },
     {
+      "name": "MAX_PHOTO_PIXELS",
+      "value": "number",
+      "doc": "The most pixels one photo may hold, as a product rather than a side. **1920 × 1080, and it is separate from `MAX_PHOTO_SIZE` because the two bound different misuse.** 2048 × 2048 is inside the per-side bound and is four times the pixels of a high-definition frame; a place that asks for it is asking for a buffer the GPU has to find room for per photo. The product is checked by the host, since a pair of fields cannot express it."
+    },
+    {
+      "name": "MAX_PHOTO_SIZE",
+      "value": "2048",
+      "doc": "How long one side of a photo may be, in pixels. **2048, past which a single side is more than a high-definition frame on its own.** The product is bounded separately by `MAX_PHOTO_PIXELS`, because a square inside this side is four times the pixels of a 1080p frame and a pair of fields cannot express that."
+    },
+    {
+      "name": "MAX_PHOTOS",
+      "value": "16",
+      "doc": "How many photos a place may hold at once. **Sixteen, and the bound is memory rather than count.** A photo is a canvas the size of the picture, so the cost is the pixel budget below times this one: sixteen 1080p photos is about a hundred and thirty megabytes of RGBA, which is a lot for a place to pin and is the point at which the number stops being decorative. A place that wants a contact sheet reuses its ids."
+    },
+    {
       "name": "MAX_PLACE_SOURCE",
       "value": "1000000",
       "doc": "How much source one place may carry altogether, in characters. **A total, and `load-place.ts` is the only thing that enforces it** — `MAX_SCRIPT_SOURCE` above bounds one file, and `MAX_PLACE_FILES` bounds how many there are, so the product is forty million characters of TypeScript arriving into a browser tab that then compiles it with a real `Program` per file. That is not a large place, it is a hang. A million is ten full-size files, which is far more than any place needs and far less than the cap would be if the intent were \"whatever fits\". It is read from the *decompressed* bytes as each file is read, so the loader never retains more than this however large the archive claims to be — which is also why it is a character count and not a compressed one: a number read off the zip's own header would be a number the zip wrote about itself."
@@ -1655,6 +1977,16 @@
       "doc": "How long the account that caused an event may be, in characters. A producer is a peer's identity, arriving from the wire, so it is bounded like one."
     },
     {
+      "name": "MAX_SCREEN_SIZE",
+      "value": "100",
+      "doc": "How large a screen may be, in world units. **A hundred metres, which is a cinema and not a wall.** The cost of drawing a quad does not change with its size, so this is not a performance bound: it is the point past which a screen is no longer a surface a place put somewhere and becomes a piece of the world, and the feed it shows is one bucket stretched over a hundred metres."
+    },
+    {
+      "name": "MAX_SCREENS",
+      "value": "64",
+      "doc": "How many screens may exist at once. **Sixty-four, the same as `MAX_MEDIUMS` and for the same shape of reason**: a screen is a quad in the world plus, if it is live, a render target. The target is the expensive half, and `MAX_LIVE_FEEDS` bounds how many are redrawn in a frame, so what is left for this number to bound is the quads — which is why it is generous."
+    },
+    {
       "name": "MAX_SCRIPT_SOURCE",
       "value": "100000",
       "doc": "The longest one of a place's script files may be, in characters. **A file, not a whole place.** A place is several files and there is no bound on how many there are, which is deliberate — the number of files is the person's decision and each one is small. This is the bound on a single file, so that one enormous file cannot arrive as a payload from a peer and be transpiled into an enormous program inside an interpreter with a step budget. A hundred thousand characters is roughly three thousand lines, which is a large module by any measure and comfortably more than any of the demo places."
@@ -1662,7 +1994,7 @@
     {
       "name": "MAX_SHAPE_SIZE",
       "value": "1000000",
-      "doc": "The largest a shape's own dimension may be. Smaller than `MAX_COORDINATE` deliberately: a shape ten million units across is not a shape, it is a number, and it defeats the candidate cache in `csg/bvh.ts` because its box overlaps every chunk. A kilometre is larger than the fog's far distance (`FOG_FAR` = four chunks) by a factor of eight, so nothing visible is lost."
+      "doc": "The largest a shape's own dimension may be. Smaller than `MAX_COORDINATE` deliberately: a shape ten million units across is not a shape, it is a number, and it defeats the candidate cache in `csg/bvh.ts` because its box overlaps every chunk. A kilometre is larger than the fog's far distance (`FOG_FAR` = eight chunks) by a factor of eight, so nothing visible is lost."
     },
     {
       "name": "MAX_SOFTNESS",
@@ -1698,6 +2030,26 @@
       "name": "MAX_ZONES",
       "value": "256",
       "doc": "The most zones a place may have. A zone is a box tested against the player's position once a frame, so the cost is proportional to the count: a thousand zones is a thousand box tests per player per frame. A place that wants a thousand triggers is a place that wants a spatial index, and the number here is low enough that no index is needed yet."
+    },
+    {
+      "name": "MIN_CAMERA_FOV",
+      "value": "1",
+      "doc": "How narrow and how wide a virtual camera's field of view may be, in degrees. **The same pair the player's camera accepts** (`camera-look`'s `fov`), because a security camera showing something the player's own camera could not is a difference nobody can see and a narrower value than one degree is a single pixel column. A field of view outside this pair is refused rather than clamped, as every field is."
+    },
+    {
+      "name": "MIN_HUD_IMAGE",
+      "value": "16",
+      "doc": "The smallest and largest a HUD image may be, in CSS pixels. **The same pair the feed a photo is displayed from is bucketed to**, because a HUD image larger than the largest feed bucket is a picture drawn at a size its own pixels do not have, and one smaller than the smallest is a thumbnail of nothing."
+    },
+    {
+      "name": "MIN_PHOTO_SIZE",
+      "value": "16",
+      "doc": "The smallest and largest side of a photo, in pixels. **Sixteen because a smaller picture is a colour rather than a photo**, and because a zero side is a render target with no pixels in it, which is a place that sees its own code produce nothing with no error anywhere near the cause."
+    },
+    {
+      "name": "MIN_SCREEN_SIZE",
+      "value": "0.05",
+      "doc": "The smallest and largest a screen may be, in world units. **Five centimetres to a hundred metres.** The floor is about a phone screen in a room and the ceiling is a cinema, which is as large as a surface a place plausibly calls a screen — beyond it a screen is a wall that happens to be a picture, and the cost of drawing it is the same either way. Both are in *world* units, so a screen's picture is its own size in metres rather than a resolution."
     },
     {
       "name": "MIN_SHAPE_SIZE",

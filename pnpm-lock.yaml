@@ -28,8 +28,8 @@ catalogs:
       specifier: 0.32.0
       version: 0.32.0
     '@random-mesh/rmsl':
-      specifier: 1.16.0
-      version: 1.16.0
+      specifier: 1.17.0
+      version: 1.17.0
     '@solidjs/signals':
       specifier: 2.0.0-beta.29
       version: 2.0.0-beta.29
@@ -196,7 +196,7 @@ importers:
         version: 7.3.1
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       '@solidjs/signals':
         specifier: 'catalog:'
         version: 2.0.0-beta.29
@@ -256,7 +256,7 @@ importers:
         version: link:../../packages/ui
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       '@solidjs/signals':
         specifier: 'catalog:'
         version: 2.0.0-beta.29
@@ -332,7 +332,7 @@ importers:
         version: 0.32.0
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       '@solidjs/signals':
         specifier: 'catalog:'
         version: 2.0.0-beta.29
@@ -384,7 +384,7 @@ importers:
         version: 7.3.1
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       '@solidjs/signals':
         specifier: 'catalog:'
         version: 2.0.0-beta.29
@@ -457,7 +457,7 @@ importers:
         version: 0.32.0
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       '@solidjs/router':
         specifier: 2.0.0-next.13
         version: 2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
@@ -627,7 +627,7 @@ importers:
         version: link:../csg
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -738,7 +738,7 @@ importers:
         version: 2.1.0
       '@random-mesh/rmsl':
         specifier: 'catalog:'
-        version: 1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1223,8 +1223,8 @@ packages:
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
 
-  '@random-mesh/rmsl@1.16.0':
-    resolution: {integrity: sha512-vb7qkCrFhwoTrFb5YqjMK9B5SdArF7azGcIdBKreB60+K8bWT8acHlePRZxBGnsu4WB7o8+DEwAMrLoKSi9yoA==}
+  '@random-mesh/rmsl@1.17.0':
+    resolution: {integrity: sha512-91PpR+44hg8aQ6oVGCze+cchN8OL2+ew6mQ8dw6VFODtKKSPnLOPbIpBEl/pbs6TeuN3BfFPXRgd+puqbNBqQw==}
     peerDependencies:
       vite: '>=5.0.0'
     peerDependenciesMeta:
@@ -2593,7 +2593,7 @@ snapshots:
 
   '@oxc-project/types@0.152.0': {}
 
-  '@random-mesh/rmsl@1.16.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))':
+  '@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))':
     dependencies:
       '@webgpu/types': 0.1.72
       esbuild: 0.28.2

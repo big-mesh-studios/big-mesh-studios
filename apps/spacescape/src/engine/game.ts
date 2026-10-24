@@ -187,6 +187,16 @@ export class Game {
   private cameraTarget: Vec3 | undefined;
   private cameraFov: number | undefined;
   /**
+   * Where a virtual camera has put the player's view, while one has it.
+   *
+   * **Separate from `cameraTarget` rather than a variant of it**, because the two mean different
+   * things: a look target keeps the camera at the player's eye and turns it, and a watched camera
+   * moves it somewhere else entirely. Only one of them is in force, and `watchCamera` clears the
+   * other so the answer never depends on which was written last.
+   */
+  private cameraView:
+    { at: Vec3; target: Vec3; fov: number | undefined } | undefined;
+  /**
    * The field of view the camera had before a place claimed it.
    *
    * **Remembered so clearing can put it *back*, rather than merely stop setting it.** A field
@@ -277,6 +287,28 @@ export class Game {
         this.cameraTarget.z,
       );
       if (this.cameraFov !== undefined) camera.fov = this.cameraFov;
+    }
+    // **A watched camera replaces the eye rather than turning it**, so it is placed rather than
+    // aimed: position first, then the look, which `lookAt` reads from the camera's own position.
+    if (this.cameraView !== undefined) {
+      const camera = this.viewport.camera;
+      // **Up is the world's up where the camera stands, not the player's.** On a flat world the
+      // two are the same number; on a sphere they are not, and a guarded camera on the far side of
+      // a planet that borrowed the player's up would be rolled. It is also the same `upAt` a feed
+      // of the same camera uses, so watching a camera and looking at a monitor showing it agree.
+      const up = this.world.frame.upAt(this.cameraView.at);
+      camera.up.set(up.x, up.y, up.z);
+      camera.position.set(
+        this.cameraView.at.x,
+        this.cameraView.at.y,
+        this.cameraView.at.z,
+      );
+      camera.lookAt(
+        this.cameraView.target.x,
+        this.cameraView.target.y,
+        this.cameraView.target.z,
+      );
+      camera.fov = this.cameraView.fov ?? this.baseFov ?? camera.fov;
     }
     // The aim traces the camera's matrices, and those are otherwise only brought
     // up to date at draw time — so it would aim with the previous frame's view.
@@ -468,6 +500,20 @@ export class Game {
    * — which is a nicer thing for a title sequence than for a level.
    */
   lookAt(at: { x: number; y: number; z: number }, fov?: number): void {
+    // **A look target releases a watched camera**, because the two are the same claim on one
+    // camera and the other way round is already handled in `watchCamera`. Leaving both set would
+    // make the answer depend on which was written last rather than on which was written.
+    //
+    // **And it gives back the lens the watch borrowed**, because a watch may have named a field of
+    // view and a look that names none has said nothing about the lens: without this, aiming after
+    // a camera at 20° would leave the player at 20° for the rest of the session.
+    if (this.cameraView !== undefined) {
+      this.cameraView = undefined;
+      if (this.baseFov !== undefined) {
+        this.viewport.camera.fov = this.baseFov;
+        this.baseFov = undefined;
+      }
+    }
     // **Captured on the first claim, not on every call.** A place that re-aims its
     // camera every tick must not recapture the zoom it is currently applying —
     // that would make clearing restore the place's own fov and leave the player
@@ -482,10 +528,39 @@ export class Game {
   clearCameraLook(): void {
     this.cameraTarget = undefined;
     this.cameraFov = undefined;
+    this.cameraView = undefined;
     if (this.baseFov !== undefined) {
       this.viewport.camera.fov = this.baseFov;
       this.baseFov = undefined;
     }
+  }
+
+  /**
+   * Takes the player's view over and puts it at a virtual camera, until `clearCameraLook`.
+   *
+   * **A position and a target, not a look target alone**, which is the whole difference from
+   * `lookAt`: a security camera is somewhere the player is not, and a camera that snapped back to
+   * the player's eye would be a view of the room the player is standing in rather than the one they
+   * are watching.
+   *
+   * **Its up is the world's up where it stands**, read in `tick` rather than stored here, because
+   * up is a function of position (ADR 0037) and a camera on the far side of a planet is the one
+   * case where the player's own up is the wrong answer.
+   */
+  watchCamera(
+    at: { x: number; y: number; z: number },
+    target: { x: number; y: number; z: number },
+    fov?: number,
+  ): void {
+    if (this.cameraView === undefined) this.baseFov = this.viewport.camera.fov;
+    this.cameraView = {
+      at: { x: at.x, y: at.y, z: at.z },
+      target: { x: target.x, y: target.y, z: target.z },
+      fov,
+    };
+    // **No look target while a camera is watched**, so the two cannot both apply and leave the
+    // answer depending on which was written last.
+    this.cameraTarget = undefined;
   }
 
   /**

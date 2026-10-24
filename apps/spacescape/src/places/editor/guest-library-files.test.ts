@@ -80,10 +80,10 @@ describe("the guest library the editor serves", () => {
   });
 
   it("exposes every function a place can call", () => {
-    // **A count, as a smoke alarm rather than a specification.** Thirty-seven is the `export const`
-    // bindings `place-api.ts` declares today; the file exports fifty-one declarations in all, the
-    // rest being types and one class. If this changes and the number below was not updated, the
-    // author is missing something a function exists and the editor does not offer.
+    // **A count, as a smoke alarm rather than a specification.** It is the number of `export const`
+    // bindings `place-api.ts` declares today; the file also exports types and one class, which the
+    // count is not about. If this changes and the number below was not updated, the author is
+    // missing something a function exists and the editor does not offer.
     //
     // **Counted from `export const`, because that is how the library declares them** — matching
     // `export function` would find nothing at all and the alarm would sit there reading zero.
@@ -97,7 +97,10 @@ describe("the guest library the editor serves", () => {
     // carries a level can read it, and that is the only way a script can find out what its own
     // place is made of. The count is a tripwire — it fails when a function is added and someone
     // has to look at the number rather than let it drift, which is what it is for.
-    expect(declared).toHaveLength(50);
+    // **61 after cameras, photos, screens and HUD images**, which added eleven between them:
+    // four camera verbs, two photo verbs, three screen verbs and two HUD verbs. Everything a
+    // place can call on a picture is in that group, and none of it is an event.
+    expect(declared).toHaveLength(61);
     expect(new Set(declared).size).toBe(declared.length);
     // **And the names a place is most likely to reach for first**, so the count above cannot pass
     // on a file that has the right number of exports and none of them callable from a place.
@@ -108,6 +111,11 @@ describe("the guest library the editor serves", () => {
       "createZone",
       "createLight",
       "createMedium",
+      "createCamera",
+      "watchCamera",
+      "takePhoto",
+      "createScreen",
+      "showImage",
       "after",
       "onTick",
       "saveData",

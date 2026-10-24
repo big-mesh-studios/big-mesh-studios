@@ -121,6 +121,10 @@ const stubEffects = (asked: string[]): HostEffects => ({
   lookAt: (at: Vec3, fov) =>
     asked.push(`look:${at.x},${at.y},${at.z},${fov ?? ""}`),
   clearCamera: () => asked.push("camera-clear"),
+  watchCamera: (camera) => asked.push(`watch:${camera.id}`),
+  takePhoto: (request) => asked.push(`photo:${request.id}`),
+  showImage: (image) => asked.push(`image:${image.id}`),
+  hideImage: (id) => asked.push(`image-hide:${id}`),
 });
 
 const stubClock = (asked: string[]): ClockCommands => ({

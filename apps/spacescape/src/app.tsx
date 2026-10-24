@@ -29,8 +29,11 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  PerspectiveCamera,
   SphereGeometry,
   Vector3,
+  WebGLRenderTarget,
+  type Texture,
 } from "@random-mesh/rmsl/scene";
 
 import { Console, createConsole, type ConsoleState } from "./console/console";
@@ -152,7 +155,7 @@ import {
   type PrecisionProbe,
 } from "./render/precision";
 import { SurfaceMaterial } from "./render/surface-material";
-import { createViewport, type Viewport } from "./render/viewport";
+import { createViewport, FOV_Y, type Viewport } from "./render/viewport";
 import { VERTEX_BYTES } from "./render/spike-geometry";
 import {
   EDITOR_WINDOW,
@@ -188,7 +191,19 @@ import {
 } from "./world/world-geometry";
 import { createCloudLayer, type CloudLayer } from "./world/cloud-layer";
 import { createZoneLines, type ZoneLines } from "./places/zones";
-import { PlaceHost, type Dialog, type Ending } from "./places/host";
+import {
+  PlaceHost,
+  type Dialog,
+  type Ending,
+  type HostImage,
+} from "./places/host";
+import {
+  aimCamera,
+  createHudFeedLayer,
+  createScreenLayer,
+  MAX_LIVE_FEEDS,
+} from "./render/feeds";
+import { createPhotoLayer } from "./render/photos";
 import { ModelLibrary } from "./places/model-library";
 import { FigureSet } from "./figures/figure-set";
 import { PlaceOverlay } from "./places/ui/PlaceOverlay";
@@ -234,7 +249,12 @@ import type { PublishedPlace } from "./places/place-record";
 import { PlacesBrowser } from "./places/browser/PlacesBrowser";
 import { PlaceDocs } from "./places/reference/PlaceDocs";
 import { MAX_OPERATIONS_PER_PLACE } from "./places/place-registry";
-import { MAX_ZONES } from "./places/limits";
+import {
+  MAX_CAMERAS,
+  MAX_PHOTOS,
+  MAX_SCREENS,
+  MAX_ZONES,
+} from "./places/limits";
 import {
   bakeCloudFieldOffThread,
   type CloudBakeSource,
@@ -257,6 +277,17 @@ import styles from "./app.module.css";
 
 /** How often the header is refreshed. A frame's worth of churn is unreadable. */
 const READOUT_INTERVAL_MS = 250;
+
+/**
+ * How often a live HUD image is read back from the GPU.
+ *
+ * **About fifteen times a second, which is the one place this feature costs a stall.** A DOM
+ * element cannot sample a GL texture, so a HUD camera feed is the single case that has to come
+ * back to the CPU. At 15 Hz the copy is a few hundred kilobytes a second rather than a few
+ * megabytes, and a small monitor in the corner of the screen is exactly the thing whose frame rate
+ * nobody can see. A photo in the HUD does not come through here at all — it is already a canvas.
+ */
+const HUD_FEED_INTERVAL_MS = 66;
 
 /**
  * Everything a place is, as the one runner takes it.
@@ -571,7 +602,7 @@ type CloudStatus =
  * One line, or several, saying what a running place has actually done.
  *
  * **Counts rather than a list.** `/place:state` is asked "is this place all right", and the
- * answer to that is four integers and whether anything went wrong — not the four thousand
+ * answer to that is a handful of integers and whether anything went wrong — not the four thousand
  * operations it made. A person who wants those can read `/place:notices`, which is where the
  * things that went wrong go.
  *
@@ -586,6 +617,14 @@ const describePlace = (id: string, host: PlaceHost): string => {
     `shapes   ${host.places.operationCount} of ${MAX_OPERATIONS_PER_PLACE}`,
     `zones    ${zones.length} of ${MAX_ZONES}`,
     `lights   ${host.lightCount} (nearest ${Math.min(host.lightCount, MAX_DRAWN_LIGHTS)} drawn)`,
+    `cameras  ${host.cameraList.length} of ${MAX_CAMERAS}${
+      host.watchedCamera === undefined
+        ? ""
+        : ` (watching ${host.watchedCamera.id})`
+    }`,
+    `screens  ${host.screenList.length} of ${MAX_SCREENS} (nearest ${Math.min(host.screenList.length, MAX_LIVE_FEEDS)} drawn)`,
+    `photos   ${host.photoList.length} of ${MAX_PHOTOS}`,
+    `images   ${host.imageList.length}`,
     `timers   ${host.pendingTimerCount}`,
     `events   ${host.events.length}`,
     `data     ${host.storedData.size}`,
@@ -670,6 +709,22 @@ export default function App() {
    */
   const [placeDialog, setPlaceDialog] = createSignal<Dialog | undefined>();
   const [placeEnding, setPlaceEnding] = createSignal<Ending | undefined>();
+  /**
+   * The HUD images a place has asked for, mirrored from the host.
+   *
+   * **A signal like the dialog**, because the overlay is a Solid component and the host holds no
+   * reactive state. The host's `imageList` is still the truth; this is what the overlay draws, and
+   * a frame that does not change the list does not touch the signal.
+   */
+  const [placeImages, setPlaceImages] = createSignal<readonly HostImage[]>([]);
+  /**
+   * Bumped when a picture's pixels arrive, so the overlay redraws its canvas.
+   *
+   * **Because a live feed and a photo change without their ids, sizes or corners changing**, and
+   * the overlay has no way to know a canvas behind its own has been written. A counter is the
+   * smallest signal that means "something you are drawing from is newer than you think".
+   */
+  const [hudRevision, setHudRevision] = createSignal(0);
   /**
    * What is loaded, kept so an ending's "play again" can run it again.
    *
@@ -1524,6 +1579,21 @@ export default function App() {
       : describePrecision(measured);
   });
 
+  /**
+   * Copies a HUD picture's current pixels into the overlay's own canvas.
+   *
+   * **A component-scope slot because the layers are built inside `onSettled`** and the JSX that
+   * hands this to `PlaceOverlay` is outside it. The slot is assigned once, with the viewport, and
+   * the overlay only ever calls it after a mount — so it is never the `undefined` it starts as.
+   *
+   * **The overlay draws into a canvas of its own rather than showing the source directly**, because
+   * a source is either a `<canvas>` the application owns (a photo) or one the HUD feed layer owns,
+   * neither of which Solid can mount into a list that appears and disappears. One `drawImage` into
+   * a canvas the component owns is the smallest thing that works for both.
+   */
+  let drawHudImage:
+    ((image: HostImage, canvas: HTMLCanvasElement) => void) | undefined;
+
   // Solid 2 replaced `onMount` with `onSettled`, which fires once after the current
   // activity settles. It does *not* return a disposal — the callback returns the teardown,
   // and `onCleanup` inside one is a dev-mode error that halts the reactive system. So the
@@ -1558,6 +1628,64 @@ export default function App() {
       ...(measured.ok ? { precision: measured.precision } : {}),
     });
     viewport.setBackground(new Color(0.07, 0.07, 0.09));
+
+    /**
+     * The screens a place puts in the world, the feeds behind them, and the photos it takes.
+     *
+     * **Built with the viewport rather than with the place**, because they own GL surfaces for
+     * the life of the tab: creating them when a place loads and freeing them when it goes would
+     * rebuild the pool, the geometry and the scratch camera on every load. A place's own state
+     * arrives through `sync`, and `dropPlace` clears it — the objects stay.
+     *
+     * A feed is derived, never replicated (ADR 0016): both peers run the same script, both draw
+     * their own copy of a screen, and no pixels cross the wire.
+     */
+    const screenLayer = createScreenLayer(viewport.scene);
+    const photoLayer = createPhotoLayer();
+    const hudFeeds = createHudFeedLayer();
+    /**
+     * The one camera every off-screen pass looks through.
+     *
+     * **One, reused, rather than one per feed**, because a camera is a matrix and a projection and
+     * nothing else: it is written immediately before the pass that uses it, and no pass outlives
+     * the call. The renderer restores the canvas framebuffer on return, so the main camera is
+     * unaffected by anything drawn here.
+     */
+    const feedCamera = new PerspectiveCamera(
+      FOV_Y,
+      1,
+      viewport.camera.near,
+      viewport.camera.far,
+    );
+    /**
+     * The signature of the HUD images the overlay was last given.
+     *
+     * **Because the host's list is rebuilt every frame**, and handing a new array to a Solid
+     * signal would rerender the overlay sixty times a second for a list that has not changed.
+     * Ids, sources, corners and sizes are the whole of what the overlay draws from.
+     */
+    let lastImageSignature = "";
+    /** When each HUD feed was last read back, and which ones are still in flight. */
+    const hudCapturedAt = new Map<string, number>();
+    const hudBusy = new Set<string>();
+
+    drawHudImage = (image, canvas): void => {
+      const context = canvas.getContext("2d");
+      if (context === null) return;
+      const source =
+        "photo" in image.source
+          ? photoLayer.canvas(image.source.photo)
+          : hudFeeds.canvas(image.id);
+      if (source === undefined) {
+        // **Black, not transparent.** The border is what says a picture belongs there; a
+        // transparent fill inside it would show the world through what is meant to be a screen.
+        context.fillStyle = "#000";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    };
 
     // The sky, added before anything else in the scene. rmsl has no render-order
     // key — draw order is scene traversal order — and the dome neither tests nor
@@ -2235,6 +2363,17 @@ export default function App() {
       setPlaceBanner(undefined);
       setPlaceToast(undefined);
       zoneLines.update([]);
+      // **The place's pictures go with it.** A screen outliving its place is a monitor hanging in
+      // a world that no longer has a room around it, and a photo outliving it is pixels pinned for
+      // an id nothing can name. The layers themselves stay, because they own the pool and the
+      // geometry rather than the place.
+      screenLayer.clear();
+      photoLayer.reconcile([]);
+      hudFeeds.sync([], new Map());
+      setPlaceImages([]);
+      lastImageSignature = "";
+      hudCapturedAt.clear();
+      hudBusy.clear();
       sculpt.places.clearAll();
       sculpt.refreshPlaces();
       // **The aim comes back with the place's absence.** A locked place that was unloaded by
@@ -2398,6 +2537,26 @@ export default function App() {
           setFlying: (on) => game.setFlying(on),
           lookAt: (at, fov) => game.lookAt(at, fov),
           clearCamera: () => game.clearCameraLook(),
+          // **A watched camera is a second override with the same release.** `Game` already owns
+          // the player's camera, so the place layer hands it a position and a target and nothing
+          // else; `clearCamera` above is the way back for both.
+          watchCamera: (camera) =>
+            game.watchCamera(camera.at, camera.target, camera.fov),
+          // **A photo request is queued, not rendered here**, because this runs inside a script
+          // step and a render inside one would draw the world halfway through a place's changes.
+          // The frame loop takes one a frame and reads it back without stalling the pipeline.
+          takePhoto: (request) => photoLayer.request(request),
+          // **The pixels behind a HUD image are not in the payload**, so these only publish the
+          // list the overlay draws from. The frame loop reconciles it against the host as well,
+          // which is what makes a place that is dropped take its images with it.
+          showImage: (image) =>
+            setPlaceImages((current) =>
+              current.filter((shown) => shown.id !== image.id).concat(image),
+            ),
+          hideImage: (id) =>
+            setPlaceImages((current) =>
+              current.filter((shown) => shown.id !== id),
+            ),
         },
         clock,
         onNotice: notice,
@@ -4149,6 +4308,80 @@ export default function App() {
       });
     });
 
+    /**
+     * Draws one off-screen pass: a camera, a target, and this frame's sun and lanterns.
+     *
+     * **The lights are swapped and put back in a `finally`**, because the next thing that draws is
+     * either another feed or the main pass, and both must see the lamp nearest *them*. A feed in a
+     * lit room lit by the lamp outside the player's door is the kind of wrong that looks like a
+     * shader bug; restoring the array in a `finally` means a render that throws cannot leave the
+     * whole world lit from somewhere else.
+     *
+     * **`view` absent means the player's own eye**, which is what a photo without a camera is:
+     * the same view, into a throwaway target instead of the canvas. That is what keeps the
+     * crosshair, a dialog and the HUD out of the picture — none of them are in the GL scene.
+     *
+     * **`hideSelf` is the feedback guard**: sampling the texture attached to the bound framebuffer
+     * is undefined, so a screen showing the camera being drawn is hidden for the length of that
+     * pass.
+     */
+    const drawFeed = (
+      target: WebGLRenderTarget,
+      view:
+        | {
+            readonly id: string;
+            readonly at: Vec3;
+            readonly target: Vec3;
+            readonly fov: number | undefined;
+          }
+        | undefined,
+      hideSelf: boolean,
+    ): void => {
+      const aspect = target.width / Math.max(1, target.height);
+      if (view === undefined) {
+        // A copy of the player's own camera, not the camera itself: the projection is rebuilt for
+        // this target's aspect ratio, and writing that into the camera the player sees through
+        // would letterbox the game for one frame.
+        feedCamera.up.copy(viewport.camera.up);
+        feedCamera.position.copy(viewport.camera.position);
+        feedCamera.quaternion.copy(viewport.camera.quaternion);
+        feedCamera.fov = viewport.camera.fov;
+        feedCamera.near = viewport.camera.near;
+        feedCamera.far = viewport.camera.far;
+        feedCamera.aspect = aspect;
+        feedCamera.updateProjectionMatrix();
+      } else {
+        aimCamera(
+          feedCamera,
+          view,
+          aspect,
+          WORLD.frame.upAt(view.at),
+          viewport.camera.fov,
+        );
+      }
+
+      const feedLights =
+        host?.visibleLights(feedCamera.position, MAX_DRAWN_LIGHTS) ?? [];
+      const previousTerrain = material.lights.lights;
+      const previousWater = GAME_WATER.material.lights.lights;
+      const previousTint = FIGURE_TINT.material.lights.lights;
+      material.lights.lights = feedLights;
+      GAME_WATER.material.lights.lights = feedLights;
+      FIGURE_TINT.material.lights.lights = feedLights;
+      if (hideSelf && view !== undefined)
+        screenLayer.hideShowing(view.id, true);
+      try {
+        viewport.renderer.render(viewport.scene, feedCamera, target);
+      } finally {
+        material.lights.lights = previousTerrain;
+        GAME_WATER.material.lights.lights = previousWater;
+        FIGURE_TINT.material.lights.lights = previousTint;
+        if (hideSelf && view !== undefined) {
+          screenLayer.hideShowing(view.id, false);
+        }
+      }
+    };
+
     viewport.renderer.setAnimationLoop((time: number) => {
       const dt =
         lastTime === 0 ? 1 / 60 : Math.min((time - lastTime) / 1000, MAX_STEP);
@@ -4297,6 +4530,114 @@ export default function App() {
       if (sky !== null) sky.material.pixelScale = viewport.pixelRatio;
       sky?.update(game.player.position, light);
       layer?.update(game.player.position, light);
+
+      // ---- Pictures: photos, feeds and screens ----
+      //
+      // **After everything the world is drawn with is settled, and before the main pass.** A feed
+      // is a second view of this frame's world, so it must use this frame's sun, fog and lights;
+      // and the main pass samples every screen's texture, so every feed has to have been drawn by
+      // the time it runs. The order below is exactly that: photos first (they are independent),
+      // then HUD feeds, then the screens the player can see.
+      const cameras = new Map(
+        (host?.cameraList ?? []).map((camera) => [camera.id, camera] as const),
+      );
+
+      // **The photos the host still knows about**, and the texture each one's canvas holds. A
+      // photo's pixels are local: nothing here is replicated and nothing crosses the wire.
+      const photos = host?.photoList ?? [];
+      photoLayer.reconcile(photos);
+      const photoTextures = new Map<string, Texture>();
+      for (const photo of photos) {
+        const texture = photoLayer.texture(photo.id);
+        if (texture !== undefined) photoTextures.set(photo.id, texture);
+      }
+
+      // **The screens, reconciled against the host's list**, exactly as figures are: the host owns
+      // the data, this layer owns the quad and the target, and a screen that is gone takes its
+      // quad with it.
+      screenLayer.sync(host?.screenList ?? [], cameras, photoTextures, {
+        camera: viewport.camera,
+        viewportHeight: viewport.renderer.canvas.height,
+        upAt: (point) => WORLD.frame.upAt(point),
+      });
+
+      // **The HUD list, published only when it changes.** A new array every frame would rerender
+      // the overlay sixty times a second for a list that is usually eight entries and usually the
+      // same eight. The signature is everything the overlay draws from.
+      const images = host?.imageList ?? [];
+      const imageSignature = images
+        .map(
+          (image) =>
+            `${image.id}:${image.corner}:${image.width}x${image.height}:${
+              "camera" in image.source
+                ? `c${image.source.camera}`
+                : `p${image.source.photo}`
+            }`,
+        )
+        .join("|");
+      if (imageSignature !== lastImageSignature) {
+        lastImageSignature = imageSignature;
+        setPlaceImages([...images]);
+      }
+      hudFeeds.sync(images, cameras);
+      // **Forget the timestamps of images that are gone**, or a place that shows and hides
+      // corner monitors in a loop would grow a map entry per id for the life of the tab. The list
+      // is at most `MAX_HUD_IMAGES` long, so this is a handful of deletes.
+      const hudIds = new Set(images.map((image) => image.id));
+      for (const id of hudCapturedAt.keys()) {
+        if (!hudIds.has(id)) hudCapturedAt.delete(id);
+      }
+
+      // **One photo a frame.** The target is read back through a pixel-pack buffer, so there is no
+      // pipeline stall; the next job waits for the fence, which is why `next` returns nothing while
+      // one is in flight.
+      const job = photoLayer.next();
+      if (job !== undefined) {
+        drawFeed(job.target, job.request.camera, false);
+        void photoLayer
+          .capture(job, viewport.renderer)
+          // **The HUD redraws when the pixels land**, not when the id was allocated. A photo in
+          // the HUD is the one place the readback's latency is visible.
+          .then(() => setHudRevision((revision) => revision + 1))
+          .catch((error: unknown) => {
+            console.warn("a photo could not be read back:", error);
+          });
+      }
+
+      // **HUD camera feeds, at a rate the copy can afford.** Every feed needs a readback because
+      // the DOM cannot sample a GL texture; the target is the HUD image's own size, and the copy
+      // is skipped while the previous one is still in flight.
+      for (const feed of hudFeeds.feeds()) {
+        const id = feed.image.id;
+        if (hudBusy.has(id)) continue;
+        const last = hudCapturedAt.get(id) ?? Number.NEGATIVE_INFINITY;
+        if (time - last < HUD_FEED_INTERVAL_MS) continue;
+        hudCapturedAt.set(id, time);
+        hudBusy.add(id);
+        // **No self-reference guard here, unlike the screen pass below.** The target being drawn
+        // into is the HUD image's own, and nothing in the scene samples it — a screen showing this
+        // camera samples its own target. Hiding those for the length of this pass would churn two
+        // meshes to prevent a feedback loop that cannot happen.
+        drawFeed(feed.target, feed.camera, false);
+        void hudFeeds
+          .capture(feed, viewport.renderer)
+          .then(() => setHudRevision((revision) => revision + 1))
+          .catch((error: unknown) => {
+            console.warn("a HUD feed could not be read back:", error);
+          })
+          .finally(() => hudBusy.delete(id));
+      }
+
+      // **The screens the player can actually see**, nearest first. A feed that is not drawn keeps
+      // its last picture rather than going black, which is what a room full of monitors should
+      // look like when the player turns towards the one that matters.
+      for (const feed of screenLayer.feeds(game.player.position)) {
+        drawFeed(feed.target, feed.camera, true);
+        // **Only now may the screen name this target**, because the first pass into it is what
+        // makes its contents defined.
+        screenLayer.markRendered(feed.screen.id);
+      }
+
       if (game.underwater !== underwater()) setUnderwater(game.underwater);
       viewport.render();
 
@@ -4318,6 +4659,12 @@ export default function App() {
       // through `refreshPlaces`, and `session.dispose()` is about to take away the very field
       // that reads them — so the order is the one that lets both finish.
       dropPlace();
+      // **The pictures after the place that named them.** `dropPlace` clears the lists, so what
+      // is left here is the geometry, the pool and the canvases — the layer's own cost rather
+      // than the place's.
+      screenLayer.dispose();
+      photoLayer.dispose();
+      hudFeeds.dispose();
       zoneLines.dispose();
       // **The bakes before their meshes.** A bake disposed of after the mesh it was going to
       // build is a worker left running for the life of the tab, and one that answers after
@@ -4460,6 +4807,9 @@ export default function App() {
           narration={narration}
           dialog={placeDialog}
           ending={placeEnding}
+          images={placeImages}
+          revision={hudRevision}
+          drawImage={(image, target) => drawHudImage?.(image, target)}
           onChoose={(entityId, option) => placeHost?.choose(entityId, option)}
           onRestart={() => {
             const again = loadedForRestart;

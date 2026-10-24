@@ -171,6 +171,10 @@ describe("a place's inventory, over the wire", () => {
         setFlying: () => {},
         lookAt: () => {},
         clearCamera: () => {},
+        watchCamera: () => {},
+        takePhoto: () => {},
+        showImage: () => {},
+        hideImage: () => {},
       },
       clock: {
         jumpTo: () => {},

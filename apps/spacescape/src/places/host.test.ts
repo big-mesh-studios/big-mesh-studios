@@ -14,7 +14,15 @@ import {
   type RayHit,
 } from "./host";
 import { PlaceRegistry } from "./place-registry";
-import { MAX_LIGHTS, MAX_MEDIUMS } from "./limits";
+import {
+  MAX_CAMERAS,
+  MAX_HUD_IMAGES,
+  MAX_LIGHTS,
+  MAX_MEDIUMS,
+  MAX_PHOTOS,
+  MAX_PHOTO_PIXELS,
+  MAX_SCREENS,
+} from "./limits";
 import { materialId } from "../render/material-names";
 import { SculptDocument } from "../edit/document";
 import { FoldOrder } from "../edit/fold-order";
@@ -121,6 +129,10 @@ const stubEffects = (asked: Asked): HostEffects => ({
   lookAt: (at: Vec3, fov) =>
     asked.push(`look:${at.x},${at.y},${at.z},${fov ?? ""}`),
   clearCamera: () => asked.push("camera-clear"),
+  watchCamera: (camera) => asked.push(`watch:${camera.id}`),
+  takePhoto: (request) => asked.push(`photo:${request.id}`),
+  showImage: (image) => asked.push(`image:${image.id}`),
+  hideImage: (id) => asked.push(`image-hide:${id}`),
 });
 
 /**
@@ -2339,5 +2351,257 @@ describe("a place that carries a level", () => {
 
     expect(world.places.get("level")?.ids()).toEqual(["floor"]);
     expect(notices.join(" ")).toMatch(/floor/);
+  });
+});
+
+/**
+ * Virtual cameras, photos, screens and HUD images.
+ *
+ * The properties here are the ones a script could get wrong in a way the type system cannot catch:
+ *
+ * 1. **A camera is data, and moving it touches only the fields that were named**, so panning a
+ *    camera is one field rather than a definition repeated.
+ * 2. **Removing a camera takes what was showing it**, because a screen whose source is gone is a
+ *    black rectangle the place can no longer explain or repair.
+ * 3. **A photo is allocated and immediately handed to the application**, with its pixels arriving
+ *    later — the id exists before the picture does, and the pixel budget is a product the field
+ *    rules cannot express.
+ * 4. **The collection limits bite**, at the value and one past it, because a cap nothing refuses
+ *    is a cap that reads as safety and is not.
+ */
+describe("cameras, photos, screens and HUD images", () => {
+  it("keeps a camera where a place put it, and moves only the fields it named", async () => {
+    const { host, asked } = await start({
+      "main.ts": `
+        import { createCamera, moveCamera, onTick } from "voxelscape";
+        createCamera({ id: "hall", at: [1, 2, 3], target: [0, 0, 0], fov: 60 });
+        moveCamera("hall", { target: [9, 9, 9] });
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.cameraList).toEqual([
+      {
+        id: "hall",
+        at: { x: 1, y: 2, z: 3 },
+        target: { x: 9, y: 9, z: 9 },
+        fov: 60,
+      },
+    ]);
+    // Nothing watched it, so the application was never asked to move the view.
+    expect(asked.filter((line) => line.startsWith("watch:"))).toEqual([]);
+    host.dispose();
+  });
+
+  it("refuses a camera past MAX_CAMERAS, and says how many a world may hold", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createCamera, onTick } from "voxelscape";
+        for (let i = 0; i <= ${MAX_CAMERAS}; i++) {
+          createCamera({ id: "c" + i, at: [i, 0, 0], target: [0, 0, 0] });
+        }
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.cameraList).toHaveLength(MAX_CAMERAS);
+    expect(notices.join("\n")).toContain(
+      `world may hold ${MAX_CAMERAS} cameras`,
+    );
+    host.dispose();
+  });
+
+  it("takes a screen and a HUD image with a camera that is removed, and gives the view back", async () => {
+    const { host, asked } = await start({
+      "main.ts": `
+        import {
+          createCamera, watchCamera, createScreen, showImage, removeCamera, onTick
+        } from "voxelscape";
+        createCamera({ id: "hall", at: [0, 3, 0], target: [0, 0, 10] });
+        watchCamera("hall");
+        createScreen({
+          id: "monitor", source: { camera: "hall" },
+          at: [0, 2, 5], yaw: 0, width: 2, height: 1,
+        });
+        showImage({
+          id: "feed", source: { camera: "hall" },
+          corner: "top-right", width: 320, height: 180,
+        });
+        removeCamera("hall");
+        onTick(() => {});
+      `,
+    });
+
+    // **The cascade is the point.** Both named the camera, both are gone, and the player is no
+    // longer looking through a camera that no longer exists.
+    expect(host.cameraList).toEqual([]);
+    expect(host.screenList).toEqual([]);
+    expect(host.imageList).toEqual([]);
+    expect(host.watchedCamera).toBeUndefined();
+    expect(asked).toContain("camera-clear");
+    expect(asked).toContain("image-hide:feed");
+    host.dispose();
+  });
+
+  it("refuses a screen whose camera does not exist, rather than drawing black forever", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createScreen, onTick } from "voxelscape";
+        createScreen({
+          id: "monitor", source: { camera: "nowhere" },
+          at: [0, 2, 5], yaw: 0, width: 2, height: 1,
+        });
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.screenList).toEqual([]);
+    expect(notices.join("\n")).toContain('no camera called "nowhere"');
+    host.dispose();
+  });
+
+  it("allocates a photo before its pixels exist, and hands the request to the application", async () => {
+    const { host, asked } = await start({
+      "main.ts": `
+        import { takePhoto, onTick } from "voxelscape";
+        takePhoto({ id: "shot", width: 640, height: 360 });
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.photoList).toEqual([{ id: "shot", width: 640, height: 360 }]);
+    expect(asked).toContain("photo:shot");
+    host.dispose();
+  });
+
+  it("refuses a photo whose sides are each legal but whose product is not", async () => {
+    // **The reason `MAX_PHOTO_PIXELS` exists at all**: 2048 is inside `MAX_PHOTO_SIZE`, and a
+    // square of it is four times a high-definition frame. No per-field rule can see the product.
+    const side = Math.floor(Math.sqrt(MAX_PHOTO_PIXELS)) + 1;
+    const { host, notices } = await start({
+      "main.ts": `
+        import { takePhoto, onTick } from "voxelscape";
+        takePhoto({ id: "huge", width: ${side}, height: ${side} });
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.photoList).toEqual([]);
+    expect(notices.join("\n")).toContain(
+      `more than ${MAX_PHOTO_PIXELS} pixels`,
+    );
+    host.dispose();
+  });
+
+  it("refuses a photo past MAX_PHOTOS, and forgets one that is removed", async () => {
+    // **`removePhoto` runs before the overflow, not after.** A refused effect throws out of the
+    // script — the place's top-level code is a run like any other — so anything written after the
+    // nineteenth `takePhoto` would never execute, and a test that put the removal there would be
+    // asserting about a line the interpreter never reached.
+    const { host, notices } = await start({
+      "main.ts": `
+        import { takePhoto, removePhoto, onTick } from "voxelscape";
+        takePhoto({ id: "gone", width: 16, height: 16 });
+        removePhoto("gone");
+        for (let i = 0; i <= ${MAX_PHOTOS}; i++) {
+          takePhoto({ id: "p" + i, width: 16, height: 16 });
+        }
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.photoList).toHaveLength(MAX_PHOTOS);
+    expect(host.photoList.map((photo) => photo.id)).not.toContain("gone");
+    expect(notices.join("\n")).toContain(`may hold ${MAX_PHOTOS} photos`);
+    host.dispose();
+  });
+
+  it("refuses a screen past MAX_SCREENS", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createCamera, createScreen, onTick } from "voxelscape";
+        createCamera({ id: "hall", at: [0, 3, 0], target: [0, 0, 10] });
+        for (let i = 0; i <= ${MAX_SCREENS}; i++) {
+          createScreen({
+            id: "s" + i, source: { camera: "hall" },
+            at: [0, 2, 5], yaw: 0, width: 1, height: 1,
+          });
+        }
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.screenList).toHaveLength(MAX_SCREENS);
+    expect(notices.join("\n")).toContain(`may hold ${MAX_SCREENS} screens`);
+    host.dispose();
+  });
+
+  it("refuses a HUD image past MAX_HUD_IMAGES", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createCamera, showImage, onTick } from "voxelscape";
+        createCamera({ id: "hall", at: [0, 3, 0], target: [0, 0, 10] });
+        for (let i = 0; i <= ${MAX_HUD_IMAGES}; i++) {
+          showImage({
+            id: "i" + i, source: { camera: "hall" },
+            corner: "top-right", width: 32, height: 32,
+          });
+        }
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.imageList).toHaveLength(MAX_HUD_IMAGES);
+    expect(notices.join("\n")).toContain(`show ${MAX_HUD_IMAGES} images`);
+    host.dispose();
+  });
+});
+
+describe("a camera and a look target take the view from each other", () => {
+  it("stops watching a camera when the place aims the camera itself", async () => {
+    // **One claim on one camera.** Watching and aiming are the same override, so the second one
+    // wins in both directions: `watchCamera` already dropped a look target, and `lookAt` has to
+    // drop the watch or the engine would still be placing the view at a camera the place believes
+    // it has stopped watching.
+    const { host, asked } = await start({
+      "main.ts": `
+        import { createCamera, watchCamera, lookAt, onTick } from "voxelscape";
+        createCamera({ id: "hall", at: [0, 3, 0], target: [0, 0, 10] });
+        watchCamera("hall");
+        lookAt(1, 2, 3, 40);
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.watchedCamera).toBeUndefined();
+    expect(asked).toContain("look:1,2,3,40");
+    host.dispose();
+  });
+
+  it("takes a screen and a HUD image with a photo that is removed", async () => {
+    const { host, asked } = await start({
+      "main.ts": `
+        import {
+          takePhoto, createScreen, showImage, removePhoto, onTick
+        } from "voxelscape";
+        takePhoto({ id: "shot", width: 64, height: 64 });
+        createScreen({
+          id: "print", source: { photo: "shot" },
+          at: [0, 2, 5], yaw: 0, width: 1, height: 1,
+        });
+        showImage({
+          id: "thumbnail", source: { photo: "shot" },
+          corner: "bottom-left", width: 64, height: 64,
+        });
+        removePhoto("shot");
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.photoList).toEqual([]);
+    expect(host.screenList).toEqual([]);
+    expect(host.imageList).toEqual([]);
+    expect(asked).toContain("image-hide:thumbnail");
+    host.dispose();
   });
 });

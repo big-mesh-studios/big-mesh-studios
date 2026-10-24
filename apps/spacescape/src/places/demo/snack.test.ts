@@ -135,6 +135,10 @@ const start = async (
     setFlying: () => {},
     lookAt: () => {},
     clearCamera: () => {},
+    watchCamera: () => {},
+    takePhoto: () => {},
+    showImage: () => {},
+    hideImage: () => {},
   };
 
   const sky: DayNightController | undefined =

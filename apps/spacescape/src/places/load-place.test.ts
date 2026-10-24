@@ -110,6 +110,10 @@ const stubEffects = (): HostEffects => ({
   setFlying: () => {},
   lookAt: (_at: Vec3, _fov?: number) => {},
   clearCamera: () => {},
+  watchCamera: () => {},
+  takePhoto: () => {},
+  showImage: () => {},
+  hideImage: () => {},
 });
 
 const stubClock = (): ClockCommands => ({

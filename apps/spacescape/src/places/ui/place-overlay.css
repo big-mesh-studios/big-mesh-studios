@@ -27,6 +27,22 @@
   pointer-events: none;
 }
 
+/* ---- Pictures in a corner ----
+ *
+ * **`pointer-events: none` here too**, because a HUD image is over the world and a corner monitor
+ * that swallowed a click would be a corner of the screen the player cannot dig through. The
+ * border is one hairline: a live feed over a bright sky and a dead black rectangle look identical
+ * without something around them, and "the camera is off" is a state the player should be able to
+ * tell from "there is nothing there".
+ */
+.place-overlay-image {
+  pointer-events: none;
+  border: 1px solid rgba(230, 237, 243, 0.28);
+  border-radius: 2px;
+  background: #000;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+
 /* ---- Narration ---- */
 
 .place-overlay-line {

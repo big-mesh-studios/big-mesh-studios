@@ -754,6 +754,230 @@ export const clearCamera = (): void => {
   ask("camera-clear", {});
 };
 
+/**
+ * A viewpoint the place owns, rather than one the player is inside.
+ *
+ * **`at` and `target` rather than position and rotation**, because a security camera is aimed at
+ * something — a door, a till, a corridor — and a heading in radians is a number the person placing
+ * it has to work out from a map. The two points are also what a `screen` shows without a second
+ * definition.
+ */
+export interface CreateCameraOptions {
+  /** A name the caller chose. Two peers running the same script must agree on it. */
+  readonly id: string;
+  /** Where the camera is. */
+  readonly at: Vec3Like;
+  /** The point it looks at. */
+  readonly target: Vec3Like;
+  /**
+   * The vertical field of view in degrees, 1 to 179.
+   *
+   * **Omitted means the player's own field of view**, which is what makes a camera view feel like
+   * the same world seen from elsewhere rather than a different lens.
+   */
+  readonly fov?: number;
+}
+
+/** Places a virtual camera. Nothing looks through it until something watches it or shows it. */
+export const createCamera = (options: CreateCameraOptions): void => {
+  ask("camera-add", {
+    id: options.id,
+    at: options.at,
+    target: options.target,
+    ...(options.fov === undefined ? {} : { fov: options.fov }),
+  });
+};
+
+/**
+ * Moves a virtual camera, or changes its lens.
+ *
+ * **Every field is optional and an absent one is unchanged**, so panning is one field rather than
+ * the whole definition repeated. Moving the camera the player is watching moves their view.
+ */
+export const moveCamera = (
+  id: string,
+  options: { at?: Vec3Like; target?: Vec3Like; fov?: number },
+): void => {
+  ask("camera-move", {
+    id,
+    ...(options.at === undefined ? {} : { at: options.at }),
+    ...(options.target === undefined ? {} : { target: options.target }),
+    ...(options.fov === undefined ? {} : { fov: options.fov }),
+  });
+};
+
+/** Removes a virtual camera, and anything that was showing it. */
+export const removeCamera = (id: string): void => {
+  ask("camera-remove", { id });
+};
+
+/**
+ * Takes the player's view over and puts it at a camera, until `clearCamera`.
+ *
+ * **This player only.** A place watched by two peers is two views of one world from the same
+ * place, which is what every other effect does too.
+ */
+export const watchCamera = (id: string): void => {
+  ask("camera-watch", { id });
+};
+
+/* ------------------------------------------------------------------- photos */
+
+/**
+ * A picture this machine has taken.
+ *
+ * **An id and a size, and deliberately nothing else.** The pixels never cross the sandbox: a script
+ * can show a photo, put it on a screen, or offer it for saving, and cannot read it, hash it, or
+ * send it anywhere. That is the whole of the guarantee, and it is why a photo is not a string of
+ * bytes or a data URL.
+ */
+export interface Photo {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Renders one frame and keeps it.
+ *
+ * **Returns before the pixels exist**, so a script can show the photo immediately and watch it fill
+ * in. There is no callback and no event: a photo is a thing that becomes true a frame or two after
+ * you ask for it, exactly as a `toast` appears on the next frame.
+ *
+ * **The picture is of the world, not of the screen.** It comes from a fresh pass through the
+ * scene, so it never contains the crosshair, a dialog or the HUD, and the same call gives the same
+ * picture whatever the player had open.
+ *
+ * Omit `camera` for the player's own view.
+ */
+export const takePhoto = (options: {
+  readonly id: string;
+  readonly camera?: string;
+  readonly width?: number;
+  readonly height?: number;
+}): Photo => {
+  const width = options.width ?? 1280;
+  const height = options.height ?? 720;
+  ask("photo-take", {
+    id: options.id,
+    ...(options.camera === undefined ? {} : { camera: options.camera }),
+    width,
+    height,
+  });
+  return { id: options.id, width, height };
+};
+
+/** Forgets a photo, freeing its pixels and removing anything that was showing it. */
+export const removePhoto = (id: string): void => {
+  ask("photo-remove", { id });
+};
+
+/* ------------------------------------------------------------------ screens */
+
+/**
+ * What a screen or a HUD image shows.
+ *
+ * **A camera is live and a photo is still**, and the difference is the source rather than a flag.
+ * `{ camera: "hallway" }` is redrawn while it is near enough to be seen; `{ photo: "shot" }` is the
+ * picture that was taken.
+ */
+export type ImageSource =
+  { readonly camera: string } | { readonly photo: string };
+
+/** The corners a HUD image may sit in. */
+export type HudCorner =
+  "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+/**
+ * Puts a screen in the world showing a camera or a photo.
+ *
+ * **The resolution is not yours to choose.** It follows the screen's size on screen, so a monitor
+ * across a room renders small and the one in front of you renders sharp, and a place cannot ask for
+ * a four-kilopixel feed it has nowhere to put.
+ *
+ * **Only the screens nearest the player are redrawn in a frame.** The rest keep their last picture
+ * rather than going black, which is what a room full of monitors should look like.
+ */
+export interface CreateScreenOptions {
+  readonly id: string;
+  readonly source: ImageSource;
+  readonly at: Vec3Like;
+  /** A turn about up, in radians. The picture faces this way. */
+  readonly yaw: number;
+  /** How wide, in world units. */
+  readonly width: number;
+  /** How tall, in world units. */
+  readonly height: number;
+}
+
+/** Puts a screen in the world. */
+export const createScreen = (options: CreateScreenOptions): void => {
+  ask("screen-add", {
+    id: options.id,
+    source: options.source,
+    at: options.at,
+    yaw: options.yaw,
+    width: options.width,
+    height: options.height,
+  });
+};
+
+/** Moves, resizes or re-aims a screen, or changes what it shows. */
+export const moveScreen = (
+  id: string,
+  options: {
+    readonly source?: ImageSource;
+    readonly at?: Vec3Like;
+    readonly yaw?: number;
+    readonly width?: number;
+    readonly height?: number;
+  },
+): void => {
+  ask("screen-move", {
+    id,
+    ...(options.source === undefined ? {} : { source: options.source }),
+    ...(options.at === undefined ? {} : { at: options.at }),
+    ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
+    ...(options.width === undefined ? {} : { width: options.width }),
+    ...(options.height === undefined ? {} : { height: options.height }),
+  });
+};
+
+/** Removes a screen by id. */
+export const removeScreen = (id: string): void => {
+  ask("screen-remove", { id });
+};
+
+/**
+ * Shows a camera or a photo in a corner of this player's screen.
+ *
+ * **A HUD image is not in the world**, so nothing else can see it and nothing can walk in front of
+ * it. It is the shape of a thing a place tells *one person*, the same way a `toast` is.
+ */
+export const showImage = (options: {
+  readonly id: string;
+  readonly source: ImageSource;
+  /** Omitted means `top-right`. */
+  readonly corner?: HudCorner;
+  /** In CSS pixels, 16 to 512. */
+  readonly width: number;
+  /** In CSS pixels, 16 to 512. */
+  readonly height: number;
+}): void => {
+  ask("image-show", {
+    id: options.id,
+    source: options.source,
+    ...(options.corner === undefined ? {} : { corner: options.corner }),
+    width: options.width,
+    height: options.height,
+  });
+};
+
+/** Takes a HUD image away. A no-op when there was none. */
+export const hideImage = (id: string): void => {
+  ask("image-hide", { id });
+};
+
 /* ------------------------------------------------------------------ output */
 
 /** Prints a line to the console's scrollback, which is where a place's own account of itself is read. */

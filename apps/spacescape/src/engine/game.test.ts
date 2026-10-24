@@ -466,6 +466,68 @@ describe("a place pointing the camera", () => {
   });
 });
 
+describe("a place taking the view over with a camera", () => {
+  it("puts the player's view where the camera is, looking where it looks", () => {
+    const { subject, camera } = ticking();
+    subject.watchCamera({ x: 40, y: 30, z: 20 }, { x: 40, y: 30, z: 40 });
+    subject.tick(1 / 60);
+
+    // **The position, not only the direction.** A watch that aimed the player's own eye at a
+    // distant point would be `lookAt` wearing another name; the whole difference is that the view
+    // leaves the player.
+    expect(camera.position.x).toBeCloseTo(40);
+    expect(camera.position.y).toBeCloseTo(30);
+    expect(camera.position.z).toBeCloseTo(20);
+    const [x, y, z] = facing(camera);
+    expect(z).toBeGreaterThan(0.99);
+    expect(Math.abs(x)).toBeLessThan(0.01);
+    expect(Math.abs(y)).toBeLessThan(0.01);
+  });
+
+  it("takes the camera's lens, and gives the player theirs back", () => {
+    const { subject, camera } = ticking();
+    const before = camera.fov;
+    subject.watchCamera({ x: 0, y: 10, z: 0 }, { x: 0, y: 10, z: 1 }, 20);
+    subject.tick(1 / 60);
+    expect(camera.fov).toBe(20);
+
+    subject.clearCameraLook();
+    subject.tick(1 / 60);
+    expect(camera.fov).toBe(before);
+    // And the eye is the player's again, not the camera's.
+    expect(camera.position.y).not.toBeCloseTo(10);
+  });
+
+  it("hands the view back to a look target, because the two are one claim", () => {
+    const { subject, camera } = ticking();
+    subject.watchCamera({ x: 40, y: 30, z: 20 }, { x: 40, y: 30, z: 40 });
+    subject.tick(1 / 60);
+    expect(camera.position.x).toBeCloseTo(40);
+
+    // **Written the other way round from `watchCamera`, which already drops a look target.** If
+    // this did not drop the watch, the frame would still be placed at the camera and the place
+    // would be looking at something it could not see.
+    subject.lookAt({ x: 0, y: -1000, z: 0 });
+    subject.tick(1 / 60);
+    expect(facing(camera)[1]).toBeLessThan(-0.99);
+  });
+
+  it("gives the lens back when a look replaces a camera that named one", () => {
+    // **The watch is the only claim that can leave a lens behind.** A look that names no field of
+    // view has said nothing about the lens, so it must not inherit the one the camera was using —
+    // the player would be left at 20° for the rest of the session with nothing to blame.
+    const { subject, camera } = ticking();
+    const before = camera.fov;
+    subject.watchCamera({ x: 0, y: 10, z: 0 }, { x: 0, y: 10, z: 1 }, 20);
+    subject.tick(1 / 60);
+    expect(camera.fov).toBe(20);
+
+    subject.lookAt({ x: 0, y: -1000, z: 0 });
+    subject.tick(1 / 60);
+    expect(camera.fov).toBe(before);
+  });
+});
+
 describe("a place casting a ray", () => {
   /** A world with one flat slab in it, so there is a surface to find. */
   const withSlab = () =>
