@@ -60,7 +60,7 @@ import type { HostCamera, HostImage, HostScreen } from "../places/host";
 /**
  * How many live feeds are drawn in one frame.
  *
- * **Two, and the number is a frame budget rather than a design choice.** A live feed is a second
+ * **Three, and the number is a frame budget rather than a design choice.** A live feed is a second
  * pass through the scene: every chunk, every figure, every cloud, drawn again from somewhere
  * else. A place with a camera in every room would otherwise pay for the whole world once per
  * screen. The rest keep their last picture, which is exactly what a room full of monitors should
@@ -70,7 +70,7 @@ import type { HostCamera, HostImage, HostScreen } from "../places/host";
  * `point-lights.ts`: this is how many the *renderer* can afford, not how many a place may
  * declare. `MAX_SCREENS` is the other question, and it is deliberately much larger.
  */
-export const MAX_LIVE_FEEDS = 2;
+export const MAX_LIVE_FEEDS = 3;
 
 /**
  * The sizes a feed is allowed to be, longest side first bucket.
@@ -440,8 +440,8 @@ export const createScreenLayer = (scene: Scene): ScreenLayer => {
           target: entry.target,
         });
       }
-      // **Nearest first, ties by id**, exactly as `visibleLights` sorts: two peers at the same
-      // place must draw the same two screens, and map iteration order is not a tie-break.
+      // **Nearest first, ties by id**, exactly as `visibleLights` sorts: peers at the same place
+      // must choose the same screens, and map iteration order is not a tie-break.
       live.sort((a, b) => {
         const da =
           (a.screen.at.x - player.x) ** 2 +
