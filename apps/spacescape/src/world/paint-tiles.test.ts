@@ -269,7 +269,13 @@ describe("addressing by world position", () => {
     // find their work gone.
     const tiles = new PaintTiles();
     const cell: CellCoord = { x: 0, y: 0, z: 0 };
-    tiles.paintSample(cell, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, RED);
+    tiles.paintSample(
+      cell,
+      CHUNK_VOXELS - 1,
+      CHUNK_VOXELS - 1,
+      CHUNK_VOXELS - 1,
+      RED,
+    );
 
     // Stand in for the window recycling every slot, which is all it takes to lose a
     // slot-keyed tile: nothing about a tile's storage depends on the window at all.
@@ -277,7 +283,12 @@ describe("addressing by world position", () => {
     tiles.paintSample(other, 0, 0, 0, GREEN);
 
     expect(
-      tiles.atSample(cell, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1, CHUNK_VOXELS - 1),
+      tiles.atSample(
+        cell,
+        CHUNK_VOXELS - 1,
+        CHUNK_VOXELS - 1,
+        CHUNK_VOXELS - 1,
+      ),
     ).toEqual(RED);
     expect(tiles.atSample(other, 0, 0, 0)).toEqual(GREEN);
     expect(tiles.paintedCells()).toHaveLength(2);
