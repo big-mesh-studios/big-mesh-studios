@@ -70,7 +70,10 @@ export class VoxelHudPanels {
         entry.signature = signature;
       }
       entry.mesh.position.set(pose.x, pose.y, pose.z);
-      entry.mesh.rotation.set(0, pose.yaw, 0);
+      // **Yaw first, then pitch about the panel's own right axis**, which is why the order is
+      // YXZ: the X rotation is applied in the frame the yaw has already turned. A positive
+      // pitch tips the face upward, so `Math.PI / 2` lays the panel flat.
+      entry.mesh.rotation.set(-pose.pitch, pose.yaw, 0, "YXZ");
       entry.mesh.scale.set(pose.width, pose.height, 1);
     }
   }

@@ -45,6 +45,14 @@ export interface CreateHudPanelOptions {
   readonly position: PlaceVec3;
   /** Local turn when attached, or world turn when free, in radians. */
   readonly yaw?: number;
+  /**
+   * Tilt from upright, in radians. Zero stands the panel up; `Math.PI / 2` lays it face-up.
+   *
+   * Applied after `yaw`, about the panel's own right axis. An attached panel still takes the
+   * entity's yaw but not any tilt the entity may have, because figures are positioned by a
+   * yaw alone.
+   */
+  readonly pitch?: number;
   /** Panel dimensions in world units. */
   readonly width: number;
   readonly height: number;

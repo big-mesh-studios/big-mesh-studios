@@ -118,11 +118,16 @@ const BLACK = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
  * pole. Its local +Z is its facing, and at `yaw = 0` that is +Z on flat ground — the same
  * convention `lookAt` and the player's heading use.
  *
+ * **`pitch` tips the plane away from upright, after the yaw.** A positive pitch raises the facing
+ * towards the local up, so `Math.PI / 2` lays the plane face-up. The local up and facing turn
+ * together about the plane's right axis, which keeps the basis orthonormal and the texture's top
+ * edge on the far side of a face-up plane rather than its near side.
+ *
  * **`b2` rather than `b1`**, negated, because `onbFromDirection` returns a basis in which
  * `b1 = +X` on flat ground: negating its second tangent is what gives the `+Z` that a yaw of zero
  * means everywhere else.
  */
-export const screenQuaternion = (up: Vec3, yaw: number): Quat => {
+export const screenQuaternion = (up: Vec3, yaw: number, pitch = 0): Quat => {
   const normalized = normalize(up);
   const upAt =
     normalized.x === 0 && normalized.y === 0 && normalized.z === 0
@@ -131,7 +136,10 @@ export const screenQuaternion = (up: Vec3, yaw: number): Quat => {
   const { b2 } = onbFromDirection(upAt);
   const facing = rotateAboutAxis({ x: -b2.x, y: -b2.y, z: -b2.z }, upAt, yaw);
   const right = cross(upAt, facing);
-  return quatFromBasis(right, upAt, facing);
+  if (pitch === 0) return quatFromBasis(right, upAt, facing);
+  const tiltedUp = rotateAboutAxis(upAt, right, -pitch);
+  const tiltedFacing = rotateAboutAxis(facing, right, -pitch);
+  return quatFromBasis(right, tiltedUp, tiltedFacing);
 };
 
 /**

@@ -5,6 +5,7 @@ export interface HudPanelPose {
   y: number;
   z: number;
   yaw: number;
+  pitch: number;
   width: number;
   height: number;
   label: string;

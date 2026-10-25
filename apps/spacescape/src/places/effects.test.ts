@@ -134,6 +134,7 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
       id: "computer-status",
       entityId: "reception-computer",
       position: [0, 1, 0.2],
+      pitch: 0.4,
       width: 1.2,
       height: 0.6,
       label: "Loading",

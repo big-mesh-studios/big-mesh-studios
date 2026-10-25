@@ -103,7 +103,11 @@ export const createHudPanelLayer = (scene: Scene): HudPanelLayer => {
           entry.signature = signature;
         }
         entry.mesh.position.set(panel.at.x, panel.at.y, panel.at.z);
-        const rotation = screenQuaternion(view.upAt(panel.at), panel.yaw);
+        const rotation = screenQuaternion(
+          view.upAt(panel.at),
+          panel.yaw,
+          panel.pitch,
+        );
         entry.mesh.quaternion.set(
           rotation.x,
           rotation.y,

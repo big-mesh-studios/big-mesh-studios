@@ -67,6 +67,19 @@ describe("a screen stands upright", () => {
     expect(normal.z).toBeCloseTo(0);
     expect(upright.y).toBeCloseTo(1);
   });
+
+  it("lays a quarter-turn pitch face-up, whatever the yaw", () => {
+    const up = { x: 0, y: 1, z: 0 };
+    for (const yaw of [0, Math.PI / 2, -0.7]) {
+      const turn = screenQuaternion(up, yaw, Math.PI / 2);
+      const rotation = new Quaternion(turn.x, turn.y, turn.z, turn.w);
+      const normal = new Vector3(0, 0, 1).applyQuaternion(rotation);
+      // The normal leaves the horizontal plane entirely: the panel is lying on the ground.
+      expect(normal.y).toBeCloseTo(1);
+      expect(normal.x).toBeCloseTo(0);
+      expect(normal.z).toBeCloseTo(0);
+    }
+  });
 });
 
 describe("a feed camera is aimed, not merely moved", () => {

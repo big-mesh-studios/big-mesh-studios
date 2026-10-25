@@ -649,7 +649,7 @@ describe("a place can stand things in the world", () => {
       `
         import { createProp, createHudPanel } from "spacescape";
         createProp({ id: "computer", model: "fridge", at: [10, 2, 3], yaw: 1.5707963267948966, scale: 2 });
-        const attached = createHudPanel({ id: "attached", entityId: "computer", position: [1, 0, 0], width: 1, height: 0.5, label: "Loading", value: 20, max: 100 });
+        const attached = createHudPanel({ id: "attached", entityId: "computer", position: [1, 0, 0], pitch: 1.2, width: 1, height: 0.5, label: "Loading", value: 20, max: 100 });
         attached.setValue(50);
         createHudPanel({ id: "free", position: [1, 2, 3], width: 2, height: 1, label: "Status", value: 1, max: 1 });
       `,
@@ -661,6 +661,7 @@ describe("a place can stand things in the world", () => {
         id: "attached",
         at: { x: 10, y: 2, z: 1 },
         yaw: Math.PI / 2,
+        pitch: 1.2,
         width: 2,
         height: 1,
         label: "Loading",
@@ -671,6 +672,7 @@ describe("a place can stand things in the world", () => {
         id: "free",
         at: { x: 1, y: 2, z: 3 },
         yaw: 0,
+        pitch: 0,
         width: 2,
         height: 1,
         label: "Status",

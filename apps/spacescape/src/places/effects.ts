@@ -1082,6 +1082,11 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
         about: "world turn, or local turn when attached",
       },
       {
+        name: "pitch",
+        kind: "yaw",
+        about: "tilt from upright; zero is upright, a quarter turn is face-up",
+      },
+      {
         name: "width",
         kind: "number",
         min: SCREEN_LIMITS.minSize,
@@ -1975,6 +1980,7 @@ export interface HudPanelEffect extends IdOnly {
   readonly entityId?: string;
   readonly position: readonly [number, number, number];
   readonly yaw?: number;
+  readonly pitch?: number;
   readonly width: number;
   readonly height: number;
   readonly label: string;

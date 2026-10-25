@@ -810,6 +810,7 @@ export type ParsedEffect =
         entityId?: string;
         position: [number, number, number];
         yaw?: number;
+        pitch?: number;
         width: number;
         height: number;
         label: string;
@@ -1831,6 +1832,8 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         isVector(p.position) &&
         p.position.every(isCoord) &&
         (p.yaw === undefined || isNumberIn(p.yaw, -2 * Math.PI, 2 * Math.PI)) &&
+        (p.pitch === undefined ||
+          isNumberIn(p.pitch, -2 * Math.PI, 2 * Math.PI)) &&
         isNumberIn(p.width, 0.05, 100) &&
         isNumberIn(p.height, 0.05, 100) &&
         (p.label === "" || isShort(p.label, MAX_HUD_LABEL)) &&

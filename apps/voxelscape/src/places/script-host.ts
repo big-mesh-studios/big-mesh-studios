@@ -355,6 +355,7 @@ export interface ScriptedHudPanel {
   entityId: string | undefined;
   position: [number, number, number];
   yaw: number;
+  pitch: number;
   width: number;
   height: number;
   label: string;
@@ -1112,6 +1113,7 @@ export class ScriptHost {
             ? panel.position[2]
             : entity.z - panel.position[0] * s + panel.position[2] * c,
         yaw: entityYaw + panel.yaw,
+        pitch: panel.pitch,
         width: panel.width,
         height: panel.height,
         label: panel.label,
@@ -2848,6 +2850,7 @@ export class ScriptHost {
           ...panel,
           entityId: panel.entityId,
           yaw: panel.yaw ?? 0,
+          pitch: panel.pitch ?? 0,
         });
         break;
       }

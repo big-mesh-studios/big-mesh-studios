@@ -1156,6 +1156,7 @@ export const createHudPanel = (
       ...(options.entityId === undefined ? {} : { entityId: options.entityId }),
       position: options.position,
       ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
+      ...(options.pitch === undefined ? {} : { pitch: options.pitch }),
       width: options.width,
       height: options.height,
       label,

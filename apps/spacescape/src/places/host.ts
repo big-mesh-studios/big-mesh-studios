@@ -421,6 +421,7 @@ export interface HostHudPanel {
   readonly id: string;
   readonly at: Vec3;
   readonly yaw: number;
+  readonly pitch: number;
   readonly width: number;
   readonly height: number;
   readonly label: string;
@@ -433,6 +434,7 @@ interface StoredHudPanel {
   readonly entityId: string | undefined;
   readonly position: Vec3;
   readonly yaw: number;
+  readonly pitch: number;
   readonly width: number;
   readonly height: number;
   readonly label: string;
@@ -858,6 +860,7 @@ export class PlaceHost {
           id: panel.id,
           at: panel.position,
           yaw: panel.yaw,
+          pitch: panel.pitch,
           width: panel.width,
           height: panel.height,
           label: panel.label,
@@ -879,6 +882,7 @@ export class PlaceHost {
           z: at.z + (-panel.position.x * s + panel.position.z * c) * scale,
         },
         yaw: yaw + panel.yaw,
+        pitch: panel.pitch,
         width: panel.width * scale,
         height: panel.height * scale,
         label: panel.label,
@@ -2061,6 +2065,7 @@ export class PlaceHost {
           entityId,
           position: vec3("position"),
           yaw: optionalNumber("yaw") ?? 0,
+          pitch: optionalNumber("pitch") ?? 0,
           width: number("width"),
           height: number("height"),
           label: name("label"),

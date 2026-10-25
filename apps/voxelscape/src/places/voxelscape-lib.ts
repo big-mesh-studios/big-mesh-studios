@@ -911,6 +911,7 @@ export function createHudPanel(options) {
       entityId: options.entityId,
       position: options.position,
       yaw: options.yaw,
+      pitch: options.pitch,
       width: options.width,
       height: options.height,
       label: label,

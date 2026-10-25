@@ -875,7 +875,7 @@ describe("script lights and billboards", () => {
         dispatch("npc", { id: "computer", x: 10, y: 2, z: 3, yaw: 1.5707963267948966 });
         const panel = createHudPanel({
           id: "computer-loading", entityId: "computer", position: [1, 0, 0],
-          width: 1.2, height: 0.6, label: "Loading", value: 20, max: 100,
+          pitch: 1.2, width: 1.2, height: 0.6, label: "Loading", value: 20, max: 100,
         });
         panel.setValue(50);
         createHudPanel({
@@ -892,6 +892,7 @@ describe("script lights and billboards", () => {
         y: 2,
         z: 2,
         yaw: 1.5707963267948966,
+        pitch: 1.2,
         width: 1.2,
         height: 0.6,
         label: "Loading",
@@ -904,6 +905,7 @@ describe("script lights and billboards", () => {
         y: 2,
         z: 3,
         yaw: 0,
+        pitch: 0,
         width: 2,
         height: 1,
         label: "Status",
