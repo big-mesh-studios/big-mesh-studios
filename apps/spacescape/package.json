@@ -27,6 +27,7 @@
     "@big-mesh-studios/core": "workspace:*",
     "@big-mesh-studios/csg": "workspace:*",
     "@big-mesh-studios/meshing": "workspace:*",
+    "@big-mesh-studios/place-api": "workspace:*",
     "@big-mesh-studios/picking": "workspace:*",
     "@big-mesh-studios/sdf": "workspace:*",
     "@big-mesh-studios/solid-codemirror": "workspace:*",

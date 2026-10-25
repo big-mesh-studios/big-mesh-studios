@@ -192,10 +192,16 @@ import {
 import { createCloudLayer, type CloudLayer } from "./world/cloud-layer";
 import { createZoneLines, type ZoneLines } from "./places/zones";
 import {
+  createPlaceEffectVisuals,
+  type PlaceEffectVisuals,
+} from "./render/place-effects";
+import {
   PlaceHost,
   type Dialog,
   type Ending,
   type HostImage,
+  type HostHudMeter,
+  type HostHudLabel,
 } from "./places/host";
 import {
   aimCamera,
@@ -313,6 +319,8 @@ interface StartPlace {
   readonly spawn?: PlaceSpawn;
   /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
   readonly models?: Readonly<Record<string, Uint8Array>>;
+  /** Local sound files declared by its manifest. */
+  readonly sounds?: Readonly<Record<string, Uint8Array>>;
   /** Levels this place carries, which the host puts in the world before the script runs. */
   readonly levels?: Readonly<Record<string, string>>;
   /**
@@ -718,6 +726,12 @@ export default function App() {
    * a frame that does not change the list does not touch the signal.
    */
   const [placeImages, setPlaceImages] = createSignal<readonly HostImage[]>([]);
+  const [placeHudMeters, setPlaceHudMeters] = createSignal<
+    readonly HostHudMeter[]
+  >([]);
+  const [placeHudLabels, setPlaceHudLabels] = createSignal<
+    readonly HostHudLabel[]
+  >([]);
   /**
    * Bumped when a picture's pixels arrive, so the overlay redraws its canvas.
    *
@@ -807,6 +821,8 @@ export default function App() {
    */
   let placeHost: PlaceHost | undefined;
   let restartPlace: ((place: StartPlace) => Promise<string>) | undefined;
+  const placeAudio = new Map<string, HTMLAudioElement>();
+  const placeAudioUrls = new Map<string, string>();
 
   /**
    * Whether the place editor is open, and the place it is editing.
@@ -2266,6 +2282,9 @@ export default function App() {
     // is a figure that only shows through the gaps, which is the same argument `zones.ts`
     // makes about its own wireframes.
     figures.attach(viewport.scene);
+    const placeEffectVisuals: PlaceEffectVisuals = createPlaceEffectVisuals(
+      viewport.scene,
+    );
     /** The loaded place's problems, newest last, for `/place:notices`. */
     const notices: string[] = [];
     /** What is loaded — a demo's id, or a zip's own name — for `/place:state`. */
@@ -2378,6 +2397,7 @@ export default function App() {
         // **And the levels the loader already carried**, for the same reason: the field was in
         // the format and nothing read it, which is what made it decorative.
         levels: place.levels,
+        sounds: place.sounds,
         // **And the world, which is the manifest's own statement about what the ground is.**
         world: place.manifest.world,
         editable: place.manifest.editable,
@@ -2395,6 +2415,13 @@ export default function App() {
     openPlaceOnDisk = openFromDisk;
 
     const dropPlace = (): void => {
+      for (const audio of placeAudio.values()) {
+        audio.pause();
+        audio.src = "";
+      }
+      placeAudio.clear();
+      for (const url of placeAudioUrls.values()) URL.revokeObjectURL(url);
+      placeAudioUrls.clear();
       host?.dispose();
       host = undefined;
       placeHost = undefined;
@@ -2425,6 +2452,8 @@ export default function App() {
       photoLayer.reconcile([]);
       hudFeeds.sync([], new Map());
       setPlaceImages([]);
+      setPlaceHudMeters([]);
+      setPlaceHudLabels([]);
       lastImageSignature = "";
       hudCapturedAt.clear();
       hudBusy.clear();
@@ -2472,7 +2501,7 @@ export default function App() {
      */
     const startPlace = async (place: StartPlace): Promise<string> => {
       const { files, entry, seed, name } = place;
-      const { spawn, models, levels, world, editable, mesh } = place;
+      const { spawn, models, levels, sounds, world, editable, mesh } = place;
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
@@ -2491,6 +2520,7 @@ export default function App() {
         spawn,
         models,
         levels,
+        sounds,
         world,
         ...(editable !== undefined ? { editable } : {}),
         ...(mesh !== undefined ? { mesh } : {}),
@@ -2570,6 +2600,63 @@ export default function App() {
           geometryChanged: (bounds) => sculpt.refreshPlaces(bounds),
         },
         effects: {
+          playSound: (soundName, playback) => {
+            const bytes = sounds?.[soundName];
+            if (bytes === undefined) {
+              notice(
+                `sound "${soundName}" is not listed in this place's manifest`,
+              );
+              return;
+            }
+            let url = placeAudioUrls.get(soundName);
+            if (url === undefined) {
+              const extension = soundName.split(".").pop()?.toLowerCase();
+              const mime =
+                extension === "mp3"
+                  ? "audio/mpeg"
+                  : extension === "wav"
+                    ? "audio/wav"
+                    : extension === "m4a"
+                      ? "audio/mp4"
+                      : extension === "webm"
+                        ? "audio/webm"
+                        : "audio/ogg";
+              url = URL.createObjectURL(
+                new Blob([Uint8Array.from(bytes).buffer], { type: mime }),
+              );
+              placeAudioUrls.set(soundName, url);
+            }
+            const key =
+              playback.id ||
+              `oneshot:${soundName}:${clock.nowMs()}:${placeAudio.size}`;
+            const previous = placeAudio.get(key);
+            if (previous !== undefined) {
+              previous.pause();
+              previous.currentTime = 0;
+            }
+            const audio = new Audio(url);
+            audio.volume = playback.volume;
+            audio.playbackRate = playback.pitch;
+            audio.loop = playback.loop;
+            placeAudio.set(key, audio);
+            if (playback.id === "")
+              audio.addEventListener("ended", () => placeAudio.delete(key), {
+                once: true,
+              });
+            void audio.play().catch((error: unknown) => {
+              placeAudio.delete(key);
+              notice(
+                `could not play sound "${soundName}": ${error instanceof Error ? error.message : String(error)}`,
+              );
+            });
+          },
+          stopSound: (_player, id) => {
+            const audio = placeAudio.get(id);
+            if (audio === undefined) return;
+            audio.pause();
+            audio.currentTime = 0;
+            placeAudio.delete(id);
+          },
           log: (text) => runConsoleLine(text),
           toast: (text) => setPlaceToast(text),
           narrate: (who, text) => setNarration({ who, text }),
@@ -2610,6 +2697,22 @@ export default function App() {
           hideImage: (id) =>
             setPlaceImages((current) =>
               current.filter((shown) => shown.id !== id),
+            ),
+          showHudMeter: (meter) =>
+            setPlaceHudMeters((current) =>
+              current.filter((shown) => shown.id !== meter.id).concat(meter),
+            ),
+          hideHudMeter: (id) =>
+            setPlaceHudMeters((current) =>
+              current.filter((meter) => meter.id !== id),
+            ),
+          showHudLabel: (label) =>
+            setPlaceHudLabels((current) =>
+              current.filter((shown) => shown.id !== label.id).concat(label),
+            ),
+          hideHudLabel: (id) =>
+            setPlaceHudLabels((current) =>
+              current.filter((label) => label.id !== id),
             ),
         },
         clock,
@@ -2695,6 +2798,7 @@ export default function App() {
         // before the script runs.
         models: project.models,
         levels: project.levels,
+        sounds: project.sounds,
         world: project.manifest.world,
         editable: project.manifest.editable,
         mesh: project.manifest.mesh,
@@ -4530,6 +4634,11 @@ export default function App() {
       // otherwise the boxes trail the world by a frame, which is visible exactly when someone
       // is watching a zone appear.
       zoneLines.update(host?.zoneList ?? []);
+      placeEffectVisuals.update(
+        host?.beamList ?? [],
+        host?.particleList ?? [],
+        clock.nowMs(),
+      );
 
       skyColour.set(light.skyColor[0], light.skyColor[1], light.skyColor[2]);
       material.sky.lighting = light;
@@ -4720,6 +4829,7 @@ export default function App() {
       photoLayer.dispose();
       hudFeeds.dispose();
       zoneLines.dispose();
+      placeEffectVisuals.dispose();
       // **The bakes before their meshes.** A bake disposed of after the mesh it was going to
       // build is a worker left running for the life of the tab, and one that answers after
       // teardown adds a mesh to a scene nobody owns.
@@ -4885,6 +4995,8 @@ export default function App() {
           dialog={placeDialog}
           ending={placeEnding}
           images={placeImages}
+          hudMeters={placeHudMeters}
+          hudLabels={placeHudLabels}
           revision={hudRevision}
           drawImage={(image, target) => drawHudImage?.(image, target)}
           onChoose={(entityId, option) => placeHost?.choose(entityId, option)}

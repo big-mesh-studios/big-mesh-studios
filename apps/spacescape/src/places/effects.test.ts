@@ -78,6 +78,12 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
       intensity: 1,
     },
     "light-remove": { id: "lamp" },
+    sound: { name: "audio/chime.ogg", volume: 0.75, pitch: 1 },
+    "sound-stop": { id: "loop" },
+    beam: { id: "line", from: [0, 0, 0], to: [1, 2, 3] },
+    "beam-remove": { id: "line" },
+    particle: { id: "spark", x: 0, z: 0 },
+    "particle-remove": { id: "spark" },
     "medium-add": {
       id: "belt",
       box: [
@@ -120,6 +126,10 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
       height: 180,
     },
     "image-hide": { id: "feed" },
+    "hud-meter": { id: "sanity", label: "Sanity", value: 75, max: 100 },
+    "hud-meter-remove": { id: "sanity" },
+    "hud-label": { id: "objective", text: "Find the patient chart" },
+    "hud-label-remove": { id: "objective" },
     log: { text: "hello" },
     toast: { text: "hello" },
     timer: { id: "later", afterMs: 1000 },
@@ -634,5 +644,49 @@ describe("the zone and data caps are stated where a host reads them", () => {
     // one cannot differ.
     expect(MAX_ZONES).toBeLessThanOrEqual(1024);
     expect(MAX_ZONES).toBeGreaterThan(0);
+  });
+});
+
+describe("the shared beam and particle effects", () => {
+  it("requires one source and one destination for a beam", () => {
+    expect(
+      parseEffect("beam", {
+        id: "line",
+        from: [0, 0, 0],
+        to: [1, 2, 3],
+      }),
+    ).not.toBeNull();
+    expect(parseEffect("beam", { id: "line", to: [1, 2, 3] })).toBeNull();
+    expect(
+      parseEffect("beam", {
+        id: "line",
+        from: [0, 0, 0],
+        fromEntity: "a",
+        to: [1, 2, 3],
+      }),
+    ).toBeNull();
+  });
+
+  it("requires a particle world position unless it follows an entity", () => {
+    expect(parseEffect("particle", { id: "p", x: 0, z: 0 })).not.toBeNull();
+    expect(
+      parseEffect("particle", { id: "p", entityId: "npc" }),
+    ).not.toBeNull();
+    expect(parseEffect("particle", { id: "p", y: 2 })).toBeNull();
+  });
+});
+
+describe("sound effects", () => {
+  it("requires a playback id for sounds that loop", () => {
+    expect(
+      parseEffect("sound", { name: "audio/alarm.ogg", loop: true }),
+    ).toBeNull();
+    expect(
+      parseEffect("sound", {
+        name: "audio/alarm.ogg",
+        id: "alarm",
+        loop: true,
+      }),
+    ).not.toBeNull();
   });
 });

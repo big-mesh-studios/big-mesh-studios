@@ -558,6 +558,35 @@ describe("the voxelscape module", () => {
     });
   });
 
+  it("plays and stops a named sound through the place API", async () => {
+    const output = await bundlePlaceProject(
+      {
+        "main.ts": `
+          import { playSound } from "voxelscape";
+          const alarm = playSound("zombie-growl", {
+            id: "alarm", loop: true, volume: 0.5, pitch: 0.8,
+          });
+          alarm.stop();
+        `,
+      },
+      "main.ts",
+    );
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual(["sound", "sound-stop"]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      player: "",
+      name: "zombie-growl",
+      id: "alarm",
+      volume: 0.5,
+      pitch: 0.8,
+      loop: true,
+    });
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      player: "",
+      id: "alarm",
+    });
+  });
+
   it("saves account data and carries keys through their helpers", async () => {
     const files = {
       "main.ts": `

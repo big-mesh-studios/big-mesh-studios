@@ -33,6 +33,8 @@ import {
   isSafePathName,
   MAX_PLACE_LEVEL_CHARS,
   MAX_PLACE_MODEL_BYTES,
+  MAX_PLACE_SOUND_BYTES,
+  MAX_PLACE_SOUND_BYTES_TOTAL,
   PLACE_MANIFEST_FILE,
   type PlaceManifest,
 } from "./place-file";
@@ -480,6 +482,7 @@ export const savePlaceToFolder = async (
     ...project.manifest.scripts,
     ...(project.manifest.models ?? []),
     ...(project.manifest.levels ?? []),
+    ...(project.manifest.sounds ?? []),
   ];
 
   if (declared.includes(PLACE_MANIFEST_FILE)) {
@@ -511,6 +514,7 @@ export const savePlaceToFolder = async (
           ...existing.scripts,
           ...(existing.models ?? []),
           ...(existing.levels ?? []),
+          ...(existing.sounds ?? []),
         ];
 
   let written = 0;
@@ -526,6 +530,10 @@ export const savePlaceToFolder = async (
     await writeText(folder, name, text);
     written += 1;
   }
+  for (const [name, bytes] of Object.entries(project.sounds ?? {})) {
+    await writeBytes(folder, name, bytes);
+    written += 1;
+  }
 
   const manifest: PlaceManifest = {
     ...project.manifest,
@@ -535,6 +543,9 @@ export const savePlaceToFolder = async (
       : {}),
     ...(Object.keys(project.levels).length > 0
       ? { levels: Object.keys(project.levels) }
+      : {}),
+    ...(Object.keys(project.sounds ?? {}).length > 0
+      ? { sounds: Object.keys(project.sounds ?? {}) }
       : {}),
   };
   await writeText(
@@ -642,7 +653,41 @@ export const loadPlaceFromFolder = async (
     levels[name] = text;
   }
 
-  const project: PlaceProject = { manifest, scripts, models, levels };
+  const sounds: Record<string, Uint8Array> = {};
+  let totalSoundBytes = 0;
+  for (const name of manifest.sounds ?? []) {
+    let bytes: Uint8Array;
+    try {
+      bytes = await readBytes(folder, name);
+    } catch (error) {
+      if (isMissing(error)) {
+        throw new Error(
+          `the manifest names "${name}", which the folder does not hold`,
+        );
+      }
+      throw error;
+    }
+    if (bytes.byteLength > MAX_PLACE_SOUND_BYTES) {
+      throw new Error(
+        `"${name}" is over the ${MAX_PLACE_SOUND_BYTES} byte limit on one sound`,
+      );
+    }
+    totalSoundBytes += bytes.byteLength;
+    if (totalSoundBytes > MAX_PLACE_SOUND_BYTES_TOTAL) {
+      throw new Error(
+        `the place's sounds are over the ${MAX_PLACE_SOUND_BYTES_TOTAL} byte total limit`,
+      );
+    }
+    sounds[name] = bytes;
+  }
+
+  const project: PlaceProject = {
+    manifest,
+    scripts,
+    models,
+    levels,
+    ...(Object.keys(sounds).length > 0 ? { sounds } : {}),
+  };
   if (!isPlaceProject(project)) {
     throw new Error(
       `"${folder.name}" holds a manifest and files that disagree — no place can be read from it`,

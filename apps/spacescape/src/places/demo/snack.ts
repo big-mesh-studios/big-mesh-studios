@@ -60,7 +60,7 @@ import {
   setTimeSpeed,
   takeItem,
   toast,
-} from "voxelscape";
+} from "spacescape";
 
 import { machineResult } from "./snack-combos";
 import {

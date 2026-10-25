@@ -130,6 +130,17 @@ describe("a place that opens", () => {
     expect(place.manifest.seed).toBe(20260901);
   });
 
+  it("loads manifest-listed local sound bytes by their path", async () => {
+    const bytes = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
+    const place = await readPlaceZip(
+      await zipOf(
+        { "main.ts": "// hi", "audio/chime.wav": bytes },
+        manifest({ sounds: ["audio/chime.wav"] }),
+      ),
+    );
+    expect(place.sounds["audio/chime.wav"]).toEqual(bytes);
+  });
+
   it("hands back the files, keyed by the names the manifest used", async () => {
     const place = await readPlaceZip(
       await zipOf(

@@ -698,13 +698,14 @@ describe("a place lights the world", () => {
     const { asked } = await run({
       "main.ts": `
         import { createLight } from "voxelscape";
-        createLight({
+        const lamp = createLight({
           id: "lamp",
           at: [10, 20, 30],
           colour: { r: 255, g: 128, b: 0 },
           radius: 40,
           intensity: 2,
         });
+        lamp.remove();
       `,
     });
 
@@ -719,6 +720,7 @@ describe("a place lights the world", () => {
           intensity: 2,
         },
       },
+      { tag: "light-remove", payload: { id: "lamp" } },
     ]);
   });
 
@@ -809,6 +811,33 @@ describe("a place lights the world", () => {
         `,
       }),
     ).rejects.toThrow(/light-add/);
+  });
+});
+
+describe("a place plays local sounds", () => {
+  it("dispatches a manifest sound and its handle stops the named loop", async () => {
+    const { asked } = await run({
+      "main.ts": `
+        import { playSound } from "spacescape";
+        const alarm = playSound("audio/alarm.ogg", {
+          id: "alarm", loop: true, volume: 0.6, pitch: 0.9,
+        });
+        alarm.stop();
+      `,
+    });
+    expect(asked).toEqual([
+      {
+        tag: "sound",
+        payload: {
+          name: "audio/alarm.ogg",
+          id: "alarm",
+          volume: 0.6,
+          pitch: 0.9,
+          loop: true,
+        },
+      },
+      { tag: "sound-stop", payload: { id: "alarm" } },
+    ]);
   });
 });
 

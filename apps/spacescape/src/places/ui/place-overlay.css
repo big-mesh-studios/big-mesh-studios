@@ -43,6 +43,48 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 
+.place-overlay-meter {
+  padding: 8px 10px;
+  border: 1px solid rgba(230, 237, 243, 0.18);
+  border-radius: 5px;
+  background: rgba(12, 14, 18, 0.82);
+  color: #e6edf3;
+  font:
+    12px ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+}
+.place-overlay-meter-label {
+  margin-bottom: 5px;
+}
+.place-overlay-meter-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(230, 237, 243, 0.2);
+}
+.place-overlay-meter-fill {
+  height: 100%;
+  background: #65c98a;
+  transition: width 120ms linear;
+}
+.place-overlay-hud-label {
+  position: absolute;
+  left: 2%;
+  max-width: min(360px, 80vw);
+  color: #e6edf3;
+  font:
+    12px ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
 /* ---- Narration ---- */
 
 .place-overlay-line {

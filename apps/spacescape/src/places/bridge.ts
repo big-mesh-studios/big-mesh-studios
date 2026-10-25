@@ -119,13 +119,17 @@ export interface GuestBridge {
 }
 
 /**
- * The module name a place's source imports the guest library by.
+ * The native module name a Spacescape place imports the guest library by.
  *
  * A single specifier rather than a relative path, because it is not a file: there is one
  * guest library, it is not the place's own, and a place should not be able to shadow it
  * with a file of its own that happens to be named the same thing.
  */
-export const GUEST_MODULE = "voxelscape";
+/** The native import name for places authored in Spacescape. */
+export const GUEST_MODULE = "spacescape";
+
+/** The original Spacescape import name, retained so existing places keep loading. */
+export const LEGACY_GUEST_MODULE = "voxelscape";
 
 /**
  * The reserved specifier that hands a script the host's own object.

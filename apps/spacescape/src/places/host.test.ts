@@ -204,6 +204,55 @@ const buildsABox = (place = "bridge", id = "deck"): Record<string, string> => ({
 });
 
 describe("a host applies a place's effects", () => {
+  it("runs shared beams and particles through the native spacescape API", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createBeam, createParticle, onTick } from "spacescape";
+        createBeam({ id: "link", from: [1, 2, 3], to: [4, 5, 6], color: [1, 0.5, 0] });
+        createParticle({ id: "steam", x: 8, y: 9, z: 10, kind: "smoke", loop: true });
+        onTick(() => {});
+      `,
+    });
+    expect(notices).toEqual([]);
+    expect(host.beamList).toEqual([
+      {
+        id: "link",
+        ax: 1,
+        ay: 2,
+        az: 3,
+        bx: 4,
+        by: 5,
+        bz: 6,
+        color: [1, 128 / 255, 0],
+        width: 0.1,
+      },
+    ]);
+    expect(host.particleList[0]).toMatchObject({
+      id: "steam",
+      x: 8,
+      y: 9,
+      z: 10,
+      loop: true,
+      upward: true,
+    });
+    host.dispose();
+    expect(host.beamList).toEqual([]);
+    expect(host.particleList).toEqual([]);
+  });
+
+  it("keeps the old voxelscape module name working in spacescape places", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createBeam, onTick } from "voxelscape";
+        createBeam({ id: "legacy", from: [0, 0, 0], to: [1, 1, 1] });
+        onTick(() => {});
+      `,
+    });
+    expect(notices).toEqual([]);
+    expect(host.beamList).toHaveLength(1);
+    host.dispose();
+  });
+
   it("puts a shape into a place, with the fold index the registry assigns", async () => {
     const { host, world, notices } = await start(buildsABox());
 

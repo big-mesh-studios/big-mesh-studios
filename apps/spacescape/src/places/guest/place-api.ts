@@ -41,6 +41,54 @@
 import type { PRIMITIVES, ShapeType } from "@big-mesh-studios/sdf";
 
 import type { GuestBridge } from "../bridge";
+import type {
+  BeamHandle as SharedBeamHandle,
+  CreateHudMeterOptions as SharedCreateHudMeterOptions,
+  CreateHudLabelOptions as SharedCreateHudLabelOptions,
+  CreateBeamOptions as SharedCreateBeamOptions,
+  CreateParticleOptions as SharedCreateParticleOptions,
+  ParticleHandle as SharedParticleHandle,
+  ParticleKind as SharedParticleKind,
+  PlaceLightHandle as SharedPlaceLightHandle,
+  PlaySoundOptions as SharedPlaySoundOptions,
+  SoundHandle as SharedSoundHandle,
+  HudMeterHandle as SharedHudMeterHandle,
+  HudLabelHandle as SharedHudLabelHandle,
+} from "@big-mesh-studios/place-api";
+
+/** Options for drawing a beam between points or entities. */
+export interface CreateBeamOptions extends SharedCreateBeamOptions {}
+/** Handle for a beam created by a place script. */
+export interface BeamHandle extends SharedBeamHandle {}
+/** Options for starting a particle emitter. */
+export interface CreateParticleOptions extends SharedCreateParticleOptions {}
+/** Handle for a particle emitter created by a place script. */
+export interface ParticleHandle extends SharedParticleHandle {}
+/** The portable particle kinds supported by both engines. */
+export type ParticleKind = SharedParticleKind;
+/** Handle for a light created by a place script. */
+export interface LightHandle extends SharedPlaceLightHandle {}
+/** Options for playing a sound attached to this place. */
+export interface PlaySoundOptions extends SharedPlaySoundOptions {}
+/** Handle for a sound playback. */
+export interface SoundHandle extends SharedSoundHandle {}
+/** Options for a shared screen-space meter. */
+export interface CreateHudMeterOptions extends SharedCreateHudMeterOptions {}
+/** Handle for updating or removing a HUD meter. */
+export interface HudMeterHandle extends SharedHudMeterHandle {}
+/** Options for a shared screen-space HUD label. */
+export interface CreateHudLabelOptions extends SharedCreateHudLabelOptions {}
+/** Handle for updating or removing a HUD label. */
+export interface HudLabelHandle extends SharedHudLabelHandle {}
+
+const wireColour = (color: readonly [number, number, number] | undefined) =>
+  color === undefined
+    ? undefined
+    : {
+        r: Math.round(color[0] * 255),
+        g: Math.round(color[1] * 255),
+        b: Math.round(color[2] * 255),
+      };
 
 /**
  * The host, as the interpreter passed it in.
@@ -592,7 +640,7 @@ export interface CreateLightOptions {
 }
 
 /** Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps. */
-export const createLight = (options: CreateLightOptions): void => {
+export const createLight = (options: CreateLightOptions): LightHandle => {
   ask("light-add", {
     id: options.id,
     at: options.at,
@@ -600,6 +648,66 @@ export const createLight = (options: CreateLightOptions): void => {
     radius: options.radius,
     intensity: options.intensity,
   });
+  return {
+    id: options.id,
+    remove: () => ask("light-remove", { id: options.id }),
+  };
+};
+
+/* ------------------------------------------------------------------- sounds */
+
+/** Plays a sound file named in the place manifest. The name is its manifest path. */
+export const playSound = (
+  name: string,
+  options: PlaySoundOptions = {},
+): SoundHandle => {
+  const player = "";
+  const id = options.id ?? "";
+  ask("sound", {
+    name,
+    ...(player === "" ? {} : { player }),
+    ...(id === "" ? {} : { id }),
+    volume: options.volume,
+    pitch: options.pitch,
+    loop: options.loop,
+  });
+  return {
+    id,
+    stop: () => {
+      if (id !== "") {
+        ask("sound-stop", { ...(player === "" ? {} : { player }), id });
+      }
+    },
+  };
+};
+
+/** Stops a named sound playback. */
+export const stopSound = (id: string): void => {
+  ask("sound-stop", { id });
+};
+
+/* ---------------------------------------------------- shared visual effects */
+
+/** Draws a line between world points or entities. The returned handle removes it. */
+export const createBeam = (options: CreateBeamOptions): BeamHandle => {
+  const { color, ...payload } = options;
+  ask("beam", { ...payload, colour: wireColour(color) });
+  return {
+    id: options.id,
+    remove: () => ask("beam-remove", { id: options.id }),
+  };
+};
+
+/** Runs a particle emitter at a point or over an entity. The returned handle stops it. */
+export const createParticle = (
+  options: CreateParticleOptions,
+): ParticleHandle => {
+  const { color, ...payload } = options;
+  ask("particle", { ...payload, colour: wireColour(color) });
+  return {
+    id: options.id,
+    remove: () => ask("particle-remove", { id: options.id }),
+  };
 };
 
 /** Takes a light away. Doing nothing when there is none. */
@@ -981,6 +1089,51 @@ export const showImage = (options: {
 /** Takes a HUD image away. A no-op when there was none. */
 export const hideImage = (id: string): void => {
   ask("image-hide", { id });
+};
+
+/** Creates a labelled bar on the HUD; update it with setValue and remove it when finished. */
+export const createHudMeter = (
+  options: CreateHudMeterOptions,
+): HudMeterHandle => {
+  let value = options.value;
+  let label = options.label;
+  const show = (): void =>
+    ask("hud-meter", {
+      id: options.id,
+      label,
+      value,
+      max: options.max,
+    });
+  show();
+  return {
+    id: options.id,
+    setValue: (next) => {
+      value = next;
+      show();
+    },
+    setLabel: (next) => {
+      label = next;
+      show();
+    },
+    remove: () => ask("hud-meter-remove", { id: options.id }),
+  };
+};
+
+/** Creates a line of text on the HUD; update it with setText and remove it when finished. */
+export const createHudLabel = (
+  options: CreateHudLabelOptions,
+): HudLabelHandle => {
+  let text = options.text;
+  const show = (): void => ask("hud-label", { id: options.id, text });
+  show();
+  return {
+    id: options.id,
+    setText: (next) => {
+      text = next;
+      show();
+    },
+    remove: () => ask("hud-label-remove", { id: options.id }),
+  };
 };
 
 /* ------------------------------------------------------------------ output */

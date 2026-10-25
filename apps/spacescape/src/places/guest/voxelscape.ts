@@ -3,7 +3,8 @@
  *
  * ## Why this file exists, and why it is an alias rather than a declaration
  *
- * A place writes `import { createShape } from "voxelscape"`, and `voxelscape` is not a
+ * Existing places write `import { createShape } from "voxelscape"`; the name remains a
+ * compatibility alias for the API new places import as `spacescape`. The module is not a
  * package — it is `place-api.ts` in this directory. A project points at it with a `paths`
  * entry, and **`tsconfig.json` here does exactly that** so the demos under `src/places/demo/`
  * are type-checked like everything else.

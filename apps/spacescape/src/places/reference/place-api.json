@@ -94,6 +94,20 @@
       "returns": "void"
     },
     {
+      "name": "createBeam",
+      "signature": "(options: CreateBeamOptions): BeamHandle",
+      "doc": "Draws a line between world points or entities. The returned handle removes it.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateBeamOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "BeamHandle"
+    },
+    {
       "name": "createCamera",
       "signature": "(options: CreateCameraOptions): void",
       "doc": "Places a virtual camera. Nothing looks through it until something watches it or shows it.",
@@ -108,8 +122,36 @@
       "returns": "void"
     },
     {
+      "name": "createHudLabel",
+      "signature": "(options: CreateHudLabelOptions): HudLabelHandle",
+      "doc": "Creates a line of text on the HUD; update it with setText and remove it when finished.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudLabelOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudLabelHandle"
+    },
+    {
+      "name": "createHudMeter",
+      "signature": "(options: CreateHudMeterOptions): HudMeterHandle",
+      "doc": "Creates a labelled bar on the HUD; update it with setValue and remove it when finished.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudMeterOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudMeterHandle"
+    },
+    {
       "name": "createLight",
-      "signature": "(options: CreateLightOptions): void",
+      "signature": "(options: CreateLightOptions): LightHandle",
       "doc": "Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.",
       "params": [
         {
@@ -119,7 +161,7 @@
           "doc": ""
         }
       ],
-      "returns": "void"
+      "returns": "LightHandle"
     },
     {
       "name": "createMedium",
@@ -148,6 +190,20 @@
         }
       ],
       "returns": "void"
+    },
+    {
+      "name": "createParticle",
+      "signature": "(options: CreateParticleOptions): ParticleHandle",
+      "doc": "Runs a particle emitter at a point or over an entity. The returned handle stops it.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateParticleOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "ParticleHandle"
     },
     {
       "name": "createProp",
@@ -640,6 +696,26 @@
       "returns": "void"
     },
     {
+      "name": "playSound",
+      "signature": "(name: string, options?: PlaySoundOptions): SoundHandle",
+      "doc": "Plays a sound file named in the place manifest. The name is its manifest path.",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "options",
+          "type": "PlaySoundOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "SoundHandle"
+    },
+    {
       "name": "randFloat",
       "signature": "(low: number, high: number): number",
       "doc": "A number in `[low, high)`, from the seeded generator.",
@@ -969,6 +1045,20 @@
       "returns": "void"
     },
     {
+      "name": "stopSound",
+      "signature": "(id: string): void",
+      "doc": "Stops a named sound playback.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "takeItem",
       "signature": "(item: string, count?: number | undefined): void",
       "doc": "Takes items out of what the player is carrying, and never fails. **Takes whatever is there, up to `count`.** A player who has already drunk the milk has none, and that is an ordinary state rather than a failure — so this does not throw, and a script that wanted to know how much it got keeps its own count in `saveData`. **A held item that runs out is dropped**, which is the reason the held slot lives inside the inventory: a hand holding something the count says is gone is a hand the crosshair reads as occupied.",
@@ -1040,10 +1130,26 @@
   ],
   "types": [
     {
+      "name": "BeamHandle",
+      "doc": "Handle for a beam created by a place script.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "Combine",
       "doc": "How a shape changes the field.",
       "members": [],
       "union": ["Add", "Subtract", "Paint"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateBeamOptions",
+      "doc": "Options for drawing a beam between points or entities.",
+      "members": [],
+      "union": [],
       "alternatives": [],
       "type": ""
     },
@@ -1121,6 +1227,22 @@
           "doc": "The voxel size to mesh this model at, in world units. **A quality override rather than a size.** The model has its own default derived from its own dimensions; a model authored in `sdf-modeller` is small in this world's units and can need a finer grid than that default to keep its thin parts. Omitted means the model decides."
         }
       ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateHudLabelOptions",
+      "doc": "Options for a shared screen-space HUD label.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateHudMeterOptions",
+      "doc": "Options for a shared screen-space meter.",
+      "members": [],
       "union": [],
       "alternatives": [],
       "type": ""
@@ -1226,6 +1348,14 @@
           "doc": "What to call it, in the narration and the dialog."
         }
       ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateParticleOptions",
+      "doc": "Options for starting a particle emitter.",
+      "members": [],
       "union": [],
       "alternatives": [],
       "type": ""
@@ -1389,12 +1519,36 @@
       "type": ""
     },
     {
+      "name": "HudLabelHandle",
+      "doc": "Handle for updating or removing a HUD label.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "HudMeterHandle",
+      "doc": "Handle for updating or removing a HUD meter.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "ImageSource",
       "doc": "What a screen or a HUD image shows. **A camera is live and a photo is still**, and the difference is the source rather than a flag. `{ camera: \"hallway\" }` is redrawn while it is near enough to be seen; `{ photo: \"shot\" }` is the picture that was taken.",
       "members": [],
       "union": [],
       "alternatives": [],
       "type": "{ readonly camera: string; } | { readonly photo: string; }"
+    },
+    {
+      "name": "LightHandle",
+      "doc": "Handle for a light created by a place script.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
     },
     {
       "name": "Medium",
@@ -1434,6 +1588,22 @@
       "union": [],
       "alternatives": [],
       "type": ""
+    },
+    {
+      "name": "ParticleHandle",
+      "doc": "Handle for a particle emitter created by a place script.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "ParticleKind",
+      "doc": "The portable particle kinds supported by both engines.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": "\"spark\" | \"flame\" | \"smoke\" | \"dust\""
     },
     {
       "name": "Photo",
@@ -1535,6 +1705,14 @@
       "type": ""
     },
     {
+      "name": "PlaySoundOptions",
+      "doc": "Options for playing a sound attached to this place.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "RayHit",
       "doc": "What a ray found, or undefined for nothing.",
       "members": [
@@ -1563,6 +1741,14 @@
           "doc": ""
         }
       ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "SoundHandle",
+      "doc": "Handle for a sound playback.",
+      "members": [],
       "union": [],
       "alternatives": [],
       "type": ""

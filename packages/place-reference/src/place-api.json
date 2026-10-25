@@ -139,8 +139,36 @@
       "returns": "DecalHandle"
     },
     {
+      "name": "createHudLabel",
+      "signature": "(options: CreateHudLabelOptions): HudLabelHandle",
+      "doc": "Adds a line of text to the local player's HUD.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudLabelOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudLabelHandle"
+    },
+    {
+      "name": "createHudMeter",
+      "signature": "(options: CreateHudMeterOptions): HudMeterHandle",
+      "doc": "Adds a labelled bar to the local player's HUD.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudMeterOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudMeterHandle"
+    },
+    {
       "name": "createLight",
-      "signature": "(options: CreateLightOptions): LightHandle",
+      "signature": "(options: CreateLightOptions): PlaceLightHandle",
       "doc": "Lights a point or a figure; see `createProp` for why `id` is never generated.",
       "params": [
         {
@@ -150,7 +178,7 @@
           "doc": ""
         }
       ],
-      "returns": "LightHandle"
+      "returns": "PlaceLightHandle"
     },
     {
       "name": "createNpc",
@@ -466,6 +494,26 @@
       "returns": "string"
     },
     {
+      "name": "playSound",
+      "signature": "(name: string, options?: PlaySoundOptions | undefined): SoundHandle",
+      "doc": "Plays a world-provided or place-provided sound by its manifest name.",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "options",
+          "type": "PlaySoundOptions | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "SoundHandle"
+    },
+    {
       "name": "randFloat",
       "signature": "(min: number, max: number): number",
       "doc": "A random real number from `min` up to but not including `max`.",
@@ -688,6 +736,20 @@
         }
       ],
       "returns": "number"
+    },
+    {
+      "name": "stopSound",
+      "signature": "(id: string): void",
+      "doc": "Stops a named playback; no-op if it is already gone.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
     },
     {
       "name": "teleport",
@@ -970,7 +1032,7 @@
     },
     {
       "name": "BeamHandle",
-      "doc": "A line a place script draws; `remove` takes it down.",
+      "doc": "Handle for a beam shared by both place engines.",
       "members": [
         {
           "name": "id",
@@ -1087,7 +1149,7 @@
     },
     {
       "name": "CreateBeamOptions",
-      "doc": "Where a beam's two ends stand: a figure it follows, or a world point.",
+      "doc": "Options for drawing a beam in either place engine.",
       "members": [
         {
           "name": "id",
@@ -1096,40 +1158,40 @@
           "doc": ""
         },
         {
-          "name": "fromEntity",
-          "type": "string",
-          "optional": true,
-          "doc": "The figure the line starts at; exactly one of this and `from` is set."
-        },
-        {
-          "name": "from",
-          "type": "[number, number, number]",
-          "optional": true,
-          "doc": "The world point the line starts at, in world units."
-        },
-        {
-          "name": "toEntity",
-          "type": "string",
-          "optional": true,
-          "doc": "The figure the line ends at; exactly one of this and `to` is set."
-        },
-        {
-          "name": "to",
-          "type": "[number, number, number]",
-          "optional": true,
-          "doc": "The world point the line ends at, in world units."
-        },
-        {
           "name": "color",
-          "type": "[number, number, number]",
+          "type": "PlaceColor",
           "optional": true,
-          "doc": "Linear RGB, 0 to 1 each; defaults to white."
+          "doc": ""
         },
         {
           "name": "width",
           "type": "number",
           "optional": true,
-          "doc": "How wide the line is drawn, in world units; defaults to 0.1."
+          "doc": ""
+        },
+        {
+          "name": "fromEntity",
+          "type": "string",
+          "optional": true,
+          "doc": "Exactly one of the entity or point fields is required by the host."
+        },
+        {
+          "name": "from",
+          "type": "PlaceVec3",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "toEntity",
+          "type": "string",
+          "optional": true,
+          "doc": "Exactly one of the entity or point fields is required by the host."
+        },
+        {
+          "name": "to",
+          "type": "PlaceVec3",
+          "optional": true,
+          "doc": ""
         }
       ],
       "union": [],
@@ -1263,6 +1325,60 @@
       "type": ""
     },
     {
+      "name": "CreateHudLabelOptions",
+      "doc": "Options for a shared screen-space text label.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateHudMeterOptions",
+      "doc": "Options for a labelled screen-space value bar, shared by both engines.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "CreateLightOptions",
       "doc": "Where a point light stands, or the figure it hangs over.",
       "members": [
@@ -1366,7 +1482,7 @@
     },
     {
       "name": "CreateParticleOptions",
-      "doc": "Where an emitter runs and what it looks like.",
+      "doc": "Options for a particle emitter shared by both place engines.",
       "members": [
         {
           "name": "id",
@@ -1378,19 +1494,19 @@
           "name": "kind",
           "type": "ParticleKind",
           "optional": true,
-          "doc": "One of the world's fixed particle kinds; defaults to \"spark\"."
+          "doc": ""
         },
         {
           "name": "entityId",
           "type": "string",
           "optional": true,
-          "doc": "Hangs the emitter over this figure; when set, the position fields are ignored."
+          "doc": "Hangs the emitter over this entity; when set, position fields are ignored."
         },
         {
           "name": "x",
           "type": "number",
           "optional": true,
-          "doc": ""
+          "doc": "World position when the emitter is not attached to an entity."
         },
         {
           "name": "y",
@@ -1406,33 +1522,33 @@
         },
         {
           "name": "color",
-          "type": "[number, number, number]",
+          "type": "PlaceColor",
           "optional": true,
-          "doc": "Linear RGB, 0 to 1 each; defaults to the kind's own colour."
+          "doc": "Linear RGB channels from zero to one."
         },
         {
           "name": "size",
           "type": "number",
           "optional": true,
-          "doc": "Drawn size of one particle, in world units; defaults to the kind's own."
+          "doc": ""
         },
         {
           "name": "spread",
           "type": "number",
           "optional": true,
-          "doc": "How far particles travel, in world units; defaults to the kind's own."
+          "doc": ""
         },
         {
           "name": "lifeMs",
           "type": "number",
           "optional": true,
-          "doc": "How long one particle lives, in milliseconds; defaults to the kind's own."
+          "doc": ""
         },
         {
           "name": "loop",
           "type": "boolean",
           "optional": true,
-          "doc": "Whether it keeps emitting until removed; defaults to false."
+          "doc": "Continue emitting until the handle is removed."
         }
       ],
       "union": [],
@@ -1988,6 +2104,66 @@
       "type": ""
     },
     {
+      "name": "HudLabelHandle",
+      "doc": "Handle for updating or removing a shared HUD label.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "setText",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "remove",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "HudMeterHandle",
+      "doc": "Handle for updating or removing a shared HUD meter.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "setValue",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "setLabel",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "remove",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "LeaderboardEntry",
       "doc": "One player's score on a leaderboard.",
       "members": [
@@ -2353,7 +2529,7 @@
     },
     {
       "name": "ParticleHandle",
-      "doc": "An emitter a place script runs; `remove` stops it.",
+      "doc": "Handle for a shared particle emitter.",
       "members": [
         {
           "name": "id",
@@ -2374,7 +2550,7 @@
     },
     {
       "name": "ParticleKind",
-      "doc": "One of the world's fixed particle kinds.",
+      "doc": "A portable particle style supported by both place engines.",
       "members": [],
       "union": ["spark", "flame", "smoke", "dust"],
       "alternatives": [],
@@ -2707,6 +2883,39 @@
       "type": ""
     },
     {
+      "name": "PlaySoundOptions",
+      "doc": "Playback options shared by both place engines.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": true,
+          "doc": "Optional id for stopping this playback later; required when looping."
+        },
+        {
+          "name": "volume",
+          "type": "number",
+          "optional": true,
+          "doc": "Playback volume from zero to one."
+        },
+        {
+          "name": "pitch",
+          "type": "number",
+          "optional": true,
+          "doc": "Playback rate from 0.25 to four."
+        },
+        {
+          "name": "loop",
+          "type": "boolean",
+          "optional": true,
+          "doc": "Keep playing until the returned handle is stopped."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "PropHandle",
       "doc": "A prop placed through the \"prop\"/\"prop-remove\" effects, as `createProp` hands it back.",
       "members": [
@@ -2914,6 +3123,27 @@
       "union": [],
       "alternatives": [],
       "type": "ScriptEventPayload & { id: string; at: number; producer: string; }"
+    },
+    {
+      "name": "SoundHandle",
+      "doc": "Handle for a sound playback shared by both place engines.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "stop",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
     },
     {
       "name": "StormHandle",

@@ -30,7 +30,7 @@ import {
   getHeightAt,
   log,
   onTick,
-} from "voxelscape";
+} from "spacescape";
 
 /** The world's surface, which is where this demo stands. See `surfaceHeightAt` in `app.tsx`. */
 const GROUND = getHeightAt(0, 0);

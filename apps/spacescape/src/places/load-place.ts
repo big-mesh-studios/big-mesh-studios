@@ -47,6 +47,8 @@ import {
   isSafePathName,
   MAX_PLACE_LEVEL_CHARS,
   MAX_PLACE_MODEL_BYTES,
+  MAX_PLACE_SOUND_BYTES,
+  MAX_PLACE_SOUND_BYTES_TOTAL,
   PLACE_MANIFEST_FILE,
   type PlaceManifest,
 } from "./place-file";
@@ -72,6 +74,8 @@ export interface LoadedPlace {
    * script reads it and neither should have to go through a third representation first.
    */
   readonly levels: Readonly<Record<string, string>>;
+  /** Local audio files named by the manifest. */
+  readonly sounds: Readonly<Record<string, Uint8Array>>;
   /** The file that runs. Copied out of the manifest so a caller need not re-validate it. */
   readonly entry: string;
 }
@@ -122,6 +126,7 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
     ...manifest.scripts,
     ...(manifest.models ?? []),
     ...(manifest.levels ?? []),
+    ...(manifest.sounds ?? []),
   ]);
   for (const name of Object.keys(zip.files)) {
     if (name === PLACE_MANIFEST_FILE) continue;
@@ -152,6 +157,7 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
    * characters, which is the number that means anything for a document.
    */
   const levels: Record<string, string> = {};
+  const sounds: Record<string, Uint8Array> = {};
   let characters = 0;
 
   for (const name of manifest.scripts) {
@@ -224,7 +230,35 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
     levels[name] = text;
   }
 
-  return { manifest, files, models, levels, entry: manifest.entry };
+  let totalSoundBytes = 0;
+  for (const name of manifest.sounds ?? []) {
+    if (!isSafePathName(name)) {
+      throw new Error(
+        `the manifest names "${name}", which is not a path this can read`,
+      );
+    }
+    const entry = zip.file(name);
+    if (entry === null) {
+      throw new Error(
+        `the manifest names "${name}", which the zip does not hold`,
+      );
+    }
+    const bytes = await entry.async("uint8array");
+    if (bytes.byteLength > MAX_PLACE_SOUND_BYTES) {
+      throw new Error(
+        `"${name}" is over the ${MAX_PLACE_SOUND_BYTES} byte limit on one sound`,
+      );
+    }
+    totalSoundBytes += bytes.byteLength;
+    if (totalSoundBytes > MAX_PLACE_SOUND_BYTES_TOTAL) {
+      throw new Error(
+        `the place's sounds are over the ${MAX_PLACE_SOUND_BYTES_TOTAL} byte total limit`,
+      );
+    }
+    sounds[name] = bytes;
+  }
+
+  return { manifest, files, models, levels, sounds, entry: manifest.entry };
 };
 
 /** Opens the archive, or says what the bytes were not. */

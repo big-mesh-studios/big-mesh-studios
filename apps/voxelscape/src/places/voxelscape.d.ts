@@ -668,10 +668,8 @@ declare module "voxelscape" {
   }
 
   /** A light a place script has lit; `remove` puts it out. */
-  export interface LightHandle {
-    readonly id: string;
-    remove(): void;
-  }
+  export type LightHandle =
+    import("@big-mesh-studios/place-api").PlaceLightHandle;
 
   /** Lights a point or a figure; see `createProp` for why `id` is never generated. */
   export function createLight(options: CreateLightOptions): LightHandle;
@@ -704,36 +702,47 @@ declare module "voxelscape" {
     options: CreateBillboardOptions,
   ): BillboardHandle;
 
-  /** One of the world's fixed particle kinds. */
-  export type ParticleKind = "spark" | "flame" | "smoke" | "dust";
+  /** A portable particle style supported by both place engines. */
+  export type ParticleKind = import("@big-mesh-studios/place-api").ParticleKind;
+  /** Options for a particle emitter shared by both place engines. */
+  export type CreateParticleOptions =
+    import("@big-mesh-studios/place-api").CreateParticleOptions;
+  /** Handle for a shared particle emitter. */
+  export type ParticleHandle =
+    import("@big-mesh-studios/place-api").ParticleHandle;
+  /** Playback options shared by both place engines. */
+  export type PlaySoundOptions =
+    import("@big-mesh-studios/place-api").PlaySoundOptions;
+  /** Handle for a sound playback shared by both place engines. */
+  export type SoundHandle = import("@big-mesh-studios/place-api").SoundHandle;
+  /** Options for a labelled screen-space value bar, shared by both engines. */
+  export type CreateHudMeterOptions =
+    import("@big-mesh-studios/place-api").CreateHudMeterOptions;
+  /** Handle for updating or removing a shared HUD meter. */
+  export type HudMeterHandle =
+    import("@big-mesh-studios/place-api").HudMeterHandle;
+  /** Adds a labelled bar to the local player's HUD. */
+  export function createHudMeter(
+    options: CreateHudMeterOptions,
+  ): HudMeterHandle;
+  /** Options for a shared screen-space text label. */
+  export type CreateHudLabelOptions =
+    import("@big-mesh-studios/place-api").CreateHudLabelOptions;
+  /** Handle for updating or removing a shared HUD label. */
+  export type HudLabelHandle =
+    import("@big-mesh-studios/place-api").HudLabelHandle;
+  /** Adds a line of text to the local player's HUD. */
+  export function createHudLabel(
+    options: CreateHudLabelOptions,
+  ): HudLabelHandle;
 
-  /** Where an emitter runs and what it looks like. */
-  export interface CreateParticleOptions {
-    id: string;
-    /** One of the world's fixed particle kinds; defaults to "spark". */
-    kind?: ParticleKind;
-    /** Hangs the emitter over this figure; when set, the position fields are ignored. */
-    entityId?: string;
-    x?: number;
-    y?: number;
-    z?: number;
-    /** Linear RGB, 0 to 1 each; defaults to the kind's own colour. */
-    color?: [number, number, number];
-    /** Drawn size of one particle, in world units; defaults to the kind's own. */
-    size?: number;
-    /** How far particles travel, in world units; defaults to the kind's own. */
-    spread?: number;
-    /** How long one particle lives, in milliseconds; defaults to the kind's own. */
-    lifeMs?: number;
-    /** Whether it keeps emitting until removed; defaults to false. */
-    loop?: boolean;
-  }
-
-  /** An emitter a place script runs; `remove` stops it. */
-  export interface ParticleHandle {
-    readonly id: string;
-    remove(): void;
-  }
+  /** Plays a world-provided or place-provided sound by its manifest name. */
+  export function playSound(
+    name: string,
+    options?: PlaySoundOptions,
+  ): SoundHandle;
+  /** Stops a named playback; no-op if it is already gone. */
+  export function stopSound(id: string): void;
 
   /** Runs a particle emitter; see `createProp` for why `id` is never generated. */
   export function createParticle(
@@ -852,28 +861,11 @@ declare module "voxelscape" {
   /** Opens a rift; see `createProp` for why `id` is never generated. */
   export function createRift(options: CreateRiftOptions): RiftHandle;
 
-  /** Where a beam's two ends stand: a figure it follows, or a world point. */
-  export interface CreateBeamOptions {
-    id: string;
-    /** The figure the line starts at; exactly one of this and `from` is set. */
-    fromEntity?: string;
-    /** The world point the line starts at, in world units. */
-    from?: [number, number, number];
-    /** The figure the line ends at; exactly one of this and `to` is set. */
-    toEntity?: string;
-    /** The world point the line ends at, in world units. */
-    to?: [number, number, number];
-    /** Linear RGB, 0 to 1 each; defaults to white. */
-    color?: [number, number, number];
-    /** How wide the line is drawn, in world units; defaults to 0.1. */
-    width?: number;
-  }
-
-  /** A line a place script draws; `remove` takes it down. */
-  export interface BeamHandle {
-    readonly id: string;
-    remove(): void;
-  }
+  /** Options for drawing a beam in either place engine. */
+  export type CreateBeamOptions =
+    import("@big-mesh-studios/place-api").CreateBeamOptions;
+  /** Handle for a beam shared by both place engines. */
+  export type BeamHandle = import("@big-mesh-studios/place-api").BeamHandle;
 
   /** Draws a glowing line between two ends; see `createProp` for why `id` is never generated. */
   export function createBeam(options: CreateBeamOptions): BeamHandle;

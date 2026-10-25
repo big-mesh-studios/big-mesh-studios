@@ -19,7 +19,7 @@ import {
   movePlayer,
   onTick,
   setTime,
-} from "voxelscape";
+} from "spacescape";
 
 /** Where the platform is, and where a player standing on it would be. */
 // **`getHeightAt` because the ground is the planet's surface**, which is 136000 units above

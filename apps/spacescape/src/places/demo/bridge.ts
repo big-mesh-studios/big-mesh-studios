@@ -13,7 +13,7 @@
  * `span.ts`, where they are described.
  */
 
-import { createZone, log, onTick } from "voxelscape";
+import { createZone, log, onTick } from "spacescape";
 
 import { buildSpan, DECK_Y, WIDTH } from "./span";
 

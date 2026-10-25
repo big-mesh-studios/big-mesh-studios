@@ -20,7 +20,7 @@
  *   the camera, write a line. Those are the irreducible set of things a script can ask for
  *   that the host genuinely cannot answer on its own.
  *
- * So `HostEffects` has eight methods rather than forty, and everything else is a property.
+ * So `HostEffects` has a small set of application callbacks rather than forty, and everything else is a property.
  *
  * ## The step, and why it is a loop
  *
@@ -45,7 +45,7 @@
  * a given state always does the same thing. That is what lets every peer derive the same
  * world from the same script (ADR 0016).
  *
- * **The eight callbacks are the exception, and deliberately.** `player-place` on one peer
+ * **The application callbacks are the exception, and deliberately.** `player-place` on one peer
  * moves that peer's player and nobody else's — which is correct, because each peer is running
  * a different player. It does mean a script cannot use them to keep two players in agreement,
  * and the record says so rather than pretending otherwise.
@@ -92,6 +92,13 @@ import type { FigureSet } from "../figures/figure-set";
 import type { FigureModel } from "./model-library";
 import { ScriptInventory, type InventoryRefusal } from "./script-inventory";
 import { materialId } from "../render/material-names";
+import {
+  PARTICLE_STYLES,
+  type BeamPose,
+  type ParticleKind,
+  type ParticlePose,
+  type ParticleStyle,
+} from "@big-mesh-studios/place-api";
 
 /**
  * How deep one step may cascade.
@@ -205,6 +212,19 @@ export interface HostWorld {
 
 /** The eight things only the application can do. See the file header. */
 export interface HostEffects {
+  /** Plays a place-provided sound for this local player. */
+  playSound?(
+    name: string,
+    playback: {
+      readonly player: string;
+      readonly id: string;
+      readonly volume: number;
+      readonly pitch: number;
+      readonly loop: boolean;
+    },
+  ): void;
+  /** Stops a named place-provided sound. */
+  stopSound?(player: string, id: string): void;
   /** A line for the console. */
   log(text: string): void;
   /** A line on the player's screen. */
@@ -252,6 +272,14 @@ export interface HostEffects {
   showImage(image: HostImage): void;
   /** A HUD image went away. A no-op when there was none. */
   hideImage(id: string): void;
+  /** A labelled value bar appeared or changed. */
+  showHudMeter?(meter: HostHudMeter): void;
+  /** A HUD meter went away. */
+  hideHudMeter?(id: string): void;
+  /** A HUD label appeared or changed. */
+  showHudLabel?(label: HostHudLabel): void;
+  /** A HUD label went away. */
+  hideHudLabel?(id: string): void;
 }
 
 /**
@@ -292,6 +320,27 @@ export interface Light {
    * Zero means it lights nothing.
    */
   readonly intensity: number;
+}
+
+interface OwnedBeam {
+  readonly id: string;
+  readonly fromEntity?: string;
+  readonly from?: Vec3;
+  readonly toEntity?: string;
+  readonly to?: Vec3;
+  readonly color: [number, number, number];
+  readonly width: number;
+}
+
+interface OwnedParticle {
+  readonly id: string;
+  readonly entityId?: string;
+  readonly x: number;
+  readonly y?: number;
+  readonly z: number;
+  readonly style: ParticleStyle;
+  readonly loop: boolean;
+  readonly at: number;
 }
 
 /**
@@ -350,6 +399,20 @@ export interface HostImage {
   readonly corner: HudCorner;
   readonly width: number;
   readonly height: number;
+}
+
+/** A renderer-independent bar in the player's HUD. */
+export interface HostHudMeter {
+  readonly id: string;
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
+}
+
+/** A line of text in the player's HUD. */
+export interface HostHudLabel {
+  readonly id: string;
+  readonly text: string;
 }
 
 /**
@@ -490,6 +553,8 @@ export class PlaceHost {
   private readonly log = new EventLog();
   private readonly zones = new Map<string, Zone>();
   private readonly lights = new Map<string, Light>();
+  private readonly beams = new Map<string, OwnedBeam>();
+  private readonly particles = new Map<string, OwnedParticle>();
   /** Configured hold duration per entity, in milliseconds. */
   private readonly entityUseDurations = new Map<string, number>();
   /**
@@ -510,6 +575,8 @@ export class PlaceHost {
   private readonly photos = new Map<string, HostPhoto>();
   /** This player's HUD images, in the order they were shown. */
   private readonly images = new Map<string, HostImage>();
+  private readonly hudMeters = new Map<string, HostHudMeter>();
+  private readonly hudLabels = new Map<string, HostHudLabel>();
   /** The camera the player's view was taken over by, if any. */
   private watched: HostCamera | undefined;
   /** Zones the player is inside, so a move can tell an entry from a stay. */
@@ -606,6 +673,66 @@ export class PlaceHost {
     return [...this.zones.values()];
   }
 
+  /** The beams at their current endpoints, resolving attached figures each time. */
+  get beamList(): readonly BeamPose[] {
+    const out: BeamPose[] = [];
+    for (const beam of this.beams.values()) {
+      const from = this.beamEnd(beam.fromEntity, beam.from);
+      const to = this.beamEnd(beam.toEntity, beam.to);
+      if (from === undefined || to === undefined) continue;
+      out.push({
+        id: beam.id,
+        ax: from.x,
+        ay: from.y,
+        az: from.z,
+        bx: to.x,
+        by: to.y,
+        bz: to.z,
+        color: beam.color,
+        width: beam.width,
+      });
+    }
+    return out;
+  }
+
+  /** Particle emitters at their current origin with the shared style defaults applied. */
+  get particleList(): readonly ParticlePose[] {
+    const out: ParticlePose[] = [];
+    for (const particle of this.particles.values()) {
+      let at: Vec3 = {
+        x: particle.x,
+        y:
+          particle.y ??
+          this.options.world.terrainHeight?.(particle.x, particle.z) ??
+          0,
+        z: particle.z,
+      };
+      if (particle.entityId !== undefined) {
+        const entity = this.options.world.figures?.get(particle.entityId);
+        if (entity === undefined) continue;
+        at = entity.transform.at;
+      }
+      out.push({
+        id: particle.id,
+        ...particle.style,
+        x: at.x,
+        y: at.y,
+        z: at.z,
+        loop: particle.loop,
+        at: particle.at,
+      });
+    }
+    return out;
+  }
+
+  private beamEnd(
+    entityId: string | undefined,
+    point: Vec3 | undefined,
+  ): Vec3 | undefined {
+    if (entityId === undefined) return point;
+    return this.options.world.figures?.get(entityId)?.transform.at;
+  }
+
   /**
    * The lights a renderer should draw this frame, nearest first.
    *
@@ -686,6 +813,14 @@ export class PlaceHost {
   /** This player's HUD images, in the order they were shown. */
   get imageList(): readonly HostImage[] {
     return [...this.images.values()];
+  }
+
+  get hudMeterList(): readonly HostHudMeter[] {
+    return [...this.hudMeters.values()];
+  }
+
+  get hudLabelList(): readonly HostHudLabel[] {
+    return [...this.hudLabels.values()];
   }
 
   /** How many fields exist, for a readout. */
@@ -1045,6 +1180,8 @@ export class PlaceHost {
     this.interpreter = undefined;
     this.zones.clear();
     this.lights.clear();
+    this.beams.clear();
+    this.particles.clear();
     this.mediums.clear();
     this.cameras.clear();
     this.screens.clear();
@@ -1423,6 +1560,102 @@ export class PlaceHost {
         this.lights.delete(name("id"));
         return;
 
+      case "sound":
+        this.options.effects.playSound?.(name("name"), {
+          player: String(payload["player"] ?? ""),
+          id: String(payload["id"] ?? ""),
+          volume: optionalNumber("volume") ?? 1,
+          pitch: optionalNumber("pitch") ?? 1,
+          loop: payload["loop"] === true,
+        });
+        return;
+
+      case "sound-stop":
+        this.options.effects.stopSound?.(
+          String(payload["player"] ?? ""),
+          name("id"),
+        );
+        return;
+
+      case "beam": {
+        const id = name("id");
+        const colour = payload["colour"] as
+          | { readonly r: number; readonly g: number; readonly b: number }
+          | undefined;
+        const from = payload["from"] as
+          readonly [number, number, number] | undefined;
+        const to = payload["to"] as
+          readonly [number, number, number] | undefined;
+        this.beams.set(id, {
+          id,
+          ...(typeof payload["fromEntity"] === "string"
+            ? { fromEntity: payload["fromEntity"] }
+            : {}),
+          ...(from !== undefined
+            ? { from: { x: from[0], y: from[1], z: from[2] } }
+            : {}),
+          ...(typeof payload["toEntity"] === "string"
+            ? { toEntity: payload["toEntity"] }
+            : {}),
+          ...(to !== undefined ? { to: { x: to[0], y: to[1], z: to[2] } } : {}),
+          color:
+            colour === undefined
+              ? [1, 1, 1]
+              : [colour.r / 255, colour.g / 255, colour.b / 255],
+          width: (payload["width"] as number | undefined) ?? 0.1,
+        });
+        return;
+      }
+
+      case "beam-remove":
+        this.beams.delete(name("id"));
+        return;
+
+      case "particle": {
+        const id = name("id");
+        const kind = (payload["kind"] as ParticleKind | undefined) ?? "spark";
+        const base = PARTICLE_STYLES[kind];
+        const colour = payload["colour"] as
+          | { readonly r: number; readonly g: number; readonly b: number }
+          | undefined;
+        const entityId = payload["entityId"] as string | undefined;
+        this.particles.set(id, {
+          id,
+          ...(entityId !== undefined ? { entityId } : {}),
+          x: (payload["x"] as number | undefined) ?? 0,
+          ...(payload["y"] !== undefined ? { y: payload["y"] as number } : {}),
+          z: (payload["z"] as number | undefined) ?? 0,
+          style: {
+            ...base,
+            ...(colour !== undefined
+              ? {
+                  color: [
+                    colour.r / 255,
+                    colour.g / 255,
+                    colour.b / 255,
+                  ] as const,
+                }
+              : {}),
+            ...(payload["size"] !== undefined
+              ? { size: payload["size"] as number }
+              : {}),
+            ...(payload["spread"] !== undefined
+              ? { spread: payload["spread"] as number }
+              : {}),
+            ...(payload["lifeMs"] !== undefined
+              ? { lifeMs: payload["lifeMs"] as number }
+              : {}),
+          },
+          loop: (payload["loop"] as boolean | undefined) ?? false,
+          at: this.options.now(),
+        });
+        return;
+      }
+
+      case "particle-remove":
+        this.particles.delete(name("id"));
+        return;
+
       case "medium-add": {
         if (this.mediums.has(name("id"))) {
           throw new Error(`a medium called "${name("id")}" exists`);
@@ -1701,6 +1934,37 @@ export class PlaceHost {
           this.options.effects.hideImage(name("id"));
         }
         return;
+
+      case "hud-meter": {
+        const meter: HostHudMeter = {
+          id: name("id"),
+          label: name("label"),
+          value: number("value"),
+          max: number("max"),
+        };
+        this.hudMeters.set(meter.id, meter);
+        this.options.effects.showHudMeter?.(meter);
+        return;
+      }
+
+      case "hud-meter-remove": {
+        const id = name("id");
+        if (this.hudMeters.delete(id)) this.options.effects.hideHudMeter?.(id);
+        return;
+      }
+
+      case "hud-label": {
+        const label: HostHudLabel = { id: name("id"), text: name("text") };
+        this.hudLabels.set(label.id, label);
+        this.options.effects.showHudLabel?.(label);
+        return;
+      }
+
+      case "hud-label-remove": {
+        const id = name("id");
+        if (this.hudLabels.delete(id)) this.options.effects.hideHudLabel?.(id);
+        return;
+      }
 
       case "log":
         this.options.effects.log(name("text"));

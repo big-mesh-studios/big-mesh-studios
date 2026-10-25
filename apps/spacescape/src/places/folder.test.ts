@@ -130,6 +130,7 @@ const project = (over: Partial<PlaceProject> = {}): PlaceProject => {
   const scripts = over.scripts ?? { "main.ts": "export {};" };
   const models = over.models ?? {};
   const levels = over.levels ?? {};
+  const sounds = over.sounds ?? {};
   return {
     manifest: {
       name: "harbour",
@@ -142,11 +143,15 @@ const project = (over: Partial<PlaceProject> = {}): PlaceProject => {
       ...(Object.keys(levels).length > 0
         ? { levels: Object.keys(levels) }
         : {}),
+      ...(Object.keys(sounds).length > 0
+        ? { sounds: Object.keys(sounds) }
+        : {}),
       ...over.manifest,
     },
     scripts,
     models,
     levels,
+    ...(Object.keys(sounds).length > 0 ? { sounds } : {}),
   };
 };
 
@@ -161,19 +166,22 @@ describe("saving a place into a folder", () => {
         scripts: ["src/main.ts"],
         models: ["props/lamp.sdfmod"],
         levels: ["rooms/hall.json"],
+        sounds: ["audio/chime.wav"],
       },
       scripts: { "src/main.ts": "export const harbour = 1;\n" },
       models: { "props/lamp.sdfmod": new Uint8Array([1, 2, 3, 4]) },
       levels: { "rooms/hall.json": '{"items":[]}\n' },
+      sounds: { "audio/chime.wav": new Uint8Array([82, 73, 70, 70]) },
     });
 
     const saved = await savePlaceToFolder(folder, withAttachments);
 
-    // One script, one model, one level, and the manifest.
-    expect(saved).toEqual({ written: 4, deleted: 0 });
+    // One script, one model, one level, one sound, and the manifest.
+    expect(saved).toEqual({ written: 5, deleted: 0 });
     expect(folder.folders.get("src")?.files.has("main.ts")).toBe(true);
     expect(folder.folders.get("props")?.files.has("lamp.sdfmod")).toBe(true);
     expect(folder.folders.get("rooms")?.files.has("hall.json")).toBe(true);
+    expect(folder.folders.get("audio")?.files.has("chime.wav")).toBe(true);
 
     await expect(loadPlaceFromFolder(folder)).resolves.toEqual(withAttachments);
   });

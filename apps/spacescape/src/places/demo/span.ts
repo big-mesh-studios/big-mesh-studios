@@ -12,7 +12,7 @@
  * file called `main.ts` that is entirely `createShape` calls is a file whose name is a lie.
  */
 
-import { createShape, getHeightAt } from "voxelscape";
+import { createShape, getHeightAt } from "spacescape";
 
 /**
  * The ground the bridge stands on, which is the world's own surface.

@@ -113,6 +113,18 @@ describe("a project written as a zip", () => {
     );
   });
 
+  it("carries manifest-listed sound bytes through a zip", async () => {
+    const bytes = new Uint8Array([0x4f, 0x67, 0x67, 0x53]);
+    const saved: PlaceProject = {
+      ...project(),
+      manifest: { ...project().manifest, sounds: ["audio/door.ogg"] },
+      sounds: { "audio/door.ogg": bytes },
+    };
+    const loaded = await readPlaceZip(await writePlaceZip(saved));
+    expect(loaded.sounds["audio/door.ogg"]).toEqual(bytes);
+    expect(loaded.manifest.sounds).toEqual(["audio/door.ogg"]);
+  });
+
   it("becomes the project it was written from", async () => {
     const saved = withModel();
     const loaded = projectFromZip(

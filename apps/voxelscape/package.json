@@ -50,6 +50,7 @@
   "devDependencies": {
     "@big-mesh-studios/atproto": "workspace:*",
     "@big-mesh-studios/maths": "workspace:*",
+    "@big-mesh-studios/place-api": "workspace:*",
     "@big-mesh-studios/place-reference": "workspace:*",
     "@big-mesh-studios/stacker": "workspace:*",
     "@big-mesh-studios/utils": "workspace:*",

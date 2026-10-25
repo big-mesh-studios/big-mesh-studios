@@ -318,6 +318,9 @@ importers:
       '@big-mesh-studios/picking':
         specifier: workspace:*
         version: link:../../packages/picking
+      '@big-mesh-studios/place-api':
+        specifier: workspace:*
+        version: link:../../packages/place-api
       '@big-mesh-studios/sdf':
         specifier: workspace:*
         version: link:../../packages/sdf
@@ -495,6 +498,9 @@ importers:
       '@big-mesh-studios/maths':
         specifier: workspace:*
         version: link:../../packages/maths
+      '@big-mesh-studios/place-api':
+        specifier: workspace:*
+        version: link:../../packages/place-api
       '@big-mesh-studios/place-reference':
         specifier: workspace:*
         version: link:../../packages/place-reference
@@ -634,6 +640,12 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+
+  packages/place-api:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   packages/place-reference:
     devDependencies:

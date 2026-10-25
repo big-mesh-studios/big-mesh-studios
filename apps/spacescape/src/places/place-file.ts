@@ -126,6 +126,12 @@ export const MAX_PLACE_MODEL_BYTES = 4 * 1024 * 1024;
  * thought about what two levels overlapping means.
  */
 export const MAX_PLACE_LEVELS = 4;
+/** The most sound files a place may carry. */
+export const MAX_PLACE_SOUNDS = 64;
+/** The largest one sound file may be. */
+export const MAX_PLACE_SOUND_BYTES = 10 * 1024 * 1024;
+/** The retained audio bytes across a place. */
+export const MAX_PLACE_SOUND_BYTES_TOTAL = 32 * 1024 * 1024;
 
 /**
  * How many characters one level may be.
@@ -254,6 +260,8 @@ export interface PlaceManifest {
    * see `bundle.ts` for the one function a script can call.
    */
   readonly levels?: readonly string[];
+  /** Local audio files a place can play by their manifest path. */
+  readonly sounds?: readonly string[];
 }
 
 /**
@@ -294,12 +302,14 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
   if (!isFileList(record.scripts)) return false;
   if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;
   if (!isAttachmentList(record.levels, MAX_PLACE_LEVELS)) return false;
+  if (!isSoundList(record.sounds)) return false;
 
   // **One flat namespace, checked across every list rather than within each.** Two lists that
   // are each internally distinct can still name the same path, and a zip has one file per path.
   // Variadic because there are three of them now and a two-argument check is the kind that
   // quietly stops covering the list that was added last.
-  if (!isDisjoint(record.scripts, record.models, record.levels)) return false;
+  if (!isDisjoint(record.scripts, record.models, record.levels, record.sounds))
+    return false;
 
   return isEntryOf(record.entry, record.scripts);
 };
@@ -352,6 +362,17 @@ const isAttachmentList = (
     seen.add(name);
   }
   return true;
+};
+
+/** Sound attachments must use a browser-playable audio extension. */
+const isSoundList = (
+  value: unknown,
+): value is readonly string[] | undefined => {
+  if (!isAttachmentList(value, MAX_PLACE_SOUNDS)) return false;
+  return (
+    value === undefined ||
+    value.every((name) => /\.(ogg|mp3|wav|m4a|webm)$/i.test(name))
+  );
 };
 
 /** Whether a value is a spawn this engine can stand a player at. */

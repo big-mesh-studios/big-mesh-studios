@@ -40,10 +40,9 @@
     // an application is the one that walks the DOM.
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
 
-    // So that a place's source — `src/places/demo/*.ts` — type-checks here rather than only
-    // when a person is reading it. A place imports `voxelscape`, which is not a package: it is
-    // the guest library in `guest/place-api.ts`, reached through the two-line alias in
-    // `guest/voxelscape.ts`. Without this, `tsc` cannot resolve a place's imports, the demos
+    // So that place source type-checks against the native import and the legacy alias. Both
+    // names reach the same guest API; new Spacescape places use "spacescape".
+    // Without these paths, the demos
     // would be the only TypeScript in the repository that nothing checks, and a typo in an
     // effect's field name would surface at runtime as a refusal rather than at compile time as
     // an error.
@@ -51,6 +50,7 @@
     // **A place author's own project needs the same line**, and it is in `voxelscape.ts`'s
     // header. It is here because the demos are places.
     "paths": {
+      "spacescape": ["./src/places/guest/spacescape.ts"],
       "voxelscape": ["./src/places/guest/voxelscape.ts"]
     },
 

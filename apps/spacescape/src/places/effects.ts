@@ -80,6 +80,7 @@ import { MAX_OPERATIONS_PER_PLACE } from "./place-registry";
  * to. A name the reader can refuse is a name the reader can refuse.
  */
 const ENTITY_KINDS = ["prop", "npc"] as const;
+const PARTICLE_KINDS = ["spark", "flame", "smoke", "dust"] as const;
 
 /**
  * Where a HUD image may sit, as the wire names the corners.
@@ -146,6 +147,12 @@ export const EFFECT_TAGS = [
   // colour on it.
   "light-add",
   "light-remove",
+  "sound",
+  "sound-stop",
+  "beam",
+  "beam-remove",
+  "particle",
+  "particle-remove",
   // Fields the player is inside. A medium is a box that moves whoever stands in it — a conveyor,
   // a current, quicksand — and it is the one effect family that changes physics rather than what
   // the world looks like.
@@ -176,6 +183,10 @@ export const EFFECT_TAGS = [
   "screen-remove",
   "image-show",
   "image-hide",
+  "hud-meter",
+  "hud-meter-remove",
+  "hud-label",
+  "hud-label-remove",
   // Text out.
   "log",
   "toast",
@@ -479,6 +490,130 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
   "light-remove": {
     tag: "light-remove",
     about: "Removes a light by id.",
+    fields: [nameField("id")],
+  },
+  sound: {
+    tag: "sound",
+    about: "Plays a sound included with this place.",
+    fields: [
+      {
+        name: "name",
+        kind: "text",
+        max: 240,
+        about: "the path of a sound listed by the place manifest",
+      },
+      nameField("player", false),
+      nameField("id", false),
+      {
+        name: "volume",
+        kind: "number",
+        min: 0,
+        max: 1,
+        about: "the playback volume",
+      },
+      {
+        name: "pitch",
+        kind: "number",
+        min: 0.25,
+        max: 4,
+        about: "the playback rate",
+      },
+      {
+        name: "loop",
+        kind: "boolean",
+        about: "whether playback repeats until stopped",
+      },
+    ],
+  },
+  "sound-stop": {
+    tag: "sound-stop",
+    about: "Stops a named sound playback.",
+    fields: [nameField("id"), nameField("player", false)],
+  },
+
+  beam: {
+    tag: "beam",
+    about: "Draws a line between world points or place entities.",
+    fields: [
+      nameField("id"),
+      nameField("fromEntity", false),
+      { name: "from", kind: "vec3", about: "the world point at the start" },
+      nameField("toEntity", false),
+      { name: "to", kind: "vec3", about: "the world point at the end" },
+      { name: "colour", kind: "colour", about: "r, g and b, 0 to 255" },
+      {
+        name: "width",
+        kind: "number",
+        min: 0.02,
+        max: 1,
+        about: "the beam width",
+      },
+    ],
+  },
+  "beam-remove": {
+    tag: "beam-remove",
+    about: "Removes a beam by id.",
+    fields: [nameField("id")],
+  },
+  particle: {
+    tag: "particle",
+    about: "Runs a particle emitter at a point or attached to a place entity.",
+    fields: [
+      nameField("id"),
+      nameField("entityId", false),
+      {
+        name: "x",
+        kind: "number",
+        about: "the world-space emitter x position",
+      },
+      {
+        name: "y",
+        kind: "number",
+        about: "the world-space emitter y position",
+      },
+      {
+        name: "z",
+        kind: "number",
+        about: "the world-space emitter z position",
+      },
+      {
+        name: "kind",
+        kind: "enum",
+        values: PARTICLE_KINDS,
+        about: "the particle effect kind",
+      },
+      { name: "colour", kind: "colour", about: "r, g and b, 0 to 255" },
+      {
+        name: "size",
+        kind: "number",
+        min: 0.02,
+        max: 4,
+        about: "the base particle size",
+      },
+      {
+        name: "spread",
+        kind: "number",
+        min: 0,
+        max: 32,
+        about: "the emitter spread",
+      },
+      {
+        name: "lifeMs",
+        kind: "number",
+        min: 50,
+        max: 30_000,
+        about: "the particle lifetime in milliseconds",
+      },
+      {
+        name: "loop",
+        kind: "boolean",
+        about: "whether the emitter keeps producing particles",
+      },
+    ],
+  },
+  "particle-remove": {
+    tag: "particle-remove",
+    about: "Stops a particle emitter by id.",
     fields: [nameField("id")],
   },
 
@@ -876,6 +1011,50 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
     fields: [nameField("id")],
   },
 
+  "hud-meter": {
+    tag: "hud-meter",
+    about: "Creates or updates a labelled value bar on the player's HUD.",
+    fields: [
+      nameField("id"),
+      { name: "label", kind: "text", required: true, about: "meter label" },
+      {
+        name: "value",
+        kind: "number",
+        min: 0,
+        required: true,
+        about: "current value",
+      },
+      {
+        name: "max",
+        kind: "number",
+        min: 0.000001,
+        required: true,
+        about: "full value",
+      },
+    ],
+  },
+
+  "hud-meter-remove": {
+    tag: "hud-meter-remove",
+    about: "Removes a HUD meter by id.",
+    fields: [nameField("id")],
+  },
+
+  "hud-label": {
+    tag: "hud-label",
+    about: "Creates or updates a line of text on the player's HUD.",
+    fields: [
+      nameField("id"),
+      { name: "text", kind: "text", required: true, about: "label text" },
+    ],
+  },
+
+  "hud-label-remove": {
+    tag: "hud-label-remove",
+    about: "Removes a HUD label by id.",
+    fields: [nameField("id")],
+  },
+
   log: {
     tag: "log",
     about: "Writes a line to the console scrollback.",
@@ -1256,6 +1435,44 @@ export const inspectEffect = (
     };
   }
 
+  // The field table checks individual values. These placement modes are relations
+  // between fields, so enforce them once after those checks have passed.
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    !Array.isArray(payload)
+  ) {
+    const values = payload as Record<string, unknown>;
+    if (tag === "sound" && values.name === "") {
+      return { refusal: { tag, reason: "name is empty" } };
+    }
+    if (tag === "sound" && values.loop === true && values.id === undefined) {
+      return { refusal: { tag, reason: "id is required for a looping sound" } };
+    }
+    if (
+      tag === "beam" &&
+      ((values.fromEntity === undefined) === (values.from === undefined) ||
+        (values.toEntity === undefined) === (values.to === undefined))
+    ) {
+      return {
+        refusal: {
+          tag,
+          reason:
+            "each beam endpoint needs exactly one of its entity or point fields",
+        },
+      };
+    }
+    if (
+      tag === "particle" &&
+      values.entityId === undefined &&
+      (values.x === undefined || values.z === undefined)
+    ) {
+      return {
+        refusal: { tag, reason: "x and z are required without entityId" },
+      };
+    }
+  }
+
   // The assertion, and what makes it honest: `EFFECTS[tag].fields` is the *definition* of each
   // payload, `checkPayload` is the checker for that definition, and this line runs only once
   // that checker has passed. There is no second list of required fields that could fall out of
@@ -1314,6 +1531,12 @@ export type ParsedEffect =
     }
   | { readonly tag: "light-add"; readonly payload: LightAdd }
   | { readonly tag: "light-remove"; readonly payload: IdOnly }
+  | { readonly tag: "sound"; readonly payload: SoundEffect }
+  | { readonly tag: "sound-stop"; readonly payload: SoundStopEffect }
+  | { readonly tag: "beam"; readonly payload: BeamEffect }
+  | { readonly tag: "beam-remove"; readonly payload: IdOnly }
+  | { readonly tag: "particle"; readonly payload: ParticleEffect }
+  | { readonly tag: "particle-remove"; readonly payload: IdOnly }
   | { readonly tag: "medium-add"; readonly payload: MediumAdd }
   | { readonly tag: "medium-remove"; readonly payload: IdOnly }
   | { readonly tag: "clock-set"; readonly payload: ClockSet }
@@ -1335,6 +1558,10 @@ export type ParsedEffect =
   | { readonly tag: "screen-remove"; readonly payload: IdOnly }
   | { readonly tag: "image-show"; readonly payload: ImageShow }
   | { readonly tag: "image-hide"; readonly payload: IdOnly }
+  | { readonly tag: "hud-meter"; readonly payload: HudMeterEffect }
+  | { readonly tag: "hud-meter-remove"; readonly payload: IdOnly }
+  | { readonly tag: "hud-label"; readonly payload: HudLabelEffect }
+  | { readonly tag: "hud-label-remove"; readonly payload: IdOnly }
   | { readonly tag: "log"; readonly payload: Text }
   | { readonly tag: "toast"; readonly payload: Toast }
   | { readonly tag: "timer"; readonly payload: Timer }
@@ -1444,6 +1671,49 @@ export interface PlaceById {
 /** `zone-remove`, on its own. */
 export interface IdOnly {
   readonly id: string;
+}
+/** A request to play one named sound. */
+export interface SoundEffect {
+  readonly name: string;
+  readonly player?: string;
+  readonly id?: string;
+  readonly volume?: number;
+  readonly pitch?: number;
+  readonly loop?: boolean;
+}
+/** A request to stop one named playback. */
+export interface SoundStopEffect extends IdOnly {
+  readonly player?: string;
+}
+/** A beam effect, with endpoints resolved against the host's entity set. */
+export interface BeamEffect extends IdOnly {
+  readonly fromEntity?: string;
+  readonly from?: readonly [number, number, number];
+  readonly toEntity?: string;
+  readonly to?: readonly [number, number, number];
+  readonly colour?: {
+    readonly r: number;
+    readonly g: number;
+    readonly b: number;
+  };
+  readonly width?: number;
+}
+/** A particle effect in the shared Voxelscape-compatible wire shape. */
+export interface ParticleEffect extends IdOnly {
+  readonly entityId?: string;
+  readonly x?: number;
+  readonly y?: number;
+  readonly z?: number;
+  readonly kind?: (typeof PARTICLE_KINDS)[number];
+  readonly colour?: {
+    readonly r: number;
+    readonly g: number;
+    readonly b: number;
+  };
+  readonly size?: number;
+  readonly spread?: number;
+  readonly lifeMs?: number;
+  readonly loop?: boolean;
 }
 /** `shape-add`. */
 export interface ShapeAdd {
@@ -1610,6 +1880,18 @@ export interface ImageShow {
   readonly corner?: string;
   readonly width: number;
   readonly height: number;
+}
+
+/** A labelled value bar shown in the HUD. */
+export interface HudMeterEffect extends IdOnly {
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
+}
+
+/** A line of text in the HUD. */
+export interface HudLabelEffect extends IdOnly {
+  readonly text: string;
 }
 /** `log`. */
 export interface Text {

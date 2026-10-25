@@ -412,7 +412,12 @@ export const reading = (): Reading => {
   const program = ts.createProgram(parsed.fileNames, parsed.options);
   const byPath = (path: string): ts.SourceFile | undefined => {
     const name = path.startsWith("/") ? relative(APP_DIR, path) : path;
-    return program.getSourceFile(name) ?? program.getSourceFile(path);
+    const direct = program.getSourceFile(name) ?? program.getSourceFile(path);
+    if (direct !== undefined) return direct;
+    // Workspace packages may be imported through a symlink under node_modules while TypeScript
+    // stores their source under the real workspace path. Resolve that spelling before giving up.
+    const real = ts.sys.realpath?.(path);
+    return real === undefined ? undefined : program.getSourceFile(real);
   };
   return {
     checker: program.getTypeChecker(),

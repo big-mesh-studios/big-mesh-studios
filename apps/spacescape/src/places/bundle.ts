@@ -23,11 +23,10 @@
  *
  * ## What a place may import
  *
- * Two specifiers, and a third that is reserved:
+ * Two kinds of specifier, and a third that is reserved:
  *
- * - `"voxelscape"` — the guest library in `guest/place-api.ts`, compiled here rather than
- *   shipped as a string, so it is type-checked by this repository's own `tsc` and cannot
- *   drift from the declaration a place author reads.
+ * - `"spacescape"` — the native guest-library name; `"voxelscape"` remains an alias for
+ *   existing places. Both resolve to the library compiled from `guest/place-api.ts`.
  * - `./name` — another of the place's own files.
  *
  * **Everything else is refused, and the refusal names the file and the specifier.** That
@@ -43,7 +42,11 @@
 import ts from "typescript";
 
 import GUEST_SOURCE from "./guest/place-api.ts?raw";
-import { GUEST_MODULE, RESERVED_HOST_MODULE } from "./bridge";
+import {
+  GUEST_MODULE,
+  LEGACY_GUEST_MODULE,
+  RESERVED_HOST_MODULE,
+} from "./bridge";
 import { MAX_SCRIPT_SOURCE } from "./limits";
 
 /** A place's files: its path in the archive to its source text. */
@@ -153,7 +156,9 @@ const resolve = (
   specifier: string,
   files: PlaceFiles,
 ): string => {
-  if (specifier === GUEST_MODULE) return GUEST_ID;
+  if (specifier === GUEST_MODULE || specifier === LEGACY_GUEST_MODULE) {
+    return GUEST_ID;
+  }
   if (specifier === RESERVED_HOST_MODULE) {
     throw new BundleError(
       from,

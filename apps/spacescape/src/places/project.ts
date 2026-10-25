@@ -20,6 +20,8 @@ import type { LoadedPlace } from "./load-place";
 import {
   isPlaceManifest,
   isSafePathName,
+  MAX_PLACE_SOUND_BYTES,
+  MAX_PLACE_SOUND_BYTES_TOTAL,
   PLACE_MANIFEST_FILE,
   type PlaceManifest,
 } from "./place-file";
@@ -59,6 +61,8 @@ export interface PlaceProject {
    * engine puts it in the world before the script runs, and a script can ask for it by name.
    */
   readonly levels: Readonly<Record<string, string>>;
+  /** Local audio attachments addressed by the paths in `manifest.sounds`. */
+  readonly sounds?: Readonly<Record<string, Uint8Array>>;
 }
 
 /**
@@ -81,11 +85,14 @@ export const isPlaceProject = (value: unknown): value is PlaceProject => {
   if (!isStringMap(project.scripts)) return false;
   if (!isByteMap(project.models)) return false;
   if (!isStringMap(project.levels)) return false;
+  if (project.sounds !== undefined && !isSoundByteMap(project.sounds))
+    return false;
 
   const manifest = project.manifest;
   const scripts = project.scripts as Record<string, string>;
   const models = project.models as Record<string, Uint8Array>;
   const levels = project.levels as Record<string, string>;
+  const sounds = (project.sounds ?? {}) as Record<string, Uint8Array>;
 
   // **Both directions.** A manifest naming a file the project does not hold is a place that will
   // not open; a file the manifest does not name is a file the loader will refuse the zip for, and
@@ -99,6 +106,9 @@ export const isPlaceProject = (value: unknown): value is PlaceProject => {
   for (const name of manifest.levels ?? []) {
     if (!Object.hasOwn(levels, name)) return false;
   }
+  for (const name of manifest.sounds ?? []) {
+    if (!Object.hasOwn(sounds, name)) return false;
+  }
   for (const name of Object.keys(scripts)) {
     if (!manifest.scripts.includes(name)) return false;
   }
@@ -107,6 +117,9 @@ export const isPlaceProject = (value: unknown): value is PlaceProject => {
   }
   for (const name of Object.keys(levels)) {
     if (!(manifest.levels ?? []).includes(name)) return false;
+  }
+  for (const name of Object.keys(sounds)) {
+    if (!(manifest.sounds ?? []).includes(name)) return false;
   }
 
   return true;
@@ -122,6 +135,20 @@ const isStringMap = (value: unknown): value is Record<string, string> => {
 const isByteMap = (value: unknown): value is Record<string, Uint8Array> => {
   if (typeof value !== "object" || value === null) return false;
   return Object.values(value).every((entry) => entry instanceof Uint8Array);
+};
+
+/** Audio gets its own aggregate bound because a place retains every declared clip at once. */
+const isSoundByteMap = (
+  value: unknown,
+): value is Record<string, Uint8Array> => {
+  if (!isByteMap(value)) return false;
+  let total = 0;
+  for (const bytes of Object.values(value)) {
+    if (bytes.byteLength > MAX_PLACE_SOUND_BYTES) return false;
+    total += bytes.byteLength;
+    if (total > MAX_PLACE_SOUND_BYTES_TOTAL) return false;
+  }
+  return true;
 };
 
 /**
@@ -158,7 +185,7 @@ export const STARTER_SCRIPT_FILE = "main.ts";
  * `len` is a half-extent, which is the thing a place author gets wrong first and so is commented
  * where it is used rather than left to the reference.
  */
-export const STARTER_SCRIPT = `import { createLight, createShape, createZone, log, onTick } from "voxelscape";
+export const STARTER_SCRIPT = `import { createLight, createShape, createZone, log, onTick } from "spacescape";
 
 // A shape is geometry: a box added to the terrain's own fold. \`len\` is a half-extent, so this
 // one is 8 wide, not 4.
@@ -254,6 +281,9 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
     ...(Object.keys(project.levels).length > 0
       ? { levels: Object.keys(project.levels) }
       : {}),
+    ...(Object.keys(project.sounds ?? {}).length > 0
+      ? { sounds: Object.keys(project.sounds ?? {}) }
+      : {}),
   };
 
   const zip = new JSZip();
@@ -266,6 +296,9 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
   }
   for (const [name, text] of Object.entries(project.levels)) {
     zip.file(name, text);
+  }
+  for (const [name, bytes] of Object.entries(project.sounds ?? {})) {
+    zip.file(name, bytes);
   }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
@@ -292,7 +325,8 @@ export const makePlaceRecord = (
 ): PlaceRecord => {
   if (
     Object.keys(project.models).length > 0 ||
-    Object.keys(project.levels).length > 0
+    Object.keys(project.levels).length > 0 ||
+    Object.keys(project.sounds ?? {}).length > 0
   ) {
     throw new Error(
       "this place carries an attachment or a level nothing can publish yet — save it as a zip instead",
@@ -339,6 +373,7 @@ export const projectFromZip = (loaded: LoadedPlace): PlaceProject => ({
   scripts: loaded.files,
   models: loaded.models,
   levels: loaded.levels,
+  ...(Object.keys(loaded.sounds).length > 0 ? { sounds: loaded.sounds } : {}),
 });
 
 /**

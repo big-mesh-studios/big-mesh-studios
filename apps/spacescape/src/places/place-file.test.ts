@@ -130,6 +130,10 @@ const refuses: readonly (readonly [string, unknown])[] = [
     "an attachment name with a backslash",
     { ...good(), models: ["..\\evil.zip"] },
   ],
+  [
+    "a sound attachment without an audio extension",
+    { ...good(), sounds: ["audio/readme.txt"] },
+  ],
   // The world's shape, which is the one field on a manifest that names a value out of a
   // closed list rather than a number or a path.
   ["a world that is not one of the two", { ...good(), world: "terrain" }],

@@ -39,7 +39,7 @@ import {
   getHeightAt,
   log,
   onTick,
-} from "voxelscape";
+} from "spacescape";
 
 /** How many, how far apart, and where. */
 const COUNT = 8;

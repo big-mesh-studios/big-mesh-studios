@@ -28,6 +28,32 @@ export const VOXELSCAPE_LIB_SOURCE = `
 import * as host from "engine-host";
 export * from "engine-host";
 
+/** Plays a named sound. The name must be available to this world. */
+export function playSound(name, options) {
+  options = options || {};
+  var player = "";
+  var id = options.id || "";
+  host.dispatch("sound", {
+    player: player,
+    name: name,
+    ...(id ? { id: id } : {}),
+    volume: options.volume,
+    pitch: options.pitch,
+    loop: options.loop,
+  });
+  return {
+    id: id,
+    stop: function () {
+      if (id) host.dispatch("sound-stop", { player: player, id: id });
+    },
+  };
+}
+
+/** Stops a named sound for this local player. */
+export function stopSound(id) {
+  host.dispatch("sound-stop", { player: "", id: id });
+}
+
 /** Registers \`fn\` with the host's own \`onTick\`, parsing the events it
  * hands back before \`fn\` ever sees them — a script reads real facts, never
  * the JSON text they crossed the sandbox boundary as. */
@@ -844,5 +870,34 @@ export function createBeam(options) {
     host.dispatch("beam-remove", { id: beam.id });
   };
   return beam;
+}
+
+/** Creates a screen-space bar. Update it with setValue and remove it when finished. */
+export function createHudMeter(options) {
+  var value = options.value;
+  var label = options.label;
+  function show(value, label) {
+    host.dispatch("hud", { player: "", id: options.id, kind: "bar", label: label, value: value, max: options.max });
+  }
+  show(options.value, options.label);
+  return {
+    id: options.id,
+    setValue: function (next) { value = next; show(value, label); },
+    setLabel: function (next) { label = next; show(value, label); },
+    remove: function () { host.dispatch("hud-remove", { player: "", id: options.id }); },
+  };
+}
+
+/** Creates a screen-space text label. Update it with setText and remove it when finished. */
+export function createHudLabel(options) {
+  function show(text) {
+    host.dispatch("hud", { player: "", id: options.id, kind: "text", text: text });
+  }
+  show(options.text);
+  return {
+    id: options.id,
+    setText: function (text) { show(text); },
+    remove: function () { host.dispatch("hud-remove", { player: "", id: options.id }); },
+  };
 }
 `;

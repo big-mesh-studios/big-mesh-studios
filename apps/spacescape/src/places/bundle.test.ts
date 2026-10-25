@@ -7,6 +7,7 @@ import {
   guestLibrarySource,
 } from "./bundle";
 import GUEST_ALIAS from "./guest/voxelscape.ts?raw";
+import SPACESCAPE_ALIAS from "./guest/spacescape.ts?raw";
 import { MAX_SCRIPT_SOURCE } from "./limits";
 
 /**
@@ -42,6 +43,20 @@ const aPlace = (): Record<string, string> => ({
 });
 
 describe("a place bundles into one program", () => {
+  it("accepts the native spacescape import and the legacy voxelscape alias", () => {
+    const native = bundlePlace(
+      { "main.ts": `import { createBeam } from "spacescape";` },
+      "main.ts",
+    );
+    const legacy = bundlePlace(
+      { "main.ts": `import { createBeam } from "voxelscape";` },
+      "main.ts",
+    );
+    expect(native).toContain('"voxelscape": function');
+    expect(legacy).toContain('"voxelscape": function');
+    expect(native).toContain("createBeam");
+  });
+
   it("produces something the interpreter can evaluate", () => {
     const bundle = bundlePlace(aPlace(), "main.ts");
     // The shape ADR 0015 established, so the interpreter does not care whether what it is
@@ -389,6 +404,7 @@ describe("the guest library", () => {
     // No *ambient* declaration. The word appears in this file's own prose explaining why there
     // is not one, so the assertion is on the declaration form rather than the phrase.
     expect(GUEST_ALIAS).not.toMatch(/^\s*declare module "/m);
+    expect(SPACESCAPE_ALIAS).toContain('export * from "./place-api"');
   });
 
   it("is type-checked by this repository rather than by a string", () => {

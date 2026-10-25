@@ -1,7 +1,13 @@
 import { createEffect, For, onCleanup, Show, type Component } from "solid-js";
 import type { JSX } from "@solidjs/web/jsx-runtime";
 
-import type { Dialog, Ending, HostImage } from "../host";
+import type {
+  Dialog,
+  Ending,
+  HostImage,
+  HostHudLabel,
+  HostHudMeter,
+} from "../host";
 
 import "./place-overlay.css";
 
@@ -78,6 +84,10 @@ export interface PlaceOverlayProps {
    * would be a second owner of a buffer that changes every frame.
    */
   readonly images: () => readonly HostImage[];
+  /** The value bars a place has put in a corner. */
+  readonly hudMeters?: () => readonly HostHudMeter[];
+  /** The text labels a place has put in its HUD. */
+  readonly hudLabels?: () => readonly HostHudLabel[];
   /** Bumped when a picture's pixels arrive, so the canvases below redraw. */
   readonly revision: () => number;
   /** Copies the current pixels of `image` into the overlay's own canvas. */
@@ -144,6 +154,54 @@ export const PlaceOverlay: Component<PlaceOverlayProps> = (props) => {
               height={image.height}
               style={imageStyle(image)}
             />
+          );
+        }}
+      </For>
+      <For each={props.hudMeters?.() ?? []}>
+        {(meter) => {
+          const style: JSX.CSSProperties = {
+            position: "absolute",
+            width: "220px",
+            left: "2%",
+          };
+          const index = (props.hudMeters?.() ?? []).indexOf(meter);
+          style.top = `${2 + index * 8}%`;
+          return (
+            <div
+              class="place-overlay-meter"
+              style={style}
+              role="meter"
+              aria-label={meter.label}
+              aria-valuemin={0}
+              aria-valuemax={meter.max}
+              aria-valuenow={Math.min(meter.value, meter.max)}
+            >
+              <div class="place-overlay-meter-label">{meter.label}</div>
+              <div class="place-overlay-meter-track">
+                <div
+                  class="place-overlay-meter-fill"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (meter.value / meter.max) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        }}
+      </For>
+      <For each={props.hudLabels?.() ?? []}>
+        {(label) => {
+          const meters = props.hudMeters?.().length ?? 0;
+          const index = (props.hudLabels?.() ?? []).indexOf(label);
+          return (
+            <div
+              class="place-overlay-hud-label"
+              style={{ top: `${2 + (meters + index) * 8}%` }}
+              role="status"
+              aria-live="polite"
+            >
+              {label.text}
+            </div>
           );
         }}
       </For>
