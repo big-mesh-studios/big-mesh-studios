@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  InstancedMesh,
-  LineSegments2,
-  Scene,
-} from "@random-mesh/rmsl/scene";
+import { InstancedMesh, LineSegments2, Scene } from "@random-mesh/rmsl/scene";
 
 import { createPlaceEffectVisuals } from "./place-effects";
 
@@ -45,7 +41,9 @@ describe("place effect visuals", () => {
       1_100,
     );
 
-    expect(scene.children.some((child) => child instanceof LineSegments2)).toBe(true);
+    expect(scene.children.some((child) => child instanceof LineSegments2)).toBe(
+      true,
+    );
     const particles = scene.children.find(
       (child): child is InstancedMesh => child instanceof InstancedMesh,
     );

@@ -29,7 +29,11 @@ interface BeamBatch {
 }
 
 export interface PlaceEffectVisuals {
-  update(beams: readonly BeamPose[], particles: readonly ParticlePose[], now: number): void;
+  update(
+    beams: readonly BeamPose[],
+    particles: readonly ParticlePose[],
+    now: number,
+  ): void;
   dispose(): void;
 }
 
@@ -110,7 +114,11 @@ export const createPlaceEffectVisuals = (scene: Scene): PlaceEffectVisuals => {
           2 ** Math.ceil(Math.log2(requiredInstances)),
         );
         scene.remove(particles);
-        particles = new InstancedMesh(particleGeometry, particleMaterial, capacity);
+        particles = new InstancedMesh(
+          particleGeometry,
+          particleMaterial,
+          capacity,
+        );
         scene.add(particles);
       }
 
@@ -123,7 +131,8 @@ export const createPlaceEffectVisuals = (scene: Scene): PlaceEffectVisuals => {
           const elapsed = Math.max(0, now - emitter.at);
           if (!emitter.loop && elapsed > emitter.lifeMs) continue;
           const phase = emitter.loop
-            ? ((elapsed + (i / PARTICLES_PER_EMITTER) * emitter.lifeMs) % emitter.lifeMs) /
+            ? ((elapsed + (i / PARTICLES_PER_EMITTER) * emitter.lifeMs) %
+                emitter.lifeMs) /
               emitter.lifeMs
             : Math.min(1, elapsed / emitter.lifeMs);
           const angle = stableUnit(emitter.id, i) * Math.PI * 2;
@@ -142,7 +151,8 @@ export const createPlaceEffectVisuals = (scene: Scene): PlaceEffectVisuals => {
       }
       particles.count = instance;
       particles.instanceMatrix.needsUpdate = true;
-      if (particles.instanceColor !== null) particles.instanceColor.needsUpdate = true;
+      if (particles.instanceColor !== null)
+        particles.instanceColor.needsUpdate = true;
     },
 
     dispose(): void {
