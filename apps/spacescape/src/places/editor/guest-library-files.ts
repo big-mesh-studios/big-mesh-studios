@@ -40,6 +40,7 @@ import GUEST_SOURCE from "../guest/place-api.ts?raw";
 import BRIDGE_SOURCE from "../bridge.ts?raw";
 import SDF_INDEX_SOURCE from "../../../../../packages/sdf/src/index.ts?raw";
 import SDF_PRIMITIVES_SOURCE from "../../../../../packages/sdf/src/primitives.ts?raw";
+import PLACE_API_SOURCE from "../../../../../packages/place-api/src/index.ts?raw";
 
 /** Where the guest library sits in the editor's filesystem, under the name a place imports. */
 export const GUEST_FILE = "places/guest/voxelscape.ts";
@@ -50,6 +51,8 @@ const BRIDGE_FILE = "places/bridge.ts";
 /** The primitive table, whose types are what a shape literal narrows against. */
 const SDF_INDEX_FILE = "packages/sdf/src/index.ts";
 const SDF_PRIMITIVES_FILE = "packages/sdf/src/primitives.ts";
+/** Shared place API types imported by the guest library. */
+const PLACE_API_FILE = "packages/place-api/src/index.ts";
 
 /**
  * Every file the editor's language service holds, by the path it is held at.
@@ -63,6 +66,7 @@ export const GUEST_LIBRARY_FILES: Readonly<Record<string, string>> = {
   [BRIDGE_FILE]: BRIDGE_SOURCE,
   [SDF_INDEX_FILE]: SDF_INDEX_SOURCE,
   [SDF_PRIMITIVES_FILE]: SDF_PRIMITIVES_SOURCE,
+  [PLACE_API_FILE]: PLACE_API_SOURCE,
 };
 
 /**
@@ -111,7 +115,9 @@ import type * as TS from "typescript";
  * one of which would then be asserting against a value it had just proved might be absent.
  */
 export const EDITOR_PATHS: Record<string, string[]> = {
+  spacescape: [`./${GUEST_FILE}`],
   voxelscape: [`./${GUEST_FILE}`],
+  "@big-mesh-studios/place-api": [`./${PLACE_API_FILE}`],
   "@big-mesh-studios/sdf": [`./${SDF_INDEX_FILE}`],
 };
 

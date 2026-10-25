@@ -35,7 +35,7 @@ import ts from "typescript";
 // module that reached for the alias would hand the editor a stub with no types in it while the
 // bundler compiled the library — and the symptom would be completions that do nothing.
 import GUEST_SOURCE from "../guest/place-api.ts?raw";
-import { GUEST_MODULE } from "../bridge";
+import { GUEST_MODULE, LEGACY_GUEST_MODULE } from "../bridge";
 
 /** Every bare specifier a source imports, in one pass over `import … from "…"`. */
 const bareSpecifiers = (source: string): string[] => {
@@ -97,11 +97,11 @@ describe("the guest library the editor serves", () => {
     // carries a level can read it, and that is the only way a script can find out what its own
     // place is made of. The count is a tripwire — it fails when a function is added and someone
     // has to look at the number rather than let it drift, which is what it is for.
-    // **62 after cameras, photos, screens, HUD images and entity-use duration**. The count is a
+    // **68 after the shared effects and HUD APIs**. The count is a
     // tripwire: it fails when a function is added and someone has to look at the number rather
     // than let it drift. Everything a
     // place can call on a picture is in that group, and none of it is an event.
-    expect(declared).toHaveLength(62);
+    expect(declared).toHaveLength(68);
     expect(new Set(declared).size).toBe(declared.length);
     // **And the names a place is most likely to reach for first**, so the count above cannot pass
     // on a file that has the right number of exports and none of them callable from a place.
@@ -117,6 +117,8 @@ describe("the guest library the editor serves", () => {
       "takePhoto",
       "createScreen",
       "showImage",
+      "createHudMeter",
+      "createHudLabel",
       "after",
       "onTick",
       "saveData",
@@ -220,7 +222,7 @@ describe("the compiler options", () => {
     expect(EDITOR_COMPILER_OPTIONS.target).toBe(ts.ScriptTarget.ES2019);
   });
 
-  it("resolve a place's `voxelscape` import at the worker's file URL", () => {
+  it("resolves both place imports at the worker's file URL", () => {
     // **The regression this guards.** The worker is handed every file at a `file:///…` URL —
     // `LSPProvider` writes `file:///${path}` — so `paths` has to be resolved against a `baseUrl`
     // with that same scheme. A plain `"/"` resolves to `/places/…`, which is a different path
@@ -237,12 +239,16 @@ describe("the compiler options", () => {
       getCurrentDirectory: () => "file:///",
       realpath: (file) => file,
     };
-    const resolved = ts.resolveModuleName(
-      GUEST_MODULE,
-      "file:///main.ts",
-      EDITOR_COMPILER_OPTIONS,
-      host,
-    );
-    expect(resolved.resolvedModule?.resolvedFileName).toBe(guestPath);
+    for (const specifier of [GUEST_MODULE, LEGACY_GUEST_MODULE]) {
+      const resolved = ts.resolveModuleName(
+        specifier,
+        "file:///main.ts",
+        EDITOR_COMPILER_OPTIONS,
+        host,
+      );
+      expect(resolved.resolvedModule?.resolvedFileName, specifier).toBe(
+        guestPath,
+      );
+    }
   });
 });
