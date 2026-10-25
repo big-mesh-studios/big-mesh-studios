@@ -736,6 +736,16 @@ declare module "voxelscape" {
   export function createHudLabel(
     options: CreateHudLabelOptions,
   ): HudLabelHandle;
+  /** Options for a text-and-progress quad in the world, attached or free. */
+  export type CreateHudPanelOptions =
+    import("@big-mesh-studios/place-api").CreateHudPanelOptions;
+  /** Handle for updating or removing a world-space HUD panel. */
+  export type HudPanelHandle =
+    import("@big-mesh-studios/place-api").HudPanelHandle;
+  /** Adds a labelled progress quad in the world, optionally attached to an entity. */
+  export function createHudPanel(
+    options: CreateHudPanelOptions,
+  ): HudPanelHandle;
 
   /** Plays a world-provided or place-provided sound by its manifest name. */
   export function playSound(
@@ -953,6 +963,8 @@ export type EffectTag =
   | "player-view"
   | "hud"
   | "hud-remove"
+  | "hud-panel"
+  | "hud-panel-remove"
   | "explosion"
   | "block-set"
   | "block-fill"
@@ -1043,6 +1055,8 @@ export const MAX_HUD_LABEL = 64;
 export const MAX_HUD_TEXT = 1_000;
 /** The largest HUD value or maximum may read. */
 export const MAX_HUD_VALUE = 1_000_000_000;
+/** The most world-space progress panels a place may hold at once. */
+export const MAX_HUD_PANELS = 64;
 /** The longest a script item's id or name may be. */
 export const MAX_ITEM_NAME = 40;
 /** The longest an items-spritesheet sprite name may be. */
@@ -1672,6 +1686,21 @@ export type ParsedEffect =
       };
     }
   | { tag: "hud-remove"; payload: { player: string; id: string } }
+  | {
+      tag: "hud-panel";
+      payload: {
+        id: string;
+        entityId?: string;
+        position: [number, number, number];
+        yaw?: number;
+        width: number;
+        height: number;
+        label: string;
+        value: number;
+        max: number;
+      };
+    }
+  | { tag: "hud-panel-remove"; payload: { id: string } }
   | {
       tag: "explosion";
       payload: {
@@ -2678,6 +2707,21 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     case "hud-remove":
       return isPlayer(p.player) && isShort(p.id, MAX_HUD_LABEL);
+    case "hud-panel":
+      return (
+        isShort(p.id, MAX_HUD_LABEL) &&
+        (p.entityId === undefined || isShort(p.entityId, 64)) &&
+        isVector(p.position) &&
+        p.position.every(isCoord) &&
+        (p.yaw === undefined || isNumberIn(p.yaw, -2 * Math.PI, 2 * Math.PI)) &&
+        isNumberIn(p.width, 0.05, 100) &&
+        isNumberIn(p.height, 0.05, 100) &&
+        (p.label === "" || isShort(p.label, MAX_HUD_LABEL)) &&
+        isNumberIn(p.value, 0, MAX_HUD_VALUE) &&
+        isNumberIn(p.max, 0.000001, MAX_HUD_VALUE)
+      );
+    case "hud-panel-remove":
+      return isShort(p.id, MAX_HUD_LABEL);
     case "explosion":
       return (
         isShort(p.id, 64) &&
