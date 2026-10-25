@@ -735,6 +735,16 @@ declare module "voxelscape" {
   export function createHudLabel(
     options: CreateHudLabelOptions,
   ): HudLabelHandle;
+  /** Options for a text-and-progress quad in the world, attached or free. */
+  export type CreateHudPanelOptions =
+    import("@big-mesh-studios/place-api").CreateHudPanelOptions;
+  /** Handle for updating or removing a world-space HUD panel. */
+  export type HudPanelHandle =
+    import("@big-mesh-studios/place-api").HudPanelHandle;
+  /** Adds a labelled progress quad in the world, optionally attached to an entity. */
+  export function createHudPanel(
+    options: CreateHudPanelOptions,
+  ): HudPanelHandle;
 
   /** Plays a world-provided or place-provided sound by its manifest name. */
   export function playSound(

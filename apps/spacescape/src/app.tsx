@@ -210,6 +210,7 @@ import {
   MAX_LIVE_FEEDS,
 } from "./render/feeds";
 import { createPhotoLayer } from "./render/photos";
+import { createHudPanelLayer } from "./render/hud-panels";
 import { ModelLibrary } from "./places/model-library";
 import { FigureSet } from "./figures/figure-set";
 import { PlaceOverlay } from "./places/ui/PlaceOverlay";
@@ -1658,6 +1659,7 @@ export default function App() {
      * their own copy of a screen, and no pixels cross the wire.
      */
     const screenLayer = createScreenLayer(viewport.scene);
+    const hudPanelLayer = createHudPanelLayer(viewport.scene);
     const photoLayer = createPhotoLayer();
     const hudFeeds = createHudFeedLayer();
     /**
@@ -2449,6 +2451,7 @@ export default function App() {
       // an id nothing can name. The layers themselves stay, because they own the pool and the
       // geometry rather than the place.
       screenLayer.clear();
+      hudPanelLayer.clear();
       photoLayer.reconcile([]);
       hudFeeds.sync([], new Map());
       setPlaceImages([]);
@@ -4723,6 +4726,11 @@ export default function App() {
         viewportHeight: viewport.renderer.canvas.height,
         upAt: (point) => WORLD.frame.upAt(point),
       });
+      hudPanelLayer.sync(host?.hudPanelList ?? [], {
+        camera: viewport.camera,
+        viewportHeight: viewport.renderer.canvas.height,
+        upAt: (point) => WORLD.frame.upAt(point),
+      });
 
       // **The HUD list, published only when it changes.** A new array every frame would rerender
       // the overlay sixty times a second for a list that is usually eight entries and usually the
@@ -4826,6 +4834,7 @@ export default function App() {
       // is left here is the geometry, the pool and the canvases — the layer's own cost rather
       // than the place's.
       screenLayer.dispose();
+      hudPanelLayer.dispose();
       photoLayer.dispose();
       hudFeeds.dispose();
       zoneLines.dispose();

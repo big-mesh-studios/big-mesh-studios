@@ -352,6 +352,20 @@ describe("every limit is exercised at its edge", () => {
       tag: "image-show",
       build: (n) => ({ ...imageShow, height: n }),
     },
+    {
+      limit: limits.MAX_HUD_PANEL_LABEL,
+      name: "MAX_HUD_PANEL_LABEL",
+      end: "max",
+      tag: "hud-panel",
+      build: (n) => ({ ...hudPanel, label: "l".repeat(n) }),
+    },
+    {
+      limit: limits.MAX_HUD_PANEL_VALUE,
+      name: "MAX_HUD_PANEL_VALUE",
+      end: "max",
+      tag: "hud-panel",
+      build: (n) => ({ ...hudPanel, value: n }),
+    },
   ];
 
   /** A well-formed `screen-add`, so a row can change one field and keep the rest. */
@@ -370,6 +384,17 @@ describe("every limit is exercised at its edge", () => {
     source: { camera: "hall" },
     width: 320,
     height: 180,
+  };
+
+  /** A well-formed `hud-panel`, for the same reason. */
+  const hudPanel: Record<string, unknown> = {
+    id: "status",
+    position: [0, 1, 0],
+    width: 1,
+    height: 0.5,
+    label: "Loading",
+    value: 25,
+    max: 100,
   };
 
   /** The rest of a `shape-add`, so a row can change one field and keep the rest. */
@@ -478,12 +503,13 @@ describe("every limit is exercised at its edge", () => {
       "MAX_DATA_KEYS",
       "MAX_PLAYERS",
       "MAX_STEP_MS",
-      // A host's own collections, like `MAX_LIGHTS` — how many cameras, screens and HUD images a
-      // place has standing rather than anything one payload can say. Checked at the limit and one
-      // past it in `host.test.ts`, by a place that fills them.
+      // A host's own collections, like `MAX_LIGHTS` — how many cameras, screens, HUD images and
+      // world HUD panels a place has standing rather than anything one payload can say. Checked at
+      // the limit and one past it in `host.test.ts`, by a place that fills them.
       "MAX_CAMERAS",
       "MAX_SCREENS",
       "MAX_HUD_IMAGES",
+      "MAX_HUD_PANELS",
       "MAX_PHOTOS",
       // **A product rather than a field bound**, like `MAX_PLACE_SOURCE`: two sides each inside
       // `MAX_PHOTO_SIZE` can still ask for four times a high-definition frame, so the pair is

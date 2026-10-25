@@ -66,6 +66,8 @@ import {
   MAX_ENDING_TITLE,
   MAX_ITEM_COUNT,
   MAX_NAME_LENGTH,
+  MAX_HUD_PANEL_LABEL,
+  MAX_HUD_PANEL_VALUE,
   MAX_NARRATION,
   MAX_OPTION_LABEL,
 } from "./limits";
@@ -187,6 +189,8 @@ export const EFFECT_TAGS = [
   "hud-meter-remove",
   "hud-label",
   "hud-label-remove",
+  "hud-panel",
+  "hud-panel-remove",
   // Text out.
   "log",
   "toast",
@@ -1055,6 +1059,76 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
     fields: [nameField("id")],
   },
 
+  "hud-panel": {
+    tag: "hud-panel",
+    about:
+      "Creates or updates a world-space text and progress panel, optionally attached to an entity.",
+    fields: [
+      nameField("id"),
+      nameField(
+        "entityId",
+        false,
+        "an entity to attach to; omitted for a free panel",
+      ),
+      {
+        name: "position",
+        kind: "vec3",
+        required: true,
+        about: "world position, or local offset when attached",
+      },
+      {
+        name: "yaw",
+        kind: "yaw",
+        about: "world turn, or local turn when attached",
+      },
+      {
+        name: "width",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        required: true,
+        about: "panel width in world units",
+      },
+      {
+        name: "height",
+        kind: "number",
+        min: SCREEN_LIMITS.minSize,
+        max: SCREEN_LIMITS.maxSize,
+        required: true,
+        about: "panel height in world units",
+      },
+      {
+        name: "label",
+        kind: "text",
+        max: MAX_HUD_PANEL_LABEL,
+        required: true,
+        about: `panel label, at most ${MAX_HUD_PANEL_LABEL} characters`,
+      },
+      {
+        name: "value",
+        kind: "number",
+        min: 0,
+        max: MAX_HUD_PANEL_VALUE,
+        required: true,
+        about: "current progress",
+      },
+      {
+        name: "max",
+        kind: "number",
+        min: 0.000001,
+        max: MAX_HUD_PANEL_VALUE,
+        required: true,
+        about: "full progress value",
+      },
+    ],
+  },
+
+  "hud-panel-remove": {
+    tag: "hud-panel-remove",
+    about: "Removes a world-space HUD panel by id.",
+    fields: [nameField("id")],
+  },
+
   log: {
     tag: "log",
     about: "Writes a line to the console scrollback.",
@@ -1562,6 +1636,8 @@ export type ParsedEffect =
   | { readonly tag: "hud-meter-remove"; readonly payload: IdOnly }
   | { readonly tag: "hud-label"; readonly payload: HudLabelEffect }
   | { readonly tag: "hud-label-remove"; readonly payload: IdOnly }
+  | { readonly tag: "hud-panel"; readonly payload: HudPanelEffect }
+  | { readonly tag: "hud-panel-remove"; readonly payload: IdOnly }
   | { readonly tag: "log"; readonly payload: Text }
   | { readonly tag: "toast"; readonly payload: Toast }
   | { readonly tag: "timer"; readonly payload: Timer }
@@ -1892,6 +1968,18 @@ export interface HudMeterEffect extends IdOnly {
 /** A line of text in the HUD. */
 export interface HudLabelEffect extends IdOnly {
   readonly text: string;
+}
+
+/** A labelled progress panel attached to an entity or placed at a world position. */
+export interface HudPanelEffect extends IdOnly {
+  readonly entityId?: string;
+  readonly position: readonly [number, number, number];
+  readonly yaw?: number;
+  readonly width: number;
+  readonly height: number;
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
 }
 /** `log`. */
 export interface Text {

@@ -45,6 +45,7 @@ import type {
   BeamHandle as SharedBeamHandle,
   CreateHudMeterOptions as SharedCreateHudMeterOptions,
   CreateHudLabelOptions as SharedCreateHudLabelOptions,
+  CreateHudPanelOptions as SharedCreateHudPanelOptions,
   CreateBeamOptions as SharedCreateBeamOptions,
   CreateParticleOptions as SharedCreateParticleOptions,
   ParticleHandle as SharedParticleHandle,
@@ -54,6 +55,7 @@ import type {
   SoundHandle as SharedSoundHandle,
   HudMeterHandle as SharedHudMeterHandle,
   HudLabelHandle as SharedHudLabelHandle,
+  HudPanelHandle as SharedHudPanelHandle,
 } from "@big-mesh-studios/place-api";
 
 /** Options for drawing a beam between points or entities. */
@@ -80,6 +82,12 @@ export interface HudMeterHandle extends SharedHudMeterHandle {}
 export interface CreateHudLabelOptions extends SharedCreateHudLabelOptions {}
 /** Handle for updating or removing a HUD label. */
 export interface HudLabelHandle extends SharedHudLabelHandle {}
+
+/** Options for placing a text and progress panel freely or relative to an entity. */
+export interface CreateHudPanelOptions extends SharedCreateHudPanelOptions {}
+
+/** A world-space HUD panel; updates its label or progress and removes it. */
+export interface HudPanelHandle extends SharedHudPanelHandle {}
 
 const wireColour = (color: readonly [number, number, number] | undefined) =>
   color === undefined
@@ -1133,6 +1141,39 @@ export const createHudLabel = (
       show();
     },
     remove: () => ask("hud-label-remove", { id: options.id }),
+  };
+};
+
+/** Creates a world-space text-and-progress panel; optionally attach it to an entity. */
+export const createHudPanel = (
+  options: CreateHudPanelOptions,
+): HudPanelHandle => {
+  let value = options.value;
+  let label = options.label;
+  const show = (): void =>
+    ask("hud-panel", {
+      id: options.id,
+      ...(options.entityId === undefined ? {} : { entityId: options.entityId }),
+      position: options.position,
+      ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
+      width: options.width,
+      height: options.height,
+      label,
+      value,
+      max: options.max,
+    });
+  show();
+  return {
+    id: options.id,
+    setValue: (next) => {
+      value = next;
+      show();
+    },
+    setLabel: (next) => {
+      label = next;
+      show();
+    },
+    remove: () => ask("hud-panel-remove", { id: options.id }),
   };
 };
 

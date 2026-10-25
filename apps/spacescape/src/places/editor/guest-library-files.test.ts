@@ -97,11 +97,11 @@ describe("the guest library the editor serves", () => {
     // carries a level can read it, and that is the only way a script can find out what its own
     // place is made of. The count is a tripwire — it fails when a function is added and someone
     // has to look at the number rather than let it drift, which is what it is for.
-    // **68 after the shared effects and HUD APIs**. The count is a
+    // **69 after the world-space HUD panel API**. The count is a
     // tripwire: it fails when a function is added and someone has to look at the number rather
     // than let it drift. Everything a
     // place can call on a picture is in that group, and none of it is an event.
-    expect(declared).toHaveLength(68);
+    expect(declared).toHaveLength(69);
     expect(new Set(declared).size).toBe(declared.length);
     // **And the names a place is most likely to reach for first**, so the count above cannot pass
     // on a file that has the right number of exports and none of them callable from a place.
@@ -119,6 +119,7 @@ describe("the guest library the editor serves", () => {
       "showImage",
       "createHudMeter",
       "createHudLabel",
+      "createHudPanel",
       "after",
       "onTick",
       "saveData",

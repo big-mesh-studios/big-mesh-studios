@@ -71,6 +71,7 @@ import {
   MAX_CHANNEL,
   MAX_DATA_KEYS,
   MAX_HUD_IMAGES,
+  MAX_HUD_PANELS,
   MAX_LIGHTS,
   MAX_MEDIUMS,
   MAX_PENDING_TIMERS,
@@ -415,6 +416,30 @@ export interface HostHudLabel {
   readonly text: string;
 }
 
+/** A world-space progress panel, with its placement resolved for the renderer. */
+export interface HostHudPanel {
+  readonly id: string;
+  readonly at: Vec3;
+  readonly yaw: number;
+  readonly width: number;
+  readonly height: number;
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
+}
+
+interface StoredHudPanel {
+  readonly id: string;
+  readonly entityId: string | undefined;
+  readonly position: Vec3;
+  readonly yaw: number;
+  readonly width: number;
+  readonly height: number;
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
+}
+
 /**
  * A photo the host has allocated: an id and a size.
  *
@@ -577,6 +602,7 @@ export class PlaceHost {
   private readonly images = new Map<string, HostImage>();
   private readonly hudMeters = new Map<string, HostHudMeter>();
   private readonly hudLabels = new Map<string, HostHudLabel>();
+  private readonly hudPanels = new Map<string, StoredHudPanel>();
   /** The camera the player's view was taken over by, if any. */
   private watched: HostCamera | undefined;
   /** Zones the player is inside, so a move can tell an entry from a stay. */
@@ -821,6 +847,46 @@ export class PlaceHost {
 
   get hudLabelList(): readonly HostHudLabel[] {
     return [...this.hudLabels.values()];
+  }
+
+  /** World-space progress panels, resolved against their entity's current transform. */
+  get hudPanelList(): readonly HostHudPanel[] {
+    const panels: HostHudPanel[] = [];
+    for (const panel of this.hudPanels.values()) {
+      if (panel.entityId === undefined) {
+        panels.push({
+          id: panel.id,
+          at: panel.position,
+          yaw: panel.yaw,
+          width: panel.width,
+          height: panel.height,
+          label: panel.label,
+          value: panel.value,
+          max: panel.max,
+        });
+        continue;
+      }
+      const figure = this.options.world.figures?.get(panel.entityId);
+      if (figure === undefined) continue;
+      const { at, yaw, scale } = figure.transform;
+      const c = Math.cos(yaw);
+      const s = Math.sin(yaw);
+      panels.push({
+        id: panel.id,
+        at: {
+          x: at.x + (panel.position.x * c + panel.position.z * s) * scale,
+          y: at.y + panel.position.y * scale,
+          z: at.z + (-panel.position.x * s + panel.position.z * c) * scale,
+        },
+        yaw: yaw + panel.yaw,
+        width: panel.width * scale,
+        height: panel.height * scale,
+        label: panel.label,
+        value: panel.value,
+        max: panel.max,
+      });
+    }
+    return panels;
   }
 
   /** How many fields exist, for a readout. */
@@ -1187,6 +1253,9 @@ export class PlaceHost {
     this.screens.clear();
     this.photos.clear();
     this.images.clear();
+    this.hudMeters.clear();
+    this.hudLabels.clear();
+    this.hudPanels.clear();
     // **A place that is gone must not leave the player looking through its camera.** The same
     // reasoning as the dialog below, and the same reason it cannot be left to the script: an
     // unloaded place runs no more code, so nothing else would ever give the view back.
@@ -1474,8 +1543,12 @@ export class PlaceHost {
         // **No error for an absent id**, matching `shape-remove`: removing something that is
         // not there changed nothing, and a script that removes defensively should not be told
         // off for it.
-        figures?.remove(name("id"));
-        this.entityUseDurations.delete(name("id"));
+        const id = name("id");
+        figures?.remove(id);
+        this.entityUseDurations.delete(id);
+        for (const [panelId, panel] of this.hudPanels) {
+          if (panel.entityId === id) this.hudPanels.delete(panelId);
+        }
         return;
       }
 
@@ -1965,6 +2038,41 @@ export class PlaceHost {
         if (this.hudLabels.delete(id)) this.options.effects.hideHudLabel?.(id);
         return;
       }
+
+      case "hud-panel": {
+        const id = name("id");
+        const entityId =
+          payload["entityId"] === undefined ? undefined : name("entityId");
+        if (
+          entityId !== undefined &&
+          this.options.world.figures?.get(entityId) === undefined
+        ) {
+          throw new Error(
+            `there is no entity called "${entityId}" to attach a HUD panel to`,
+          );
+        }
+        if (!this.hudPanels.has(id) && this.hudPanels.size >= MAX_HUD_PANELS) {
+          throw new Error(
+            `a place may show ${MAX_HUD_PANELS} world HUD panels at once`,
+          );
+        }
+        this.hudPanels.set(id, {
+          id,
+          entityId,
+          position: vec3("position"),
+          yaw: optionalNumber("yaw") ?? 0,
+          width: number("width"),
+          height: number("height"),
+          label: name("label"),
+          value: number("value"),
+          max: number("max"),
+        });
+        return;
+      }
+
+      case "hud-panel-remove":
+        this.hudPanels.delete(name("id"));
+        return;
 
       case "log":
         this.options.effects.log(name("text"));

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { ScriptHost } from "./script-host";
+import { MAX_HUD_PANELS } from "./effects";
 import { MAIN_SCRIPT_FILE } from "./project";
 import type { ScriptEvent } from "./events";
 import type { DataScope, DataValue, LivePlayer } from "./sandbox";
@@ -863,6 +864,136 @@ describe("script lights and billboards", () => {
     await h.host.use("x", "");
     expect(h.host.lightList.some((light) => light.id === "torch")).toBe(false);
     expect(h.host.billboardList).toEqual([]);
+  });
+
+  it("places a HUD panel freely or at an entity-local offset", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { createHudPanel, dispatch } from "voxelscape";
+        dispatch("npc", { id: "computer", x: 10, y: 2, z: 3, yaw: 1.5707963267948966 });
+        const panel = createHudPanel({
+          id: "computer-loading", entityId: "computer", position: [1, 0, 0],
+          width: 1.2, height: 0.6, label: "Loading", value: 20, max: 100,
+        });
+        panel.setValue(50);
+        createHudPanel({
+          id: "free-status", position: [1, 2, 3], width: 2, height: 1,
+          label: "Status", value: 1, max: 1,
+        });
+      `,
+    );
+
+    expect(h.host.hudPanelList).toEqual([
+      {
+        id: "computer-loading",
+        x: 10,
+        y: 2,
+        z: 2,
+        yaw: 1.5707963267948966,
+        width: 1.2,
+        height: 0.6,
+        label: "Loading",
+        value: 50,
+        max: 100,
+      },
+      {
+        id: "free-status",
+        x: 1,
+        y: 2,
+        z: 3,
+        yaw: 0,
+        width: 2,
+        height: 1,
+        label: "Status",
+        value: 1,
+        max: 1,
+      },
+    ]);
+  });
+
+  it("removes an attached panel when its entity is removed", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { createHudPanel, dispatch } from "voxelscape";
+        dispatch("npc", { id: "computer", x: 0, y: 10, z: 0 });
+        createHudPanel({ id: "screen", entityId: "computer", position: [0, 1, 0], width: 1, height: 1, label: "Loading", value: 0, max: 1 });
+        dispatch("npc-remove", { id: "computer" });
+      `,
+    );
+    expect(h.host.hudPanelList).toEqual([]);
+  });
+
+  it("forgets a panel when a dying entity is finally forgotten", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { createHudPanel, dispatch, onTick } from "voxelscape";
+        dispatch("npc", { id: "computer", x: 0, y: 10, z: 0 });
+        createHudPanel({ id: "screen", entityId: "computer", position: [0, 1, 0], width: 1, height: 1, label: "Loading", value: 0, max: 1 });
+        dispatch("npc-die", { id: "computer" });
+        dispatch("timer", { id: "later", afterMs: 1500 });
+        var step = 0;
+        onTick(function () {
+          step++;
+          // The load itself is the first step; the timer's is the second, and
+          // by then the death fall has finished.
+          if (step !== 2) { return; }
+          dispatch("npc", { id: "computer", x: 5, y: 10, z: 5 });
+        });
+      `,
+    );
+
+    // **Still resolvable while the death fall plays.** The panel belongs to the
+    // body until the body is forgotten.
+    expect(h.host.hudPanelList).toHaveLength(1);
+
+    clockMs += 2_000;
+    await h.host.pump();
+
+    // **The id came back without its panel.** Had the panel outlived the body,
+    // it would have reattached to the new computer at (5, 10, 5).
+    expect(h.host.hudPanelList).toEqual([]);
+  });
+
+  it("refuses a panel attached to an entity that is not there", async () => {
+    const h = makeHost();
+    await expect(
+      load(
+        h.host,
+        `
+          import { createHudPanel } from "voxelscape";
+          createHudPanel({ id: "screen", entityId: "nowhere", position: [0, 1, 0], width: 1, height: 1, label: "Loading", value: 0, max: 1 });
+        `,
+      ),
+    ).rejects.toThrow('no entity called "nowhere"');
+    expect(h.host.hudPanelList).toEqual([]);
+  });
+
+  it("refuses a panel past MAX_HUD_PANELS, and still lets an existing one update", async () => {
+    const h = makeHost();
+    await expect(
+      load(
+        h.host,
+        `
+          import { createHudPanel } from "voxelscape";
+          for (let i = 0; i < ${MAX_HUD_PANELS}; i++) {
+            createHudPanel({ id: "p" + i, position: [0, 0, 0], width: 1, height: 1, label: "Status", value: 0, max: 1 });
+          }
+          createHudPanel({ id: "p0", position: [0, 0, 0], width: 1, height: 1, label: "Status", value: 7, max: 1 });
+          createHudPanel({ id: "over", position: [0, 0, 0], width: 1, height: 1, label: "Status", value: 0, max: 1 });
+        `,
+      ),
+    ).rejects.toThrow(`may show ${MAX_HUD_PANELS} world HUD panels at once`);
+
+    expect(h.host.hudPanelList).toHaveLength(MAX_HUD_PANELS);
+    expect(h.host.hudPanelList.find((panel) => panel.id === "p0")?.value).toBe(
+      7,
+    );
   });
 });
 

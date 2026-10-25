@@ -37,6 +37,30 @@ export interface HudLabelHandle {
   remove(): void;
 }
 
+/** A labelled progress panel drawn on a world-space quad. */
+export interface CreateHudPanelOptions {
+  readonly id: string;
+  /** If set, position and yaw are relative to this entity; otherwise they are world-space. */
+  readonly entityId?: string;
+  readonly position: PlaceVec3;
+  /** Local turn when attached, or world turn when free, in radians. */
+  readonly yaw?: number;
+  /** Panel dimensions in world units. */
+  readonly width: number;
+  readonly height: number;
+  readonly label: string;
+  readonly value: number;
+  readonly max: number;
+}
+
+/** A world-space panel; update it or remove it by handle. */
+export interface HudPanelHandle {
+  readonly id: string;
+  setValue(value: number): void;
+  setLabel(label: string): void;
+  remove(): void;
+}
+
 /** A light created by a place; removing the handle turns it off. */
 export interface PlaceLightHandle {
   readonly id: string;

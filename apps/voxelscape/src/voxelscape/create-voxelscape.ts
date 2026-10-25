@@ -50,6 +50,7 @@ import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
 import { VoxelLights } from "../renderers/voxel-lights";
 import { VoxelBillboards } from "../renderers/voxel-billboards";
+import { VoxelHudPanels } from "../renderers/voxel-hud-panels";
 import { VoxelParticles } from "../renderers/voxel-particles";
 import { VoxelStorm } from "../renderers/voxel-storm";
 import { VoxelDecals } from "../renderers/voxel-decals";
@@ -1143,6 +1144,9 @@ export const createVoxelscape = ({
   const voxelBillboards = new VoxelBillboards(
     () => scriptConsole?.billboards() ?? [],
     () => camera,
+  );
+  const voxelHudPanels = new VoxelHudPanels(
+    () => scriptConsole?.hudPanels() ?? [],
   );
   // The particle emitters a script runs, and the flat marks it lays.
   const voxelParticles = new VoxelParticles(
@@ -2240,6 +2244,7 @@ export const createVoxelscape = ({
     explosionFigures.group,
     voxelLights.group,
     voxelBillboards.group,
+    voxelHudPanels.group,
     voxelParticles.group,
     voxelStorm.group,
     voxelDecals.group,
@@ -3161,6 +3166,7 @@ export const createVoxelscape = ({
       explosionFigures.tick(dt);
       voxelLights.tick();
       voxelBillboards.tick();
+      voxelHudPanels.tick();
       voxelParticles.tick(dt);
       voxelStorm.tick(dt);
       voxelDecals.tick();
@@ -3453,6 +3459,7 @@ export const createVoxelscape = ({
       explosionFigures.clear();
       voxelLights.clear();
       voxelBillboards.clear();
+      voxelHudPanels.clear();
       voxelParticles.clear();
       voxelDecals.clear();
       voxelRifts.clear();

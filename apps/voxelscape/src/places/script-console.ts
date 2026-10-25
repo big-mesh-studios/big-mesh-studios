@@ -7,6 +7,7 @@ import {
   ScriptHost,
   type BeamPose,
   type BillboardPose,
+  type HudPanelPose,
   type DecalPose,
   type DialogState,
   type FigureAnimation,
@@ -511,6 +512,11 @@ export class ScriptConsole {
   /** The labels the loaded script shows, for the world to draw. */
   billboards(): BillboardPose[] {
     return this.host?.billboardList ?? [];
+  }
+
+  /** The world-space progress panels the loaded script shows. */
+  hudPanels(): HudPanelPose[] {
+    return this.host?.hudPanelList ?? [];
   }
 
   /** The particle emitters the loaded script runs, for the world to draw. */

@@ -11,6 +11,7 @@ import { EventLog } from "./event-log";
 import {
   MAX_UI_ITEMS,
   MAX_UI_PANELS,
+  MAX_HUD_PANELS,
   parseEffect,
   type ParsedEffect,
   type UiAnchor,
@@ -180,6 +181,8 @@ export type { ScriptedExplosion };
 // re-exported for the same reason the blaze record is.
 import type { BillboardPose } from "../world/scripted-billboard";
 export type { BillboardPose };
+import type { HudPanelPose } from "../world/scripted-hud-panel";
+export type { HudPanelPose };
 import type { LightPose } from "../world/scripted-light";
 export type { LightPose };
 import type { ParticlePose, ParticleStyle } from "../world/scripted-particle";
@@ -344,6 +347,19 @@ export interface ScriptedBillboard {
   scale: number;
   /** How far above an attached figure's feet it hangs, in world units. */
   height: number;
+}
+
+/** A text and progress panel, stored with either a world point or entity-local offset. */
+export interface ScriptedHudPanel {
+  id: string;
+  entityId: string | undefined;
+  position: [number, number, number];
+  yaw: number;
+  width: number;
+  height: number;
+  label: string;
+  value: number;
+  max: number;
 }
 
 /** One particle emitter a place script runs. */
@@ -703,6 +719,8 @@ export class ScriptHost {
   private readonly lights = new Map<string, ScriptedLight>();
   /** The labels a script shows, keyed by billboard id. */
   private readonly billboards = new Map<string, ScriptedBillboard>();
+  /** The world-space progress panels a place shows, keyed by panel id. */
+  private readonly hudPanels = new Map<string, ScriptedHudPanel>();
   /** The particle emitters a script runs, keyed by emitter id. */
   private readonly particles = new Map<string, ScriptedParticle>();
   /** The dust storms a script drives, keyed by storm id. */
@@ -1070,6 +1088,44 @@ export class ScriptHost {
       });
     }
     return out;
+  }
+
+  /** Every panel positioned at its world point or resolved against its current entity. */
+  get hudPanelList(): HudPanelPose[] {
+    const out: HudPanelPose[] = [];
+    for (const panel of this.hudPanels.values()) {
+      const entity =
+        panel.entityId === undefined ? null : this.entity(panel.entityId);
+      if (panel.entityId !== undefined && entity === null) continue;
+      const entityYaw = entity?.yaw ?? 0;
+      const c = Math.cos(entityYaw);
+      const s = Math.sin(entityYaw);
+      out.push({
+        id: panel.id,
+        x:
+          entity === null
+            ? panel.position[0]
+            : entity.x + panel.position[0] * c + panel.position[2] * s,
+        y: entity === null ? panel.position[1] : entity.y + panel.position[1],
+        z:
+          entity === null
+            ? panel.position[2]
+            : entity.z - panel.position[0] * s + panel.position[2] * c,
+        yaw: entityYaw + panel.yaw,
+        width: panel.width,
+        height: panel.height,
+        label: panel.label,
+        value: panel.value,
+        max: panel.max,
+      });
+    }
+    return out;
+  }
+
+  private removeHudPanelsForEntity(entityId: string): void {
+    for (const [id, panel] of this.hudPanels) {
+      if (panel.entityId === entityId) this.hudPanels.delete(id);
+    }
   }
 
   /** The figure `id` names, NPC or prop, as a script's own query sees it. */
@@ -1828,6 +1884,11 @@ export class ScriptHost {
     for (const [id, npc] of this.npcs) {
       if (npc.dyingAt !== undefined && npc.dyingAt < dyingCutoff) {
         this.npcs.delete(id);
+        // **The panel goes with the body it was attached to**, for the reason
+        // `npc-remove` removes one: a panel anchored to an id that has been
+        // forgotten would otherwise hold a slot in `MAX_HUD_PANELS` and point
+        // at whatever is given that id next.
+        this.removeHudPanelsForEntity(id);
       }
     }
     const sandbox = await this.ready;
@@ -1940,6 +2001,7 @@ export class ScriptHost {
       case "npc-remove":
         this.npcs.delete(effect.payload.id);
         this.groundedNpcs.delete(effect.payload.id);
+        this.removeHudPanelsForEntity(effect.payload.id);
         break;
       case "npc-die": {
         const npc = this.npcs.get(effect.payload.id);
@@ -2001,6 +2063,7 @@ export class ScriptHost {
       case "prop-remove":
         this.props.delete(effect.payload.id);
         this.groundedProps.delete(effect.payload.id);
+        this.removeHudPanelsForEntity(effect.payload.id);
         break;
       case "entity-set": {
         const { id, tags, attributes } = effect.payload;
@@ -2763,6 +2826,34 @@ export class ScriptHost {
         }
         break;
       }
+      case "hud-panel": {
+        const panel = effect.payload;
+        if (
+          panel.entityId !== undefined &&
+          this.entity(panel.entityId) === null
+        ) {
+          throw new Error(
+            `there is no entity called "${panel.entityId}" to attach a HUD panel to`,
+          );
+        }
+        if (
+          !this.hudPanels.has(panel.id) &&
+          this.hudPanels.size >= MAX_HUD_PANELS
+        ) {
+          throw new Error(
+            `a place may show ${MAX_HUD_PANELS} world HUD panels at once`,
+          );
+        }
+        this.hudPanels.set(panel.id, {
+          ...panel,
+          entityId: panel.entityId,
+          yaw: panel.yaw ?? 0,
+        });
+        break;
+      }
+      case "hud-panel-remove":
+        this.hudPanels.delete(effect.payload.id);
+        break;
       case "block-set":
         this.onBlockEdit?.({
           min: effect.payload.voxel,

@@ -167,6 +167,20 @@
       "returns": "HudMeterHandle"
     },
     {
+      "name": "createHudPanel",
+      "signature": "(options: CreateHudPanelOptions): HudPanelHandle",
+      "doc": "Adds a labelled progress quad in the world, optionally attached to an entity.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudPanelOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudPanelHandle"
+    },
+    {
       "name": "createLight",
       "signature": "(options: CreateLightOptions): PlaceLightHandle",
       "doc": "Lights a point or a figure; see `createProp` for why `id` is never generated.",
@@ -1379,6 +1393,69 @@
       "type": ""
     },
     {
+      "name": "CreateHudPanelOptions",
+      "doc": "Options for a text-and-progress quad in the world, attached or free.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "entityId",
+          "type": "string",
+          "optional": true,
+          "doc": "If set, position and yaw are relative to this entity; otherwise they are world-space."
+        },
+        {
+          "name": "position",
+          "type": "PlaceVec3",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "yaw",
+          "type": "number",
+          "optional": true,
+          "doc": "Local turn when attached, or world turn when free, in radians."
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "optional": false,
+          "doc": "Panel dimensions in world units."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "CreateLightOptions",
       "doc": "Where a point light stands, or the figure it hangs over.",
       "members": [
@@ -1902,6 +1979,8 @@
         "player-view",
         "hud",
         "hud-remove",
+        "hud-panel",
+        "hud-panel-remove",
         "explosion",
         "block-set",
         "block-fill",
@@ -2133,6 +2212,39 @@
     {
       "name": "HudMeterHandle",
       "doc": "Handle for updating or removing a shared HUD meter.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "setValue",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "setLabel",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "remove",
+          "type": "void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "HudPanelHandle",
+      "doc": "Handle for updating or removing a world-space HUD panel.",
       "members": [
         {
           "name": "id",
@@ -5574,6 +5686,80 @@
       "doc": "The lights, labels, particles, storms, marks, sheets, and beams placed in the world itself.",
       "effects": [
         {
+          "tag": "hud-panel",
+          "doc": "Shows a labelled progress bar on a quad in the world, free or attached to a figure.",
+          "fields": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "entityId",
+              "type": "string",
+              "optional": true,
+              "doc": ""
+            },
+            {
+              "name": "position",
+              "type": "[number, number, number]",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "yaw",
+              "type": "number",
+              "optional": true,
+              "doc": ""
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "max",
+              "type": "number",
+              "optional": false,
+              "doc": ""
+            }
+          ],
+          "removedBy": ""
+        },
+        {
+          "tag": "hud-panel-remove",
+          "doc": "Takes a world-space HUD panel away.",
+          "fields": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "doc": ""
+            }
+          ],
+          "removedBy": "hud-panel"
+        },
+        {
           "tag": "light",
           "doc": "Lights a point in the world, or hangs a light over a scripted figure.",
           "fields": [
@@ -6933,6 +7119,11 @@
       "name": "MAX_HUD_LABEL",
       "value": "64",
       "doc": "The longest one HUD readout's id or label may be."
+    },
+    {
+      "name": "MAX_HUD_PANELS",
+      "value": "64",
+      "doc": "The most world-space progress panels a place may hold at once."
     },
     {
       "name": "MAX_HUD_TEXT",

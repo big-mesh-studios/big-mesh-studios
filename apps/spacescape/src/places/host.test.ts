@@ -17,6 +17,7 @@ import { PlaceRegistry } from "./place-registry";
 import {
   MAX_CAMERAS,
   MAX_HUD_IMAGES,
+  MAX_HUD_PANELS,
   MAX_LIGHTS,
   MAX_MEDIUMS,
   MAX_PHOTOS,
@@ -638,6 +639,83 @@ describe("a place can stand things in the world", () => {
 
     expect(set.get("dad")!.transform.at).toEqual({ x: 12, y: 0, z: -4 });
     expect(set.get("dad")!.transform.yaw).toBeCloseTo(1.5, 9);
+    host.dispose();
+  });
+
+  it("positions HUD panels in world space or relative to a moving entity", async () => {
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createProp, createHudPanel } from "spacescape";
+        createProp({ id: "computer", model: "fridge", at: [10, 2, 3], yaw: 1.5707963267948966, scale: 2 });
+        const attached = createHudPanel({ id: "attached", entityId: "computer", position: [1, 0, 0], width: 1, height: 0.5, label: "Loading", value: 20, max: 100 });
+        attached.setValue(50);
+        createHudPanel({ id: "free", position: [1, 2, 3], width: 2, height: 1, label: "Status", value: 1, max: 1 });
+      `,
+    );
+    await host.load();
+
+    expect(host.hudPanelList).toEqual([
+      {
+        id: "attached",
+        at: { x: 10, y: 2, z: 1 },
+        yaw: Math.PI / 2,
+        width: 2,
+        height: 1,
+        label: "Loading",
+        value: 50,
+        max: 100,
+      },
+      {
+        id: "free",
+        at: { x: 1, y: 2, z: 3 },
+        yaw: 0,
+        width: 2,
+        height: 1,
+        label: "Status",
+        value: 1,
+        max: 1,
+      },
+    ]);
+
+    host.dispose();
+  });
+
+  it("forgets an attached panel when its entity is removed", async () => {
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createProp, createHudPanel, removeEntity } from "spacescape";
+        createProp({ id: "computer", model: "fridge", at: [0, 0, 0] });
+        createHudPanel({ id: "attached", entityId: "computer", position: [0, 1, 0], width: 1, height: 1, label: "Loading", value: 0, max: 1 });
+        createHudPanel({ id: "free", position: [1, 2, 3], width: 2, height: 1, label: "Status", value: 1, max: 1 });
+        removeEntity("computer");
+      `,
+    );
+    await host.load();
+
+    // **The panel goes with the thing it was attached to**, because a panel anchored to an id
+    // that no longer exists has nowhere to be. A free panel is the place's own and remains.
+    expect(host.hudPanelList.map(({ id }) => id)).toEqual(["free"]);
+    host.dispose();
+  });
+
+  it("refuses a panel attached to an entity that is not there", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createHudPanel, onTick } from "voxelscape";
+        createHudPanel({
+          id: "status", entityId: "nowhere", position: [0, 1, 0],
+          width: 1, height: 1, label: "Status", value: 0, max: 1,
+        });
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.hudPanelList).toEqual([]);
+    expect(notices.join("\n")).toContain('no entity called "nowhere"');
     host.dispose();
   });
 
@@ -2404,7 +2482,7 @@ describe("a place that carries a level", () => {
 });
 
 /**
- * Virtual cameras, photos, screens and HUD images.
+ * Virtual cameras, photos, screens, HUD images and world HUD panels.
  *
  * The properties here are the ones a script could get wrong in a way the type system cannot catch:
  *
@@ -2418,7 +2496,7 @@ describe("a place that carries a level", () => {
  * 4. **The collection limits bite**, at the value and one past it, because a cap nothing refuses
  *    is a cap that reads as safety and is not.
  */
-describe("cameras, photos, screens and HUD images", () => {
+describe("cameras, photos, screens, HUD images and world HUD panels", () => {
   it("keeps a camera where a place put it, and moves only the fields it named", async () => {
     const { host, asked } = await start({
       "main.ts": `
@@ -2602,6 +2680,27 @@ describe("cameras, photos, screens and HUD images", () => {
 
     expect(host.imageList).toHaveLength(MAX_HUD_IMAGES);
     expect(notices.join("\n")).toContain(`show ${MAX_HUD_IMAGES} images`);
+    host.dispose();
+  });
+
+  it("refuses a world HUD panel past MAX_HUD_PANELS", async () => {
+    const { host, notices } = await start({
+      "main.ts": `
+        import { createHudPanel, onTick } from "voxelscape";
+        for (let i = 0; i <= ${MAX_HUD_PANELS}; i++) {
+          createHudPanel({
+            id: "p" + i, position: [0, 1, 0], width: 1, height: 1,
+            label: "Status", value: 0, max: 1,
+          });
+        }
+        onTick(() => {});
+      `,
+    });
+
+    expect(host.hudPanelList).toHaveLength(MAX_HUD_PANELS);
+    expect(notices.join("\n")).toContain(
+      `may show ${MAX_HUD_PANELS} world HUD panels`,
+    );
     host.dispose();
   });
 });

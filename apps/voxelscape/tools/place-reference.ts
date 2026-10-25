@@ -174,6 +174,8 @@ const EFFECT_GROUPS: readonly { name: string; doc: string; tags: string[] }[] =
       name: "World dressing",
       doc: "The lights, labels, particles, storms, marks, sheets, and beams placed in the world itself.",
       tags: [
+        "hud-panel",
+        "hud-panel-remove",
         "light",
         "light-remove",
         "billboard",
@@ -303,6 +305,9 @@ const EFFECT_MEANING: Readonly<Record<string, string>> = {
   explosion: "Bursts an explosion in the world.",
   hud: "Shows one player a HUD readout: a bar with a value and a maximum, or a line of text.",
   "hud-remove": "Takes a HUD readout away.",
+  "hud-panel":
+    "Shows a labelled progress bar on a quad in the world, free or attached to a figure.",
+  "hud-panel-remove": "Takes a world-space HUD panel away.",
   toast: "Shows one player a short message that fades.",
   narrate: "Says a line of speech in one player's name.",
   sound: "Plays one of the world's own sounds for one player.",

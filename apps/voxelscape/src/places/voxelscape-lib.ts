@@ -900,4 +900,30 @@ export function createHudLabel(options) {
     remove: function () { host.dispatch("hud-remove", { player: "", id: options.id }); },
   };
 }
+
+/** Creates a world-space text-and-progress panel, optionally attached to an entity. */
+export function createHudPanel(options) {
+  var value = options.value;
+  var label = options.label;
+  function show() {
+    host.dispatch("hud-panel", {
+      id: options.id,
+      entityId: options.entityId,
+      position: options.position,
+      yaw: options.yaw,
+      width: options.width,
+      height: options.height,
+      label: label,
+      value: value,
+      max: options.max,
+    });
+  }
+  show();
+  return {
+    id: options.id,
+    setValue: function (next) { value = next; show(); },
+    setLabel: function (next) { label = next; show(); },
+    remove: function () { host.dispatch("hud-panel-remove", { id: options.id }); },
+  };
+}
 `;

@@ -64,6 +64,7 @@ describe("scene draw order", () => {
       "explosionFigures.group",
       "voxelLights.group",
       "voxelBillboards.group",
+      "voxelHudPanels.group",
       "voxelParticles.group",
       "voxelStorm.group",
       "voxelDecals.group",

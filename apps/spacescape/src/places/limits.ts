@@ -343,6 +343,13 @@ export const MAX_CAMERA_FOV = 179;
  */
 export const MAX_SCREENS = 64;
 
+/** The most world-space HUD panels a place may keep alive at once. */
+export const MAX_HUD_PANELS = 64;
+/** The common ceiling for a panel's current and full progress values. */
+export const MAX_HUD_PANEL_VALUE = 1_000_000_000;
+/** The longest caption rendered on a world-space HUD panel. */
+export const MAX_HUD_PANEL_LABEL = 64;
+
 /**
  * The smallest and largest a screen may be, in world units.
  *

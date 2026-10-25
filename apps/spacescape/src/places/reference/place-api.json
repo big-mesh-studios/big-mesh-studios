@@ -150,6 +150,20 @@
       "returns": "HudMeterHandle"
     },
     {
+      "name": "createHudPanel",
+      "signature": "(options: CreateHudPanelOptions): HudPanelHandle",
+      "doc": "Creates a world-space text-and-progress panel; optionally attach it to an entity.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateHudPanelOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "HudPanelHandle"
+    },
+    {
       "name": "createLight",
       "signature": "(options: CreateLightOptions): LightHandle",
       "doc": "Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.",
@@ -1248,6 +1262,14 @@
       "type": ""
     },
     {
+      "name": "CreateHudPanelOptions",
+      "doc": "Options for placing a text and progress panel freely or relative to an entity.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "CreateLightOptions",
       "doc": "What `createLight` takes: an id, where it is, its colour, how far it reaches, and how bright it is where it stops.",
       "members": [
@@ -1529,6 +1551,14 @@
     {
       "name": "HudMeterHandle",
       "doc": "Handle for updating or removing a HUD meter.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "HudPanelHandle",
+      "doc": "A world-space HUD panel; updates its label or progress and removes it.",
       "members": [],
       "union": [],
       "alternatives": [],
@@ -2076,6 +2106,21 @@
       "name": "MAX_HUD_IMAGES",
       "value": "8",
       "doc": "How many HUD images may be on screen at once. **Eight, which is more than fits on a phone screen and fewer than it takes to cover one.** A HUD image is drawn by the overlay rather than by the renderer, so it is cheap in GPU terms and expensive in the only currency that matters here: the player's view of the world."
+    },
+    {
+      "name": "MAX_HUD_PANEL_LABEL",
+      "value": "64",
+      "doc": "The longest caption rendered on a world-space HUD panel."
+    },
+    {
+      "name": "MAX_HUD_PANEL_VALUE",
+      "value": "1000000000",
+      "doc": "The common ceiling for a panel's current and full progress values."
+    },
+    {
+      "name": "MAX_HUD_PANELS",
+      "value": "64",
+      "doc": "The most world-space HUD panels a place may keep alive at once."
     },
     {
       "name": "MAX_ITEM_COUNT",
