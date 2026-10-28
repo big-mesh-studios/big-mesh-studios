@@ -2043,16 +2043,22 @@ export default function App() {
     const cloudBakes: { dispose(): void }[] = [];
 
     /**
-     * Bumped whenever the far field is replaced, so a bake that was started for a world that has
-     * gone does not install itself into the next one.
+     * One generation per far-field bake, bumped whenever that bake is replaced.
      *
      * **A generation rather than a boolean, because the far field is now built more than once.**
      * A `disposed` flag can say "do not install" but cannot say "install again", so a world that
      * switched to flat and back would have a sky with no clouds and a header that could not
-     * explain it. Two flags that can only be set — which is what the old code had, because the
-     * far field was built exactly once — become one number that means "which attempt is current".
+     * explain it.
+     *
+     * **Two numbers rather than one, and that is not tidiness either.** The globe's bake and the
+     * clouds' bake start together on a spherical world, and a single counter bumped by each start
+     * makes whichever starts second invalidate the first — so the globe's attempt is always stale
+     * by the time its maps land, `createGlobe` never runs, and above the crossfade the chunks fade
+     * out to leave an empty sky where the planet should be. Each bake owns its own token so that
+     * starting one says nothing about the other.
      */
-    let farField = 0;
+    let globeField = 0;
+    let cloudField = 0;
 
     /**
      * Starts the globe's and the clouds' bakes, for a spherical world.
@@ -2065,7 +2071,7 @@ export default function App() {
      * a phone to do for nothing.
      */
     const startGlobe = (): void => {
-      const attempt = ++farField;
+      const attempt = ++globeField;
 
       const planetMaps = bakePlanetMapsOffThread(
         DEFAULT_PLANET,
@@ -2077,7 +2083,7 @@ export default function App() {
           // Between the bake starting and this running, the world can have been torn down or
           // changed shape — and a mesh added to a scene it no longer belongs to is a leak with
           // no owner.
-          if (attempt !== farField) return;
+          if (attempt !== globeField) return;
           try {
             globe = createGlobe(viewport.scene, maps);
             setPlanetBake({
@@ -2097,7 +2103,7 @@ export default function App() {
           }
         },
         (reason: unknown) => {
-          if (attempt !== farField) return;
+          if (attempt !== globeField) return;
           setPlanetBake({
             state: "failed",
             reason: reason instanceof Error ? reason.message : String(reason),
@@ -2117,13 +2123,13 @@ export default function App() {
      * not.
      */
     const startClouds = (): void => {
-      const attempt = ++farField;
+      const attempt = ++cloudField;
 
       const cloudBake = bakeCloudFieldOffThread(DEFAULT_TERRAIN.seed);
       cloudBakes.push(cloudBake);
       void cloudBake.field.then(
         (field) => {
-          if (attempt !== farField) return;
+          if (attempt !== cloudField) return;
           try {
             layer = createCloudLayer(
               viewport.scene,
@@ -2144,7 +2150,7 @@ export default function App() {
              * build whose vocabulary has since changed must not reach `setQuality`.
              */
             void readSetting<string>(CLOUD_QUALITY_KEY).then((remembered) => {
-              if (attempt !== farField) return;
+              if (attempt !== cloudField) return;
               if (remembered === "high" || remembered === "low") {
                 layer?.setQuality(remembered);
               }
@@ -2162,7 +2168,7 @@ export default function App() {
           }
         },
         (reason: unknown) => {
-          if (attempt !== farField) return;
+          if (attempt !== cloudField) return;
           setCloudStatus({
             state: "failed",
             reason: reason instanceof Error ? reason.message : String(reason),
@@ -2179,7 +2185,8 @@ export default function App() {
      * against a world that has just declared itself flat and adds a sphere back to it.
      */
     const dropFarField = (): void => {
-      farField++;
+      globeField++;
+      cloudField++;
       globe?.dispose();
       globe = null;
       layer?.dispose();
@@ -2208,7 +2215,7 @@ export default function App() {
      * **The far field is rebuilt rather than merely hidden**, because a bake is not reversible:
      * there is no way to stop one five seconds of noise into the future and keep the work. So a
      * switch to flat drops the globe and the clouds outright and reports them as absent, and a
-     * switch back starts them again — which is why `farField` is a generation rather than the
+     * switch back starts them again — which is why each bake has a generation rather than the
      * pair of flags this used to need, and why a switch is visibly slow the first time each way.
      */
     const setWorldShape = (shape: WorldShape): string => {
