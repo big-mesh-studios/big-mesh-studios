@@ -689,6 +689,18 @@ export function App() {
   let elapsed = 0;
 
   /**
+   * Whether the next rebuild should frame the model.
+   *
+   * **A rebuild is not the same event as a new document.** It fires after every settled
+   * edit, and framing then would pull the camera back out to the whole model each time —
+   * so a person working close on a detail loses their view on every nudge. Only the first
+   * rebuild of a document frames it; every later one leaves the camera exactly where it
+   * is, so the model stays still under the pointer while it is edited. Set back to `true`
+   * wherever a whole new set of parts arrives.
+   */
+  let framing = true;
+
+  /**
    * Rebuilds the mesh for `parts`.
    *
    * **The parts are an argument rather than read from the store inside.** A Solid 2 effect's
@@ -753,21 +765,27 @@ export function App() {
       });
       elapsed = performance.now() - started;
 
-      const bounds = modelBounds(parts);
-      if (bounds !== undefined) {
-        const size = Math.max(
-          bounds.max.x - bounds.min.x,
-          bounds.max.y - bounds.min.y,
-          bounds.max.z - bounds.min.z,
-        );
-        camera.frame(
-          {
-            x: (bounds.min.x + bounds.max.x) / 2,
-            y: (bounds.min.y + bounds.max.y) / 2,
-            z: (bounds.min.z + bounds.max.z) / 2,
-          },
-          size,
-        );
+      // **Only a new document is framed.** Everything else is an edit to the model
+      // already on screen, and moving the camera at all would move the thing under the
+      // pointer — so an edit leaves the view untouched and the model still.
+      if (framing) {
+        const bounds = modelBounds(parts);
+        if (bounds !== undefined) {
+          const size = Math.max(
+            bounds.max.x - bounds.min.x,
+            bounds.max.y - bounds.min.y,
+            bounds.max.z - bounds.min.z,
+          );
+          camera.frame(
+            {
+              x: (bounds.min.x + bounds.max.x) / 2,
+              y: (bounds.min.y + bounds.max.y) / 2,
+              z: (bounds.min.z + bounds.max.z) / 2,
+            },
+            size,
+          );
+          framing = false;
+        }
       }
 
       /**
@@ -1664,6 +1682,10 @@ export function App() {
     // that is still using it. See `createPalette`.
     palette.set(project.palette);
     const loaded = store.load(project.parts, label);
+    // **A file is a new model to look at**, so the next rebuild frames it rather than
+    // keeping a distance that was chosen for the document being replaced. Only when the
+    // parts actually loaded — a refused file has changed nothing to frame.
+    if (loaded) framing = true;
 
     // **The paint is reset before anything else happens to it.** A field is sized to a model's
     // bounds and a journal belongs to the document that made it, so opening a file into a
@@ -1737,6 +1759,8 @@ export function App() {
     resetPaint();
     void installTexture(untrack(store.parts), undefined);
     setHome(NOWHERE);
+    // A fresh document, framed like the first one.
+    framing = true;
     store.load(newModel(), "new model");
     setStatus("new model");
   };
@@ -2189,6 +2213,10 @@ export function App() {
      * way to settle it is to be first.
      */
     const onPointerDown = (event: PointerEvent): void => {
+      // **A right press belongs to the camera's pan.** The select tool watches the whole
+      // press to tell a tap from a drag, and without this a right-drag would move the
+      // view and then select whatever it ended over.
+      if (event.button === 2) return;
       const held = untrack(tool);
       if (held === "move") {
         void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
@@ -2739,7 +2767,10 @@ export function App() {
         >
           Files
         </button>
-        <span class={styles.hint}>drag to orbit · scroll or pinch to zoom</span>
+        <span class={styles.hint}>
+          drag to orbit · right-drag or two fingers to pan · scroll or pinch to
+          zoom
+        </span>
       </footer>
     </div>
   );

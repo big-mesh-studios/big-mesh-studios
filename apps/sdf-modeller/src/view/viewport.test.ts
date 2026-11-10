@@ -33,11 +33,50 @@ const harness = (limits: OrbitLimits = DEFAULT_ORBIT) => {
   const camera = new PerspectiveCamera(45, 1, 0.01, 8000);
   const orbit = createOrbit(camera, limits);
   const detach = orbit.attach(element);
+  // **A real canvas has a height, and a pan is scaled by it.** jsdom leaves it at zero,
+  // which the controller treats as one pixel and would make every pan enormous.
+  Object.defineProperty(element, "clientHeight", { value: 600 });
 
   const wheel = (deltaY: number, ctrlKey = false): boolean =>
     element.dispatchEvent(
       new WheelEvent("wheel", { deltaY, ctrlKey, cancelable: true }),
     );
+
+  const press = (
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    button = 0,
+  ): void => {
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerId,
+        clientX,
+        clientY,
+        button,
+      }),
+    );
+  };
+  const move = (pointerId: number, clientX: number, clientY: number): void => {
+    element.dispatchEvent(
+      new PointerEvent("pointermove", { pointerId, clientX, clientY }),
+    );
+  };
+  const lift = (
+    pointerId: number,
+    clientX = 0,
+    clientY = 0,
+    button = 0,
+  ): void => {
+    element.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerId,
+        clientX,
+        clientY,
+        button,
+      }),
+    );
+  };
 
   /**
    * One press and one move, as a single pointer travelling `dx` by `dy`.
@@ -46,19 +85,21 @@ const harness = (limits: OrbitLimits = DEFAULT_ORBIT) => {
    * client ones and the deltas below are the pixels they say they are.
    */
   const drag = (dx: number, dy: number): void => {
-    element.dispatchEvent(
-      new PointerEvent("pointerdown", { pointerId: 1, clientX: 0, clientY: 0 }),
-    );
-    element.dispatchEvent(
-      new PointerEvent("pointermove", {
-        pointerId: 1,
-        clientX: dx,
-        clientY: dy,
-      }),
-    );
+    press(1, 0, 0);
+    move(1, dx, dy);
   };
 
-  return { camera, orbit, element, detach, wheel, drag };
+  return {
+    camera,
+    orbit,
+    element,
+    detach,
+    wheel,
+    drag,
+    press,
+    move,
+    lift,
+  };
 };
 
 const mounted: (() => void)[] = [];
@@ -221,6 +262,54 @@ describe("orbiting round the model", () => {
 
     expect(camera.position.y).toBeLessThan(7);
     expect(camera.position.x).toBeGreaterThan(0);
+  });
+
+  it("pans with a right drag without turning or zooming the camera", () => {
+    // **The desktop pan**, and the reason it is the right button rather than a modifier:
+    // it is one press away and cannot be mistaken for an orbit. Moving the target slides
+    // the model under the pointer, while the distance and the angles are untouched.
+    const { orbit, press, move, lift } = mountedHarness();
+    const start = orbit.state();
+
+    press(2, 100, 100, 2);
+    move(2, 150, 130);
+    lift(2, 150, 130, 2);
+
+    const panned = orbit.state();
+    expect(panned.target).not.toEqual(start.target);
+    expect(panned.radius).toBe(start.radius);
+    expect(panned.theta).toBe(start.theta);
+    expect(panned.phi).toBe(start.phi);
+  });
+
+  it("claims the context menu because the right button is a gesture", () => {
+    const { element } = mountedHarness();
+    expect(
+      element.dispatchEvent(
+        new MouseEvent("contextmenu", { cancelable: true }),
+      ),
+    ).toBe(false);
+  });
+
+  it("pans with two fingers without changing the distance", () => {
+    // **The midpoint is the pan and the span is the zoom.** A two-finger gesture has to
+    // do both, and an edit that leaves somebody close to a detail must let them slide
+    // the model across the canvas rather than only turn it round.
+    const { orbit, press, move, lift } = mountedHarness();
+    press(1, 100, 100);
+    press(2, 200, 100);
+    const anchored = orbit.state();
+
+    // Both fingers travel together, so the span returns to where it started and only
+    // the midpoint has moved: the distance must come back to the same number.
+    move(1, 110, 110);
+    move(2, 210, 110);
+    lift(1, 110, 110);
+    lift(2, 210, 110);
+
+    const panned = orbit.state();
+    expect(panned.target).not.toEqual(anchored.target);
+    expect(panned.radius).toBeCloseTo(anchored.radius, 9);
   });
 
   it("turns a drag's width into yaw without changing the height", () => {

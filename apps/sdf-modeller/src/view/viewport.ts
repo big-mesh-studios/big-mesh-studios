@@ -241,6 +241,16 @@ export const createOrbit = (
       // coordinates — so this is deliberately not that helper. See ADR 0026.
       const pointers = new Map<number, { x: number; y: number }>();
       let pinch = 0;
+      /**
+       * The midpoint between two fingers, which is what a two-finger pan moves.
+       *
+       * Kept beside `pinch` rather than derived per event from the map alone, because a
+       * pan is the *change* in the midpoint and the previous one has to survive the frame.
+       */
+      let middle: { x: number; y: number } | undefined;
+      /** The pointer holding a right-drag, which pans instead of orbiting. */
+      let panPointer: number | undefined;
+      let panFrom: { x: number; y: number } | undefined;
       let detached = false;
 
       const local = (event: PointerEvent): { x: number; y: number } => {
@@ -253,19 +263,84 @@ export const createOrbit = (
           ? 0
           : Math.hypot(a.x - b.x, a.y - b.y);
       };
+      const middleOf = (): { x: number; y: number } | undefined => {
+        if (pointers.size < 2) return undefined;
+        let x = 0;
+        let y = 0;
+        for (const point of pointers.values()) {
+          x += point.x;
+          y += point.y;
+        }
+        return { x: x / pointers.size, y: y / pointers.size };
+      };
+
+      /**
+       * Slides the target across the camera's own plane.
+       *
+       * **A translation, not a rotation**, and scaled by the distance so a drag covers
+       * the same fraction of the model wherever the camera is: at arm's length a pixel
+       * is a small step and up close it is a fine one, which is what makes the model
+       * stay under the finger. The camera's right and up vectors come from the orbit's
+       * angles rather than from the matrix, because the matrix is only current after
+       * `apply` and this runs before it.
+       */
+      const panBy = (dx: number, dy: number): void => {
+        if (dx === 0 && dy === 0) return;
+        const across =
+          (2 * state.radius * Math.tan((FOV_Y * Math.PI) / 360)) /
+          Math.max(element.clientHeight, 1);
+        const sinPhi = Math.sin(state.phi);
+        const cosPhi = Math.cos(state.phi);
+        const sinTheta = Math.sin(state.theta);
+        const cosTheta = Math.cos(state.theta);
+        // Right is `(cosθ, 0, -sinθ)` and up is `(-sinθ cosφ, sinφ, -cosθ cosφ)`, the
+        // two unit vectors square to the view direction the orbit places the camera on.
+        state = {
+          ...state,
+          target: {
+            x:
+              state.target.x -
+              cosTheta * dx * across -
+              sinTheta * cosPhi * dy * across,
+            y: state.target.y + sinPhi * dy * across,
+            z:
+              state.target.z +
+              sinTheta * dx * across -
+              cosTheta * cosPhi * dy * across,
+          },
+        };
+      };
 
       const onDown = (event: PointerEvent): void => {
         if (!interactive) return;
         element.setPointerCapture(event.pointerId);
+        if (event.button === 2) {
+          // **The right button pans instead of orbiting**, which is the desktop form of
+          // the two-finger gesture. It stays out of `pointers`, so it cannot be taken for
+          // half of a pinch.
+          panPointer = event.pointerId;
+          panFrom = local(event);
+          return;
+        }
         pointers.set(event.pointerId, local(event));
         pinch = spread();
+        middle = middleOf();
       };
 
       const onMove = (event: PointerEvent): void => {
         if (!interactive) return;
+        const current = local(event);
+        if (event.pointerId === panPointer) {
+          if (panFrom !== undefined) {
+            panBy(current.x - panFrom.x, current.y - panFrom.y);
+          }
+          panFrom = current;
+          apply();
+          return;
+        }
+
         const previous = pointers.get(event.pointerId);
         if (previous === undefined) return;
-        const current = local(event);
         pointers.set(event.pointerId, current);
 
         if (pointers.size >= 2) {
@@ -273,6 +348,13 @@ export const createOrbit = (
           // Two fingers that are merely touching should not move the camera. The
           // threshold is in world units because the fingers are not.
           if (pinch > limits.pinchThreshold) {
+            const centre = middleOf();
+            // **The midpoint carries the pan and the span carries the zoom.** Sliding
+            // two fingers together moves the model under them; spreading or closing
+            // them still dollies as it always did.
+            if (middle !== undefined && centre !== undefined) {
+              panBy(centre.x - middle.x, centre.y - middle.y);
+            }
             state = {
               ...state,
               // Spreading the fingers pulls the camera in, so the radius scales by the
@@ -287,6 +369,7 @@ export const createOrbit = (
             };
           }
           pinch = now;
+          middle = middleOf();
           apply();
           return;
         }
@@ -333,8 +416,20 @@ export const createOrbit = (
         apply();
       };
 
+      /** The right button is a pan, so the browser's menu would open mid-gesture. */
+      const onContextMenu = (event: MouseEvent): void => {
+        event.preventDefault();
+      };
+
       const release = (event: PointerEvent): void => {
+        if (event.pointerId === panPointer) {
+          panPointer = undefined;
+          panFrom = undefined;
+        }
         pointers.delete(event.pointerId);
+        // **No stale midpoint when a finger lifts.** The remaining finger should not
+        // inherit half of a two-finger pan as its next orbit step.
+        if (pointers.size < 2) middle = undefined;
         if (element.hasPointerCapture(event.pointerId)) {
           element.releasePointerCapture(event.pointerId);
         }
@@ -345,6 +440,7 @@ export const createOrbit = (
       element.addEventListener("pointerup", release);
       element.addEventListener("pointercancel", release);
       element.addEventListener("wheel", onWheel, { passive: false });
+      element.addEventListener("contextmenu", onContextMenu);
 
       return () => {
         if (detached) return;
@@ -354,6 +450,7 @@ export const createOrbit = (
         element.removeEventListener("pointerup", release);
         element.removeEventListener("pointercancel", release);
         element.removeEventListener("wheel", onWheel);
+        element.removeEventListener("contextmenu", onContextMenu);
       };
     },
 
