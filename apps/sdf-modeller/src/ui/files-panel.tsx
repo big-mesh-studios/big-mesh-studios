@@ -38,6 +38,11 @@ import {
   printVoxelSizeIn,
 } from "../print/print-budget";
 import { DEFAULT_MAX_COLOURS } from "../print/quantise";
+import {
+  PRINT_FORMATS,
+  PRINT_FORMAT_INFO,
+  type PrintFormat,
+} from "../print/print-format";
 import type { MeshResult } from "../model/mesh-model";
 import type { Part } from "../model/part";
 import { createPopover } from "./popover";
@@ -80,6 +85,8 @@ export function FilesPanel(props: {
   mesh: () => MeshResult | undefined;
   height: () => string;
   filaments: () => string;
+  /** What the export will write, which decides what the file is called and what it can carry. */
+  format: () => PrintFormat;
   /** The export's resolution as typed, which is text because a number is a number per keystroke. */
   resolution: () => string;
   /** How far the export's meshing has got, or `undefined` when none is running. */
@@ -97,6 +104,7 @@ export function FilesPanel(props: {
   onSavePrint: () => void;
   onHeight: (value: string) => void;
   onFilaments: (value: string) => void;
+  onFormat: (value: PrintFormat) => void;
   onResolution: (value: string) => void;
   onOpenRecent: (file: RecentFile) => void;
   onForgetRecent: (id: string) => void;
@@ -194,6 +202,36 @@ export function FilesPanel(props: {
       </div>
 
       <ExportPopover.Panel class={`${controls.popover} ${styles.exportPanel}`}>
+        {/*
+          **The format is a `select`, because the platform already has a picker for one on a
+          phone and the browser draws a menu for it on a desktop.** Two buttons would look
+          tidier here and be worse everywhere else: a native select is the control a thumb, a
+          screen reader and a keyboard all know how to use without any code teaching them, and
+          it is one row of the panel rather than two.
+
+          **First, because it decides what the rest of the panel is asking.** A 3MF can carry
+          colour and an STL cannot, so choosing STL takes the filaments field away rather than
+          leaving a number on screen that the file will drop.
+        */}
+        <label class={controls.field}>
+          <span>Format</span>
+          <select
+            value={props.format()}
+            onChange={(event: Event & { currentTarget: HTMLSelectElement }) => {
+              const chosen = event.currentTarget.value;
+              if (chosen === "3mf" || chosen === "stl") props.onFormat(chosen);
+            }}
+          >
+            <For each={PRINT_FORMATS}>
+              {(format) => (
+                <option value={format}>
+                  {PRINT_FORMAT_INFO[format].label}
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
+
         <label class={controls.field}>
           <span>Height</span>
           <input
@@ -208,20 +246,29 @@ export function FilesPanel(props: {
           <span>mm</span>
         </label>
 
-        <label class={controls.field}>
-          <span>Filaments</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={
-              props.filaments() === "" ? DEFAULT_MAX_COLOURS : props.filaments()
-            }
-            onInput={(event: Event & { currentTarget: HTMLInputElement }) => {
-              props.onFilaments(event.currentTarget.value);
-            }}
-          />
-        </label>
+        {/*
+          **Only for a format that can hold colour.** An STL has no place for a filament count,
+          so showing the field would be asking a question the file does not carry the answer
+          to — and a number that changes nothing is how somebody comes to believe it did.
+        */}
+        <Show when={props.format() === "3mf"}>
+          <label class={controls.field}>
+            <span>Filaments</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={
+                props.filaments() === ""
+                  ? DEFAULT_MAX_COLOURS
+                  : props.filaments()
+              }
+              onInput={(event: Event & { currentTarget: HTMLInputElement }) => {
+                props.onFilaments(event.currentTarget.value);
+              }}
+            />
+          </label>
+        </Show>
 
         {/*
           **The export's resolution, as a number a person types rather than a slider.**
@@ -338,7 +385,10 @@ export function FilesPanel(props: {
             <CubeIcon />
           </span>
           <span class={controls.label}>
-            <Show when={props.builtFile()} fallback="Export .3mf">
+            <Show
+              when={props.builtFile()}
+              fallback={`Export ${PRINT_FORMAT_INFO[props.format()].extension}`}
+            >
               {(name) => `Save ${name()}`}
             </Show>
           </span>

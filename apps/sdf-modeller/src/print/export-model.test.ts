@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import type { MeshReport } from "@big-mesh-studios/meshing";
 
 import { placedPart } from "../model/part";
-import { DEFAULT_HEIGHT_MM, exportThreeMf } from "./export-model";
+import { DEFAULT_HEIGHT_MM, exportStl, exportThreeMf } from "./export-model";
 import { printProblem } from "./print-problem";
 import { meshForPrint } from "./print-mesh";
 import { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";
@@ -81,6 +81,23 @@ const heightsOf = (model: string): number[] =>
  */
 const countTriangles = (model: string): number =>
   (model.match(/<triangle /g) ?? []).length;
+
+/** How many triangles a binary STL says it holds. */
+const stlTriangleCount = async (blob: Blob): Promise<number> =>
+  new DataView(await blob.arrayBuffer()).getUint32(80, true);
+
+/** Every `z` a binary STL writes a corner at. */
+const stlHeights = async (blob: Blob): Promise<number[]> => {
+  const view = new DataView(await blob.arrayBuffer());
+  const count = view.getUint32(80, true);
+  const heights: number[] = [];
+  for (let t = 0; t < count; t++) {
+    for (let corner = 0; corner < 3; corner++) {
+      heights.push(view.getFloat32(84 + t * 50 + 12 + corner * 12 + 8, true));
+    }
+  }
+  return heights;
+};
 
 describe("exportThreeMf", () => {
   it("writes a file a slicer can open, in millimetres", async () => {
@@ -279,6 +296,58 @@ describe("exportThreeMf", () => {
 
     expect(model).toContain('<metadata name="Title">my monster</metadata>');
     expect(model).toContain('<metadata name="s:solid:2">my monster</metadata>');
+  });
+});
+
+/**
+ * The same export through the other container.
+ *
+ * **Every claim here is the 3MF's, checked against a different file**, because the two formats
+ * share the meshing, the gate and the stand and differ only in how the triangles are written.
+ * Measuring the STL independently is what stops "the 3MF is right" from being an assumption the
+ * second format inherited without anybody checking it.
+ */
+describe("exportStl", () => {
+  it("stands the model at the height it was asked for", async () => {
+    for (const heightMm of [40, 100, 12.5]) {
+      const heights = await stlHeights(
+        await exportStl([body()], {
+          heightMm,
+          voxelSize: DEFAULT_PRINT_VOXEL_SIZE * 2,
+        }),
+      );
+
+      expect(Math.max(...heights)).toBeCloseTo(heightMm, 3);
+      expect(Math.min(...heights)).toBeCloseTo(0, 3);
+    }
+  }, 60_000);
+
+  it("is fifty bytes a triangle and nothing else", async () => {
+    // **No palette, no thumbnail, no zip.** The size is the format's own claim about what an
+    // STL contains: geometry, and no room for anything a coloured format would add.
+    const blob = await exportStl([body()], {
+      voxelSize: DEFAULT_PRINT_VOXEL_SIZE * 2,
+    });
+    const triangles = await stlTriangleCount(blob);
+
+    expect(blob.type).toBe("model/stl");
+    expect((await blob.arrayBuffer()).byteLength).toBe(84 + triangles * 50);
+  }, 60_000);
+
+  it("meshes at the resolution it was asked for rather than at the default", async () => {
+    const at = async (voxelSize: number): Promise<number> =>
+      stlTriangleCount(await exportStl([body()], { voxelSize }));
+
+    const finer = await at(DEFAULT_PRINT_VOXEL_SIZE);
+    const coarser = await at(DEFAULT_PRINT_VOXEL_SIZE * 2);
+
+    expect(finer).toBeGreaterThan(coarser * 3);
+  }, 60_000);
+
+  it("refuses a model with nothing in it, in the same words the control says", async () => {
+    const problem = printProblem(meshForPrint([], DEFAULT_PRINT_VOXEL_SIZE));
+
+    await expect(exportStl([])).rejects.toThrow(problem);
   });
 });
 

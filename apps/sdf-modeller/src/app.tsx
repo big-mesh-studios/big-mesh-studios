@@ -117,6 +117,7 @@ import {
 import { createDialog } from "./ui/dialog";
 import { FilesPanel } from "./ui/files-panel";
 import { DEFAULT_MAX_COLOURS } from "./print/quantise";
+import { PRINT_FORMAT_INFO, type PrintFormat } from "./print/print-format";
 import {
   loadTexture,
   DRIFT_LIMIT,
@@ -220,9 +221,26 @@ const PROJECT_CHOICE = {
 /** What a 3MF picker accepts, which is a zip like a project file and so says so. */
 const THREE_MF_CHOICE = {
   description: "3D print model",
-  extension: ".3mf",
+  extension: PRINT_FORMAT_INFO["3mf"].extension,
   mimeType: PROJECT_MIME_TYPE,
 } as const;
+
+/**
+ * What an STL picker accepts.
+ *
+ * **`model/stl` and not a zip**, because unlike a 3MF the file really is one flat run of bytes
+ * and some operating systems decide what will open it from that alone. The extension is what
+ * the dialog shows either way; the type is what the system records.
+ */
+const STL_CHOICE = {
+  description: "3D print model (STL)",
+  extension: PRINT_FORMAT_INFO.stl.extension,
+  mimeType: "model/stl",
+} as const;
+
+/** The save dialog's description of whichever format is being written. */
+const printChoice = (format: PrintFormat) =>
+  format === "stl" ? STL_CHOICE : THREE_MF_CHOICE;
 
 /**
  * The model a new document starts from.
@@ -561,6 +579,19 @@ export function App() {
   );
 
   /**
+   * Which format the export writes.
+   *
+   * **A choice rather than two export buttons**, because both write the same mesh at the same
+   * height and resolution and only the container differs. Two buttons would make somebody pick
+   * a format before they have decided to export at all, and would leave the two-step
+   * build-then-save state to be duplicated for each.
+   *
+   * **3MF first**, because it is the file that keeps what the modeller drew — see
+   * `./print/print-format`.
+   */
+  const [printFormat, setPrintFormat] = createSignal<PrintFormat>("3mf");
+
+  /**
    * How far the export's meshing has got, or `undefined` when none is running.
    *
    * **`undefined` rather than zero while idle**, so the export popover's `<Show>` takes the bar
@@ -571,7 +602,7 @@ export function App() {
   const [printProgress, setPrintProgress] = createSignal<number | undefined>();
 
   /**
-   * The `.3mf` that has been built and is waiting for somebody to say where it goes.
+   * The print file that has been built and is waiting for somebody to say where it goes.
    *
    * **Held rather than written immediately, because a file dialog needs a user gesture and the
    * meshing spends the one there was.** `showSaveFilePicker` throws
@@ -593,8 +624,9 @@ export function App() {
    *
    * **On the button rather than in a line of its own**, because the button is what a person
    * presses next and what it says is the last chance to say something wrong. The size is here
-   * because a `.3mf` of a finely-meshed model is tens of megabytes and somebody about to write
-   * one to a phone's storage would rather know before than after.
+   * because a print of a finely-meshed model is tens of megabytes — an STL rather more than a
+   * 3MF — and somebody about to write one to a phone's storage would rather know before than
+   * after.
    */
   const printFileLabel = (): string | undefined => {
     const built = printFile();
@@ -621,6 +653,16 @@ export function App() {
   const setHeightForPrint = forgetPrintFile(setHeight);
   const setFilamentsForPrint = forgetPrintFile(setFilaments);
   const setPrintResolutionForPrint = forgetPrintFile(setPrintResolution);
+
+  /**
+   * **The format is a fourth setting that goes into the bytes**, because a file built as a 3MF
+   * is the wrong file the moment the select says STL. It has its own wrapper rather than going
+   * through `forgetPrintFile`, whose value is the text somebody typed.
+   */
+  const setPrintFormatForPrint = (format: PrintFormat) => {
+    setPrintFile(undefined);
+    setPrintFormat(format);
+  };
 
   // **Assigned inside `onSettled` and read outside it, which is the shape this needs.**
   //
@@ -1891,7 +1933,8 @@ export function App() {
   };
 
   /**
-   * Meshes and encodes the model as a `.3mf`, and holds it until somebody says where it goes.
+   * Meshes and encodes the model as the format the select names, and holds it until somebody
+   * says where it goes.
    *
    * **Nothing is written from here, and that is the whole reason this is a separate click from
    * `savePrintFile`.** The meshing runs in a worker for up to eleven seconds and
@@ -1904,13 +1947,12 @@ export function App() {
     // **Nothing in the status line**, because the status line is the mesh readout and a print
     // that worked says something the mesh did not: a file is sitting here waiting to be saved.
     attempt(setFileNotice, undefined, async () => {
+      // **Read once, so the file is named for what was built** even if the select moves before
+      // the meshing finishes.
+      const format = printFormat();
       const heightMm = numberIn(height(), 0.1);
       if (heightMm === undefined) {
         throw new Error("a printed model needs a height above the bed");
-      }
-      const maxColours = numberIn(filaments(), 1);
-      if (maxColours === undefined || !Number.isInteger(maxColours)) {
-        throw new Error("a printed model needs room for at least one colour");
       }
       // **Refused here rather than clamped, and the sentence carries both ends of the range.**
       // Somebody who has typed `0.01` wants a mesh four times finer than this export will go
@@ -1923,27 +1965,47 @@ export function App() {
         );
       }
 
-      const { exportThreeMf } = await import("./print/export-model");
+      const { exportStl, exportThreeMf } = await import("./print/export-model");
       // **Cleared in a `finally`, so a worker that dies leaves no bar behind.** The bar is the
       // only thing standing between an eleven-second wait and a page that looks finished, and a
       // bar left up after a failed export is worse than no bar.
       let blob: Blob;
       try {
-        blob = await exportThreeMf(store.parts(), {
-          heightMm,
-          maxColours,
-          voxelSize,
-          onProgress: setPrintProgress,
-        });
+        if (format === "stl") {
+          // **No filament count, because there is nowhere to put colour.** The field is hidden
+          // for this format anyway; not reading it is what stops a value left over from a 3MF
+          // export refusing a file that could not have used it.
+          blob = await exportStl(store.parts(), {
+            heightMm,
+            voxelSize,
+            onProgress: setPrintProgress,
+          });
+        } else {
+          const maxColours = numberIn(filaments(), 1);
+          if (maxColours === undefined || !Number.isInteger(maxColours)) {
+            throw new Error(
+              "a printed model needs room for at least one colour",
+            );
+          }
+          blob = await exportThreeMf(store.parts(), {
+            heightMm,
+            maxColours,
+            voxelSize,
+            onProgress: setPrintProgress,
+          });
+        }
       } finally {
         setPrintProgress(undefined);
       }
 
-      setPrintFile({ blob, name: `${stemOf()}.3mf` });
+      setPrintFile({
+        blob,
+        name: `${stemOf()}${PRINT_FORMAT_INFO[format].extension}`,
+      });
     });
 
   /**
-   * Writes the built `.3mf` where the second click says.
+   * Writes the built print file where the second click says.
    *
    * **A fresh gesture, and the only thing in the export path that is.** `attempt` calls its
    * action synchronously, so `choosePlaceToWrite` is reached in the same task as the click and
@@ -1955,7 +2017,17 @@ export function App() {
       const built = printFile();
       if (built === undefined) return;
 
-      const target = await choosePlaceToWrite(THREE_MF_CHOICE, built.name);
+      // **The format comes from the file's own name rather than from the select.** They agree
+      // unless somebody moved the select while the mesh was building, and in that case the
+      // bytes that exist are the ones whose name is on the button — so the dialog should offer
+      // what is actually about to be written.
+      const format: PrintFormat = built.name.endsWith(
+        PRINT_FORMAT_INFO.stl.extension,
+      )
+        ? "stl"
+        : "3mf";
+
+      const target = await choosePlaceToWrite(printChoice(format), built.name);
       // **A download only where the browser has no dialog at all.** A dismissed dialog is
       // silence, not consent — and treating the two alike is how a print ends up on a disk
       // somebody did not ask for it to reach.
@@ -1973,9 +2045,9 @@ export function App() {
   /**
    * A name for the print, taken from the document's.
    *
-   * **The stem without its extension**, so a print of `duck.sdfmod` is `duck.3mf` rather than
-   * `duck.sdfmod.3mf` — which is what every other tool on the machine would produce and what a
-   * person who has five of these in a folder would expect.
+   * **The stem without its extension**, so a print of `duck.sdfmod` is `duck.3mf` or
+   * `duck.stl` rather than `duck.sdfmod.3mf` — which is what every other tool on the machine
+   * would produce and what a person who has five of these in a folder would expect.
    */
   const stemOf = (): string => {
     const here = home();
@@ -2585,6 +2657,7 @@ export function App() {
           mesh={mesh}
           height={height}
           filaments={filaments}
+          format={printFormat}
           resolution={printResolution}
           printing={printProgress}
           builtFile={printFileLabel}
@@ -2607,6 +2680,7 @@ export function App() {
           }}
           onHeight={setHeightForPrint}
           onFilaments={setFilamentsForPrint}
+          onFormat={setPrintFormatForPrint}
           onResolution={setPrintResolutionForPrint}
           onOpenRecent={(file) => {
             void openRecent(file);

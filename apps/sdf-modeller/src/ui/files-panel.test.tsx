@@ -10,6 +10,7 @@ import {
   MAX_PRINT_VOXEL_SIZE,
 } from "../print/print-budget";
 import type { MeshResult } from "../model/mesh-model";
+import type { PrintFormat } from "../print/print-format";
 import { FilesPanel } from "./files-panel";
 import styles from "./files-panel.module.css";
 
@@ -33,9 +34,13 @@ const mount = (initial: {
   readonly printing?: number | undefined;
   readonly builtFile?: string;
   readonly model?: readonly Part[];
+  readonly format?: PrintFormat;
 }) => {
   const [resolution, setResolution] = createSignal(
     initial.resolution ?? String(DEFAULT_PRINT_VOXEL_SIZE),
+  );
+  const [format, setFormat] = createSignal<PrintFormat>(
+    initial.format ?? "3mf",
   );
   const [printing, setPrinting] = createSignal<number | undefined>(
     initial.printing,
@@ -60,6 +65,7 @@ const mount = (initial: {
         mesh={(): MeshResult | undefined => undefined}
         height={() => "100"}
         filaments={() => "4"}
+        format={format}
         resolution={resolution}
         printing={printing}
         builtFile={builtFile}
@@ -76,6 +82,7 @@ const mount = (initial: {
         }}
         onHeight={() => {}}
         onFilaments={() => {}}
+        onFormat={setFormat}
         onResolution={setResolution}
         onOpenRecent={() => {}}
         onForgetRecent={() => {}}
@@ -94,9 +101,15 @@ const mount = (initial: {
   return {
     root,
     setResolution,
+    setFormat,
     setPrinting,
     setBuiltFile,
     button,
+    /** The format control, which is the popover's only `select`. */
+    select: () => root.querySelector<HTMLSelectElement>("select") ?? undefined,
+    /** Every number field, which is how a test sees whether the filaments row is there. */
+    numberFields: () =>
+      root.querySelectorAll<HTMLInputElement>('input[type="number"]'),
     /** How many times each half of the two-step export was asked for. */
     pressed: () => ({ exported, saved }),
     /** The cost line, which is the only `<p>` in the panel that is not the document's name. */
@@ -237,5 +250,63 @@ describe("the export's two steps", () => {
     expect(panel.button?.textContent).toContain("Export .3mf");
     panel.button?.click();
     expect(panel.pressed()).toEqual({ exported: 1, saved: 0 });
+  });
+});
+
+/**
+ * The format is a native `<select>`, because the platform's own picker is the mobile-friendly one.
+ *
+ * **A 3MF carries colour and an STL does not**, so the choice changes both what the button will
+ * write and which questions are worth asking. Both are asserted here rather than in the shell,
+ * because this is the panel that draws the control and the paragraph that says what it will do.
+ */
+describe("the export's format", () => {
+  it("offers a 3MF and an STL, with the coloured one first", () => {
+    const panel = mount({});
+    const select = panel.select();
+
+    expect([...(select?.options ?? [])].map((option) => option.value)).toEqual([
+      "3mf",
+      "stl",
+    ]);
+    expect(select?.value).toBe("3mf");
+  });
+
+  it("names the file it will write for the format that is chosen", () => {
+    const panel = mount({});
+    expect(panel.button?.textContent).toContain("Export .3mf");
+
+    panel.setFormat("stl");
+    flush();
+
+    expect(panel.button?.textContent).toContain("Export .stl");
+  });
+
+  it("takes the filament count away for a format that cannot hold colour", () => {
+    // **Three number fields for a 3MF — height, filaments and resolution — and two for an STL.**
+    // A field that survives the switch would be a question whose answer the file discards.
+    const panel = mount({});
+    expect(panel.numberFields().length).toBe(3);
+
+    panel.setFormat("stl");
+    flush();
+
+    expect(panel.numberFields().length).toBe(2);
+  });
+
+  it("follows the select itself, not only the signal behind it", () => {
+    // **The wiring, rather than the state.** A select set through its own DOM is what a phone's
+    // picker does, and a handler that was never attached would pass every other test here.
+    const panel = mount({});
+    const select = panel.select();
+    if (select === undefined)
+      throw new Error("the format select was not drawn");
+
+    select.value = "stl";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    flush();
+
+    expect(panel.select()?.value).toBe("stl");
+    expect(panel.button?.textContent).toContain("Export .stl");
   });
 });

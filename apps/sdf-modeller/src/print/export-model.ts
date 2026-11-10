@@ -34,6 +34,7 @@ import { meshForPrintOffThread } from "./print-mesh-client";
 import { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";
 import type { PrintMeshProgress } from "./print-worker";
 import { standOnBed } from "./stand";
+import { encodeStl } from "./stl";
 import {
   encodeThreeMf,
   type PrintSolid,
@@ -93,6 +94,29 @@ export const printedSolidOf = (
 };
 
 /**
+ * The mesh a print is written from, or the reason there is none.
+ *
+ * **Off the main thread, at the resolution the export was asked for**, and gated by
+ * `printProblem` so both formats refuse the same models in the same words. The cast is safe
+ * because the gate is the only thing that can return a sentence here.
+ */
+const meshedForExport = async (
+  parts: readonly Part[],
+  options: PrintOptions,
+): Promise<NonNullable<Awaited<ReturnType<typeof meshForPrintOffThread>>>> => {
+  const result = await meshForPrintOffThread(
+    parts,
+    options.voxelSize ?? DEFAULT_PRINT_VOXEL_SIZE,
+    options.onProgress,
+  );
+  const problem = printProblem(result);
+  if (problem !== undefined) {
+    throw new Error(problem);
+  }
+  return result as NonNullable<typeof result>;
+};
+
+/**
  * The model as the bytes of a `.3mf`.
  *
  * @throws with the reason from `printProblem`, which is the same sentence the export control
@@ -106,17 +130,7 @@ export const exportThreeMf = async (
   const maxColours = options.maxColours ?? DEFAULT_MAX_COLOURS;
   const title = options.title;
 
-  const result = await meshForPrintOffThread(
-    parts,
-    options.voxelSize ?? DEFAULT_PRINT_VOXEL_SIZE,
-    options.onProgress,
-  );
-  const problem = printProblem(result);
-  if (problem !== undefined) {
-    throw new Error(problem);
-  }
-  // Narrowed by `printProblem`, which is the only thing that could have refused.
-  const mesh = result as NonNullable<typeof result>;
+  const mesh = await meshedForExport(parts, options);
 
   const { solid, palette } = printedSolidOf(
     mesh,
@@ -133,6 +147,30 @@ export const exportThreeMf = async (
   };
 
   return encodeThreeMf([solid], palette, written);
+};
+
+/**
+ * The model as the bytes of a `.stl`.
+ *
+ * **No palette, no thumbnail and no title, because the format has nowhere to put them.** The
+ * mesh, the gate and the stand are the same as the 3MF's — only the container differs — so a
+ * model that can be printed as one can be printed as the other, at the same height and the same
+ * resolution.
+ *
+ * @throws with the reason from `printProblem`, like `exportThreeMf`.
+ */
+export const exportStl = async (
+  parts: readonly Part[],
+  options: PrintOptions = {},
+): Promise<Blob> => {
+  const heightMm = options.heightMm ?? 100;
+  const mesh = await meshedForExport(parts, options);
+  const { positions, indices, vertexCount } = mesh.mesh;
+
+  return encodeStl({
+    vertices: standOnBed(positions, vertexCount, heightMm),
+    indices,
+  });
 };
 
 export { DEFAULT_HEIGHT_MM } from "./print-problem";

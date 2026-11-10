@@ -261,7 +261,8 @@
   font-size: 0.85rem;
 }
 
-.field input {
+.field input,
+.field select {
   min-width: 0;
   min-height: var(--ui-size);
   padding: 0 var(--ui-margin);
@@ -272,4 +273,15 @@
   font: inherit;
   font-size: 0.85rem;
   touch-action: manipulation;
+}
+
+/*
+ * **A select is a field with its own arrow, so it gets a pointer and a little breathing
+ * room on the right.** The native menu is deliberately kept: it is the one on a phone that
+ * fills the screen and the one a keyboard opens with the space bar, and replacing it with a
+ * list of our own would mean rebuilding both badly.
+ */
+.field select {
+  cursor: pointer;
+  padding-right: calc(var(--ui-margin) * 2);
 }
