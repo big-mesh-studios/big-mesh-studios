@@ -1,0 +1,1 @@
+var e=new URL(`luau-CFx3CS6f.wasm`,import.meta.url).href;export{e as default};
