@@ -359,6 +359,21 @@ export interface CodeMirrorProps {
   onInput?(event: { path: string; source: string; update: ViewUpdate }): void;
   /** Called with each editor as it is created, for a caller to hold onto. */
   onEditor?(editor: EditorView): void;
+  /**
+   * Whether this file is TypeScript the worker should serve, default `true`.
+   *
+   * **A file that is not TypeScript must not be shown as if it were.** The package's
+   * language is JavaScript/TypeScript: highlighting a Luau file with it is a lie about the
+   * syntax, and the linter asks the TypeScript service about a path it cannot parse — which
+   * answers `Could not find source file`. A caller with a second language says so here and
+   * gets a plain text editor over the same provider; completions and diagnostics are simply
+   * absent for that document, which is the honest state rather than a noisy wrong one.
+   *
+   * The file still has to be in the provider's `files` map, because that map is where the
+   * editor reads its source from. This prop decides what is *attached* to the document, not
+   * whether the document exists.
+   */
+  typescript?: boolean;
   config?: {
     tsSync?: Parameters<typeof tsSync>[0];
     tsHover?: Parameters<typeof tsHover>[0];
@@ -378,11 +393,13 @@ export function CodeMirror(props: CodeMirrorProps) {
   let editor: EditorView | undefined;
   let editorPath: string | undefined;
   let editorInitialized: boolean | undefined;
+  let editorTypescript: boolean | undefined;
 
   function createEditor(
     parent: HTMLDivElement,
     source: string,
     extensions: Array<Extension>,
+    typescript: boolean,
   ): EditorView {
     return new EditorView({
       parent,
@@ -393,10 +410,17 @@ export function CodeMirror(props: CodeMirrorProps) {
           "&": { height: "100%" },
           ".cm-scroller": { overflow: "auto" },
         }),
-        javascript({
-          typescript: true,
-          jsx: true,
-        }),
+        // **Only for a TypeScript document.** A Luau file parsed by the JavaScript
+        // grammar is not "roughly highlighted", it is highlighted wrongly at every
+        // keyword; plain text is the truthful rendering. See the `typescript` prop.
+        ...(typescript
+          ? [
+              javascript({
+                typescript: true,
+                jsx: true,
+              }),
+            ]
+          : []),
         ...(props.theme ? [props.theme] : []),
         keymap.of([
           {
@@ -454,13 +478,19 @@ export function CodeMirror(props: CodeMirrorProps) {
         lsp.initialized(),
         props.path,
         lsp.files()[props.path],
+        props.typescript ?? true,
         trackDeep(props.config ?? {}),
       ] as const,
-    ([target, initialized, path, source]) => {
+    ([target, initialized, path, source, typescript]) => {
       if (!target || source === undefined) {
         return;
       }
-      if (editor && editorPath === path && editorInitialized === initialized) {
+      if (
+        editor &&
+        editorPath === path &&
+        editorInitialized === initialized &&
+        editorTypescript === typescript
+      ) {
         return;
       }
       // A same-document rebuild (LSP just became ready, or `config`
@@ -477,7 +507,7 @@ export function CodeMirror(props: CodeMirrorProps) {
       editor = createEditor(
         target,
         source ?? "",
-        initialized
+        initialized && typescript
           ? [
               autocompletion({ override: [tsAutocomplete()] }),
               tsFacet.of({
@@ -491,9 +521,11 @@ export function CodeMirror(props: CodeMirrorProps) {
               tsTwoslash(),
             ]
           : [],
+        typescript,
       );
       editorPath = path;
       editorInitialized = initialized;
+      editorTypescript = typescript;
 
       if (selection) {
         editor.dispatch({ selection });

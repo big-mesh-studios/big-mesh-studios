@@ -77,6 +77,7 @@ recorded cost is a decision nobody thought about.
 | [0057](0057-a-place-bakes-ambient-occlusion-into-its-chunks.md)          | A place may bake ambient occlusion into its chunks                                     | accepted                     |
 | [0058](0058-a-levels-material-name-reaches-the-fold.md)                  | A level's material name reaches the fold as the renderer's id                          | accepted                     |
 | [0059](0059-a-wall-line-carries-its-side.md)                             | A wall line carries its side, so a traced line can be the wall's face                  | accepted                     |
+| [0060](0060-a-place-may-also-be-written-in-luau.md)                      | A place may also be written in Luau, and its guarantees are the pinned binary's        | accepted                     |
 
 ## What is decided so far
 

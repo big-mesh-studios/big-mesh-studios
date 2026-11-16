@@ -1,0 +1,6 @@
+/vendor/
+/build/
+
+# The built runtime is committed, not ignored.
+!/dist/
+!/dist/**

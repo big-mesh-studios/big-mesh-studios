@@ -1,0 +1,1344 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "kind": "shape",
+      "id": "shape-Box--484-75--12",
+      "at": [
+        -307.2031,
+        142.5275,
+        77.7731
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 300,
+          "y": 200,
+          "z": 300
+        }
+      },
+      "combine": "Subtract",
+      "colour": {
+        "r": 206,
+        "g": 210,
+        "b": 197
+      },
+      "material": "plaster"
+    },
+    {
+      "kind": "walls",
+      "id": "walls-107--291--36--25",
+      "at": [
+        -290.9141,
+        -41.4033,
+        -25.396900000000002
+      ],
+      "up": [
+        0,
+        1,
+        0
+      ],
+      "lines": [
+        [
+          [
+            -467.7711,
+            -56.4033,
+            -83.7998
+          ],
+          [
+            -484.8851,
+            -56.4033,
+            -83.7998
+          ],
+          [
+            -484.8851,
+            -56.4033,
+            -90.0437
+          ],
+          [
+            -561.5439,
+            -56.4033,
+            -90.0437
+          ],
+          [
+            -561.5439,
+            -56.4033,
+            -30.3369
+          ],
+          [
+            -484.3894,
+            -56.4033,
+            -30.3369
+          ],
+          [
+            -484.3894,
+            -56.4033,
+            -37.152
+          ],
+          [
+            -467.7359,
+            -56.4033,
+            -37.152
+          ],
+          [
+            -467.7359,
+            -56.4033,
+            12.9512
+          ],
+          [
+            -416.442,
+            -56.4033,
+            12.9512
+          ],
+          [
+            -416.442,
+            -56.4033,
+            -18.1483
+          ],
+          [
+            -394.2318,
+            -56.4033,
+            -18.1483
+          ],
+          [
+            -394.2318,
+            -56.4033,
+            13.2404
+          ],
+          [
+            -394.2318,
+            -56.4033,
+            86.049
+          ],
+          [
+            -215.0239,
+            -56.4033,
+            86.049
+          ],
+          [
+            -215.0239,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -166.3916,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -93.1078,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -93.1078,
+            -56.4033,
+            -31.2145
+          ],
+          [
+            -20.2843,
+            -56.4033,
+            -31.2145
+          ],
+          [
+            -20.2843,
+            -56.4033,
+            -90.4516
+          ],
+          [
+            -93.1274,
+            -56.4033,
+            -90.4516
+          ],
+          [
+            -93.1274,
+            -56.4033,
+            -136.8428
+          ],
+          [
+            -166.6292,
+            -56.4033,
+            -136.8428
+          ],
+          [
+            -240.1991,
+            -56.4033,
+            -136.8428
+          ],
+          [
+            -240.1991,
+            -56.4033,
+            -102.793
+          ],
+          [
+            -300.9677,
+            -56.4033,
+            -102.793
+          ],
+          [
+            -300.9677,
+            -56.4033,
+            -78.6723
+          ],
+          [
+            -392.5523,
+            -56.4033,
+            -78.6723
+          ],
+          [
+            -392.5523,
+            -56.4033,
+            -104.673
+          ],
+          [
+            -414.4059,
+            -56.4033,
+            -104.673
+          ],
+          [
+            -414.4059,
+            -56.4033,
+            -120.7453
+          ],
+          [
+            -414.4059,
+            -56.4033,
+            -136.7092
+          ],
+          [
+            -467.697,
+            -56.4033,
+            -136.7092
+          ],
+          [
+            -467.697,
+            -56.4033,
+            -120.5354
+          ],
+          [
+            -467.7711,
+            -56.4033,
+            -83.7998
+          ]
+        ],
+        [
+          [
+            -467.697,
+            -56.4033,
+            -120.5354
+          ],
+          [
+            -430.6854,
+            -56.4033,
+            -120.5354
+          ]
+        ],
+        [
+          [
+            -414.4059,
+            -56.4033,
+            -120.7453
+          ],
+          [
+            -416.3219,
+            -56.4033,
+            -120.7453
+          ]
+        ],
+        [
+          [
+            -414.4059,
+            -56.4033,
+            -104.673
+          ],
+          [
+            -414.4059,
+            -56.4033,
+            -97.6181
+          ]
+        ],
+        [
+          [
+            -467.7711,
+            -56.4033,
+            -83.7998
+          ],
+          [
+            -467.7711,
+            -56.4033,
+            -78.5498
+          ],
+          [
+            -467.7711,
+            -56.4033,
+            -72.1066
+          ]
+        ],
+        [
+          [
+            -467.7711,
+            -56.4033,
+            -78.5498
+          ],
+          [
+            -414.4152,
+            -56.4033,
+            -78.5498
+          ],
+          [
+            -414.4152,
+            -56.4033,
+            -84.8918
+          ]
+        ],
+        [
+          [
+            -414.4152,
+            -56.4033,
+            -78.5498
+          ],
+          [
+            -408.3937,
+            -56.4033,
+            -78.5498
+          ]
+        ],
+        [
+          [
+            -392.5523,
+            -56.4033,
+            -78.6723
+          ],
+          [
+            -398.7791,
+            -56.4033,
+            -78.6723
+          ]
+        ],
+        [
+          [
+            -467.7359,
+            -56.4033,
+            -37.152
+          ],
+          [
+            -467.7359,
+            -56.4033,
+            -44.0688
+          ],
+          [
+            -467.7359,
+            -56.4033,
+            -49.5176
+          ]
+        ],
+        [
+          [
+            -467.7359,
+            -56.4033,
+            -44.0688
+          ],
+          [
+            -416.4511,
+            -56.4033,
+            -44.0688
+          ],
+          [
+            -416.4511,
+            -56.4033,
+            -37.7945
+          ]
+        ],
+        [
+          [
+            -416.4511,
+            -56.4033,
+            -44.0688
+          ],
+          [
+            -410.25,
+            -56.4033,
+            -44.0688
+          ]
+        ],
+        [
+          [
+            -416.442,
+            -56.4033,
+            -18.1483
+          ],
+          [
+            -416.442,
+            -56.4033,
+            -24.3833
+          ]
+        ],
+        [
+          [
+            -394.2318,
+            -56.4033,
+            -18.1483
+          ],
+          [
+            -394.2318,
+            -56.4033,
+            -43.8347
+          ],
+          [
+            -400.9173,
+            -56.4033,
+            -43.8347
+          ]
+        ],
+        [
+          [
+            -394.2318,
+            -56.4033,
+            -43.8347
+          ],
+          [
+            -300.9529,
+            -56.4033,
+            -43.8347
+          ],
+          [
+            -300.9529,
+            -56.4033,
+            -51.0201
+          ]
+        ],
+        [
+          [
+            -300.9529,
+            -56.4033,
+            -43.8347
+          ],
+          [
+            -293.2942,
+            -56.4033,
+            -43.8347
+          ],
+          [
+            -293.2942,
+            -56.4033,
+            12.6408
+          ],
+          [
+            -394.2318,
+            -56.4033,
+            13.2404
+          ]
+        ],
+        [
+          [
+            -215.0239,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -240.1238,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -240.1238,
+            -56.4033,
+            -42.9139
+          ],
+          [
+            -214.512,
+            -56.4033,
+            -42.9139
+          ]
+        ],
+        [
+          [
+            -300.9677,
+            -56.4033,
+            -78.6723
+          ],
+          [
+            -300.9677,
+            -56.4033,
+            -70.555
+          ]
+        ],
+        [
+          [
+            -300.9677,
+            -56.4033,
+            -78.6723
+          ],
+          [
+            -294.7354,
+            -56.4033,
+            -78.6723
+          ]
+        ],
+        [
+          [
+            -166.3916,
+            -56.4033,
+            13.5182
+          ],
+          [
+            -166.3916,
+            -56.4033,
+            -43.2112
+          ],
+          [
+            -191.6374,
+            -56.4033,
+            -43.2112
+          ]
+        ],
+        [
+          [
+            -166.3916,
+            -56.4033,
+            -43.2112
+          ],
+          [
+            -141.4112,
+            -56.4033,
+            -43.2112
+          ]
+        ],
+        [
+          [
+            -93.1078,
+            -56.4033,
+            -31.2145
+          ],
+          [
+            -93.1078,
+            -56.4033,
+            -42.8558
+          ],
+          [
+            -93.1078,
+            -56.4033,
+            -47.153
+          ]
+        ],
+        [
+          [
+            -93.1078,
+            -56.4033,
+            -42.8558
+          ],
+          [
+            -118.2586,
+            -56.4033,
+            -42.8558
+          ]
+        ],
+        [
+          [
+            -93.1274,
+            -56.4033,
+            -90.4516
+          ],
+          [
+            -93.1274,
+            -56.4033,
+            -77.2152
+          ],
+          [
+            -118.2383,
+            -56.4033,
+            -77.2152
+          ]
+        ],
+        [
+          [
+            -93.1274,
+            -56.4033,
+            -77.2152
+          ],
+          [
+            -93.1274,
+            -56.4033,
+            -69.3173
+          ]
+        ],
+        [
+          [
+            -166.6292,
+            -56.4033,
+            -136.8428
+          ],
+          [
+            -166.6292,
+            -56.4033,
+            -77.5413
+          ],
+          [
+            -191.1413,
+            -56.4033,
+            -77.5413
+          ]
+        ],
+        [
+          [
+            -166.6292,
+            -56.4033,
+            -77.5413
+          ],
+          [
+            -140.457,
+            -56.4033,
+            -77.5413
+          ]
+        ],
+        [
+          [
+            -240.1991,
+            -56.4033,
+            -102.793
+          ],
+          [
+            -240.1991,
+            -56.4033,
+            -77.177
+          ],
+          [
+            -213.8854,
+            -56.4033,
+            -77.177
+          ]
+        ],
+        [
+          [
+            -240.1991,
+            -56.4033,
+            -77.177
+          ],
+          [
+            -240.1991,
+            -56.4033,
+            -69.8445
+          ]
+        ],
+        [
+          [
+            -240.1991,
+            -56.4033,
+            -77.177
+          ],
+          [
+            -246.0558,
+            -56.4033,
+            -77.177
+          ]
+        ]
+      ],
+      "sides": [
+        "right",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "right",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre",
+        "centre"
+      ],
+      "height": 30,
+      "thickness": 7,
+      "combine": "Add",
+      "softness": 0.2,
+      "material": "plaster",
+      "colour": {
+        "r": 206,
+        "g": 210,
+        "b": 197
+      }
+    },
+    {
+      "kind": "shape",
+      "id": "front-door-cut-out",
+      "at": [
+        -266.7888,
+        -50.3235,
+        94.606
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 12,
+          "y": 15,
+          "z": 12
+        }
+      },
+      "combine": "Subtract",
+      "colour": {
+        "r": 206,
+        "g": 210,
+        "b": 197
+      },
+      "material": "plaster"
+    },
+    {
+      "kind": "shape",
+      "id": "shape-Box--484-75--12-2",
+      "at": [
+        -307.2031,
+        -66.4033,
+        77.7731
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 300,
+          "y": 10,
+          "z": 300
+        }
+      },
+      "combine": "Add",
+      "colour": {
+        "r": 92,
+        "g": 112,
+        "b": 116
+      },
+      "material": "tile"
+    },
+    {
+      "kind": "shape",
+      "id": "ceiling",
+      "at": [
+        -291.1644,
+        -20,
+        -25.7981
+      ],
+      "shape": {
+        "type": "Polygon",
+        "points": [
+          {
+            "x": -126.5445,
+            "z": -109.6296
+          },
+          {
+            "x": -175.7574,
+            "z": -110.7251
+          },
+          {
+            "x": -174.1864,
+            "z": -53.025
+          },
+          {
+            "x": -190.8213,
+            "z": -53.5505
+          },
+          {
+            "x": -191.0387,
+            "z": -63.632
+          },
+          {
+            "x": -270.6665,
+            "z": -63.3056
+          },
+          {
+            "x": -270.9282,
+            "z": -7.3402
+          },
+          {
+            "x": -193.5346,
+            "z": -5.145
+          },
+          {
+            "x": -190.6005,
+            "z": -11.272
+          },
+          {
+            "x": -177.3386,
+            "z": -10.563
+          },
+          {
+            "x": -176.7109,
+            "z": 36.9125
+          },
+          {
+            "x": -127.0691,
+            "z": 39.5283
+          },
+          {
+            "x": -125.0627,
+            "z": 8.6362
+          },
+          {
+            "x": -103.7654,
+            "z": 8.0526
+          },
+          {
+            "x": -103.3616,
+            "z": 109.7233
+          },
+          {
+            "x": 75.1686,
+            "z": 111.4035
+          },
+          {
+            "x": 76.7296,
+            "z": 39.9753
+          },
+          {
+            "x": 196.2293,
+            "z": 38.5682
+          },
+          {
+            "x": 198.0308,
+            "z": -6.2455
+          },
+          {
+            "x": 270.4128,
+            "z": -5.5072
+          },
+          {
+            "x": 270.9282,
+            "z": -63.83
+          },
+          {
+            "x": 198.4953,
+            "z": -64.6422
+          },
+          {
+            "x": 198.6828,
+            "z": -111.4035
+          },
+          {
+            "x": 52.9944,
+            "z": -110.702
+          },
+          {
+            "x": 51.4155,
+            "z": -77.5648
+          },
+          {
+            "x": -8.5322,
+            "z": -75.7739
+          },
+          {
+            "x": -11.3399,
+            "z": -52.9549
+          },
+          {
+            "x": -99.6714,
+            "z": -53.749
+          },
+          {
+            "x": -101.5952,
+            "z": -79.4731
+          },
+          {
+            "x": -122.9581,
+            "z": -83.5025
+          }
+        ],
+        "len": 24
+      },
+      "combine": "Add",
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "colour": {
+        "r": 216,
+        "g": 215,
+        "b": 205
+      },
+      "material": "plaster"
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -227.5,
+        -52.8071,
+        35.181
+      ],
+      "yaw": 3.028,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -227.5,
+        -52.8071,
+        41.5736
+      ],
+      "yaw": 3.028,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -227.5,
+        -52.8071,
+        48.6724
+      ],
+      "yaw": 3.028,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -227.5,
+        -52.8071,
+        56.0395
+      ],
+      "yaw": 3.028,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -227.5,
+        -52.8071,
+        62.9397
+      ],
+      "yaw": 3.028,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -371.31100000000004,
+        -52.8071,
+        62.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -371.31100000000004,
+        -52.8071,
+        57.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -371.31100000000004,
+        -52.8071,
+        52.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -371.31100000000004,
+        -52.8071,
+        47.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -371.31100000000004,
+        -52.8071,
+        42.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -358.31100000000004,
+        -52.8071,
+        42.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -358.31100000000004,
+        -52.8071,
+        47.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -358.31100000000004,
+        -52.8071,
+        52.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -358.31100000000004,
+        -52.8071,
+        57.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -358.31100000000004,
+        -52.8071,
+        62.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -346.31100000000004,
+        -52.8071,
+        62.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -346.31100000000004,
+        -52.8071,
+        57.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -346.31100000000004,
+        -52.8071,
+        52.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -346.31100000000004,
+        -52.8071,
+        47.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-chair.sdfmod--215--44-397-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2-2",
+      "figure": "prop",
+      "model": "hospital-chair.sdfmod",
+      "at": [
+        -346.31100000000004,
+        -52.8071,
+        42.9397
+      ],
+      "yaw": 0.027999999999999997,
+      "scale": 3,
+      "meshResolution": 0.12
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-bed",
+      "figure": "prop",
+      "model": "hospital-bed.sdfmod",
+      "at": [
+        -182.59084066733712,
+        -52.91092788163075,
+        -24.89730339612138
+      ],
+      "scale": 7,
+      "meshResolution": 0.09999999999999996
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-bed-3",
+      "figure": "prop",
+      "model": "hospital-bed.sdfmod",
+      "at": [
+        -112.59084470667337,
+        -52.91092788163075,
+        -24.89730339612138
+      ],
+      "scale": 7,
+      "meshResolution": 0.09999999999999996
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-bed-3-2",
+      "figure": "prop",
+      "model": "hospital-bed.sdfmod",
+      "at": [
+        -64.59084470667337,
+        -52.91092788163075,
+        -59.89730339612138
+      ],
+      "scale": 7,
+      "meshResolution": 0.09999999999999996
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-bed-2",
+      "figure": "prop",
+      "model": "hospital-bed.sdfmod",
+      "at": [
+        -183.59084066733712,
+        -52.91092788163075,
+        -97.89730339612137
+      ],
+      "scale": 7,
+      "meshResolution": 0.09999999999999996
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-bed-2-2",
+      "figure": "prop",
+      "model": "hospital-bed.sdfmod",
+      "at": [
+        -109.59084066733712,
+        -52.91092788163075,
+        -97.89730339612137
+      ],
+      "scale": 7,
+      "meshResolution": 0.09999999999999996
+    },
+    {
+      "kind": "shape",
+      "id": "reception-cut-out",
+      "at": [
+        -299.8211,
+        -42.8183,
+        -12.7033
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 9,
+          "y": 6,
+          "z": 15
+        }
+      },
+      "combine": "Subtract",
+      "colour": {
+        "r": 92,
+        "g": 74,
+        "b": 52
+      },
+      "material": "timber"
+    },
+    {
+      "kind": "shape",
+      "id": "reception-cut-out-2",
+      "at": [
+        -323.8211,
+        -42.8183,
+        6.2966999999999995
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 24,
+          "y": 6,
+          "z": 8
+        }
+      },
+      "combine": "Subtract",
+      "colour": {
+        "r": 92,
+        "g": 74,
+        "b": 52
+      },
+      "material": "timber"
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-computer",
+      "figure": "prop",
+      "model": "hospital-computer.sdfmod",
+      "at": [
+        -299.6545,
+        -45.4779,
+        -9.2063
+      ],
+      "yaw": -1.7,
+      "scale": 2.25,
+      "meshResolution": 0.01
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-camera",
+      "figure": "prop",
+      "model": "hospital-camera.sdfmod",
+      "at": [
+        -301.2230975691116,
+        -45.48334553342808,
+        -17.8304681384177
+      ],
+      "yaw": 1.2,
+      "scale": 1.7500000000000007,
+      "meshResolution": 0.01
+    },
+    {
+      "kind": "figure",
+      "id": "prop-hospital-printer",
+      "figure": "prop",
+      "model": "hospital-printer.sdfmod",
+      "at": [
+        -303.5158967660941,
+        -48.376646660883935,
+        -1.3911090253667648
+      ],
+      "yaw": 3.6,
+      "scale": 2.499999999999999
+    },
+    {
+      "kind": "shape",
+      "id": "reception-desk",
+      "at": [
+        -302.1911512055878,
+        -51.90840752909028,
+        -10.984519251634598
+      ],
+      "shape": {
+        "type": "Box",
+        "len": {
+          "x": 3,
+          "y": 3,
+          "z": 13.000000000000014
+        }
+      },
+      "combine": "Add",
+      "colour": {
+        "r": 52,
+        "g": 43,
+        "b": 31
+      }
+    }
+  ],
+  "imagePlane": {
+    "at": [
+      -290.8676,
+      -56.4103,
+      -25.3267
+    ],
+    "yaw": 0,
+    "width": 588,
+    "opacity": 0.5,
+    "mime": "image/webp",
+    "bytes": "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zNrhx0FkhScHxphiOR5kBVoi8r5KpRenJQUwMJX3lclNtj4UDB8teV9I5rlCBWz7iP8FhpIJmv7333///ffff//997/p/280LMeLAj2RaORmj3bbo778Kp0u6t1N6IiSzxdUo5VeCPnfYGZsm222nbHtbNvZdrad7ew+29l2tp1tO9vOtrOdbTvbdrad7Ww723a2nW1n29l2tu1sZ9vZdnazmTEzZmb88nV2nZHRSAijEVkyyQ+QjsCdW6iR/LEKRmylUulWqVKlSqVbpdKtUqVKlUo1va5eVL2oXlQvuvfuYJ31HRirQv1Jh3bkN+HeZDD+dik7dvyfM0PPQZcahZZLU0REgkjQv1/Ui+pFvb5KSlJSUlKSkpSSXFIul+RSckn+R4rLv9otT4qgj9tJN9xPNxqtP7Rjs8HsnNsiDRtIc8jXJRRNb/7DY1mpGfxCU8DkP7fZMeMzbKGYCspmU1Nn4Mczmv7333///ffff//9999///3333///ffff//9999///3333//fScLQ24W9Z8V2Jbg8zS7WKnykbCt3HpR1sU68tvJyboEs8LFnhVN//vvv//++++///7777///vvvv//++++///6P4RkA"
+  }
+}

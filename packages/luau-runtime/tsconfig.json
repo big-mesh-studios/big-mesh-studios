@@ -1,0 +1,22 @@
+{
+  // A library, and the same source-first shape as `packages/picking`. `include` covers
+  // `probe/` as well as `src`: the probe pages are the half of Phase 0 only a browser
+  // can answer, and they are TypeScript too — a probe that does not compile is a
+  // broken probe rather than a failing claim. `vendor/` and `glue/` are not TypeScript
+  // and never will be, and the artifact in `dist/` is what `package.json` exports.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": ["src", "probe"]
+}

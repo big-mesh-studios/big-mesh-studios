@@ -50,6 +50,16 @@ export interface PlaceEditorPanesProps {
 }
 
 /**
+ * Whether a place file is TypeScript the language worker can serve.
+ *
+ * **The extension is the same signal the host branches on** (ADR 0060): a `.luau` entry is
+ * a Luau place, so its pane is plain text rather than a JavaScript grammar applied to a
+ * language it does not describe. The worker also cannot parse a `.luau` path, and asking
+ * it for lint on one answers `Could not find source file` — noise, not help.
+ */
+const isTypeScript = (name: string): boolean => /\.[cm]?[jt]sx?$/.test(name);
+
+/**
  * Every file's editor, with the guest library's types in reach.
  *
  * **One `LSPProvider` over all of them rather than one each.** The provider owns the worker and the
@@ -93,6 +103,7 @@ export const PlaceEditorPanes: Component<PlaceEditorPanesProps> = (props) => {
                   <CodeMirror
                     path={name}
                     theme={darkTheme}
+                    typescript={isTypeScript(name)}
                     onInput={({ source }) => props.onInput(name, source)}
                   />
                 </div>

@@ -56,7 +56,9 @@ import {
   ScriptExecutionError,
   type Interpreter,
 } from "./interpreter";
+import { createLuauInterpreter } from "./luau-interpreter";
 import { bundlePlace, type PlaceFiles } from "./bundle";
+import { bundlePlaceLuau } from "./luau-bundle";
 import { inspectEffect, type ParsedEffect } from "./effects";
 import { EventLog, encodeEvents } from "./event-log";
 import { eventId as makeEventId, type ScriptEvent } from "./events";
@@ -962,16 +964,27 @@ export class PlaceHost {
    */
   async load(): Promise<void> {
     const levels = this.options.levels ?? {};
-    const bundle = bundlePlace(this.options.files, this.options.entry, levels);
-    const interpreter = await createInterpreter({
+    // **The only language-aware line below the bridge** (ADR 0060, decision 1): the
+    // entry's extension picks the bundler twin and the interpreter, and every seam
+    // downstream — dispatch, queries, handlers, levels, notices, the fold — is the
+    // same `Interpreter` interface in both branches.
+    const luau = this.options.entry.endsWith(".luau");
+    const bundle = luau
+      ? bundlePlaceLuau(this.options.files, this.options.entry, levels)
+      : bundlePlace(this.options.files, this.options.entry, levels);
+    const interpreterOptions = {
       seed: this.options.seed,
       now: this.options.now,
-      onDispatch: (tag, payloadJson): string => {
+      onDispatch: (tag: string, payloadJson: string): string => {
         const outcome = this.dispatch(tag, payloadJson);
         return outcome === undefined ? "" : outcome;
       },
-      onQuery: (name, argsJson): string => this.ask(name, argsJson),
-    });
+      onQuery: (name: string, argsJson: string): string =>
+        this.ask(name, argsJson),
+    };
+    const interpreter = luau
+      ? await createLuauInterpreter(interpreterOptions)
+      : await createInterpreter(interpreterOptions);
     this.interpreter = interpreter;
 
     // **Reported, not thrown.** A place whose top-level code throws — a `PlaceError` from a

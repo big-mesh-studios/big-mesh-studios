@@ -30,14 +30,15 @@ import {
   type HostWorld,
   type RayHit,
 } from "./host";
-import { DEMO_PLACES, demoIds, demoPlace } from "./demos";
+import { DEMO_PLACES, demoIds, demoPlace, demoProject } from "./demos";
+import { isPlaceProject } from "./project";
 import { MAX_ZONES } from "./limits";
 import { MAX_OPERATIONS_PER_PLACE } from "./place-registry";
 import { PlaceRegistry } from "./place-registry";
 import { FoldOrder } from "../edit/fold-order";
 import { SculptDocument } from "../edit/document";
 import { NodeMaterial } from "@random-mesh/rmsl/scene";
-import { Field, OperationBVH } from "@big-mesh-studios/csg";
+import { DEFAULT_TERRAIN, Field, OperationBVH } from "@big-mesh-studios/csg";
 import { FigureSet } from "../figures/figure-set";
 import type { FigureModel } from "./model-library";
 import type { Vec3 } from "@big-mesh-studios/core";
@@ -165,6 +166,10 @@ const load = async (id: string, groundY = 0): Promise<Loaded> => {
     world,
     effects: stubEffects(asked),
     clock: stubClock(asked),
+    // **A demo that carries a level has it folded here too**, or the first line of the
+    // hospital asserts a building this harness never gave it — the same map `loadDemo`
+    // passes through in the running app.
+    levels: demo.levels,
     onNotice: (message) => notices.push(message),
   });
   await host.load();
@@ -183,17 +188,18 @@ const load = async (id: string, groundY = 0): Promise<Loaded> => {
 };
 
 describe("the shipped places", () => {
-  it("are three, and `/place:list` will say so", () => {
-    // **The number, because the console lists them by iteration.** A fourth demo
+  it("are six, and `/place:list` will say so", () => {
+    // **The number, because the console lists them by iteration.** A demo
     // that forgot its `DemoPlace` entry would be invisible to this file and
     // visible to a person, which is backwards.
-    expect(DEMO_PLACES).toHaveLength(5);
+    expect(DEMO_PLACES).toHaveLength(6);
     expect(demoIds()).toEqual([
       "bridge",
       "lanterns",
       "conveyor",
       "lookout",
       "snack",
+      "animal-hospital",
     ]);
   });
 
@@ -320,6 +326,75 @@ describe.each(DEMO_PLACES.map((demo) => [demo.id, demo] as const))(
 );
 
 /**
+ * A demo as the editor holds it.
+ *
+ * **This is what `/place:load <demo>` adopts**, so a project that `isPlaceProject` refuses is
+ * a demo whose code lands in the editor and then cannot be run from it: the editor's Run goes
+ * through `startProject`, which hands the same fields to `startPlace` that the console path
+ * used to pass by hand. The fields asserted below are the ones that were dropped when those
+ * were two separate objects — the manifest's seed, mesh and editable, and the hospital's level.
+ */
+describe("a demo as a project", () => {
+  it("is one the editor and the zip writer accept", () => {
+    for (const demo of DEMO_PLACES) {
+      const project = demoProject(demo);
+      expect(isPlaceProject(project), demo.id).toBe(true);
+      expect(project.manifest.entry).toBe(demo.entry);
+      expect(project.scripts).toEqual(demo.files);
+    }
+  });
+
+  it("carries the hospital's whole manifest, not just its files", () => {
+    const demo = demoPlace("animal-hospital")!;
+    const project = demoProject(demo);
+    expect(project.manifest).toMatchObject({
+      name: "animal-hospital",
+      entry: "main.luau",
+      seed: 20260901,
+      world: "flat",
+      editable: false,
+      mesh: {
+        lodSampleSizes: [3.2, 6.4, 16],
+        sharpEdges: 35,
+        splitColours: true,
+        bakeOcclusion: 0.8,
+      },
+      levels: ["animal-hospital.json"],
+    });
+    expect(project.levels["animal-hospital.json"]).toBe(
+      demo.levels!["animal-hospital.json"],
+    );
+  });
+
+  it("lists exactly the models it was given, in a fixed order", () => {
+    // **Two names out of alphabetical order on purpose**: `loadDemoModels` fills its result
+    // in whatever order fetches resolve, and a manifest that inherited that order would make
+    // the same demo zip differently on two runs.
+    const bytes = new Uint8Array([1, 2, 3]);
+    const project = demoProject(demoPlace("animal-hospital")!, {
+      models: { "z.sdfmod": bytes, "a.sdfmod": bytes },
+    });
+    expect(project.manifest.models).toEqual(["a.sdfmod", "z.sdfmod"]);
+    expect(Object.keys(project.models)).toEqual(["a.sdfmod", "z.sdfmod"]);
+    expect(isPlaceProject(project)).toBe(true);
+  });
+
+  it("takes the spawn the caller resolved, and says nothing when it has none", () => {
+    const spawn = [-267.84, -51.4, 78.22] as const;
+    expect(
+      demoProject(demoPlace("animal-hospital")!, { spawn }).manifest.spawn,
+    ).toEqual(spawn);
+    expect(demoProject(demoPlace("bridge")!).manifest.spawn).toBeUndefined();
+  });
+
+  it("falls back to the world's own seed when a demo names none", () => {
+    expect(demoProject(demoPlace("bridge")!).manifest.seed).toBe(
+      DEFAULT_TERRAIN.seed,
+    );
+  });
+});
+
+/**
  * Every shipped place, on the ground the running world actually has.
  *
  * **The test the suite was missing, and the reason two bugs shipped.** The loop above loads each
@@ -337,10 +412,22 @@ describe("the shipped places, on the planet's own ground", () => {
   /** The surface over the origin, to the unit. See `app.tsx`'s `GAME_SEA` and `DEFAULT_PLANET`. */
   const SURFACE = 135_990;
 
-  it.each(DEMO_PLACES.map((demo) => demo.id))(
+  it.each(DEMO_PLACES.map((demo) => [demo.id, demo.world] as const))(
     "the %s demo builds with no refusals",
-    async (id) => {
-      const { host, notices, figures, run } = await load(id, SURFACE);
+    async (id, world) => {
+      // **A flat place stands on its own ground, and this loop has to say so.** The
+      // reason it exists is that the sphere demos build relative to `getHeightAt(0, 0)`
+      // and were once tested at zero — which passed them and broke in the game. A flat
+      // demo builds at its level's absolute plane coordinates; the hospital's floor sits
+      // at `y ≈ -48` there and is *right*, so it loads at the ground a flat world has
+      // (zero), and "every figure above the surface" is a claim about spheres it would
+      // be wrong to make. The discriminator is the demo's own `world` field — the same
+      // sentence `loadDemo` reads when it picks the ground to drop the player on.
+      const flat = world === "flat";
+      const { host, notices, figures, run } = await load(
+        id,
+        flat ? 0 : SURFACE,
+      );
       expect(notices).toEqual([]);
       // **And it built where it was told to.** A place that reported no refusals and then built
       // at zero would pass the line above and be exactly as broken as before — and a place that
@@ -351,11 +438,15 @@ describe("the shipped places, on the planet's own ground", () => {
 
       // Every figure it stood is up in the sky with the ground, not at the origin. A prop's
       // origin is its centre, so "above the surface" and not "at the surface" is the assertion.
-      for (const figure of figures.ids()) {
-        const at = figures.get(figure)!.transform.at;
-        expect(at.y, `${id}: ${figure} is not on the ground`).toBeGreaterThan(
-          SURFACE,
-        );
+      // (Flat places build their props *into* the ground by design — the chair is in the
+      // floor's room — which is the sentence the loop's own header cannot make for them.)
+      if (!flat) {
+        for (const figure of figures.ids()) {
+          const at = figures.get(figure)!.transform.at;
+          expect(at.y, `${id}: ${figure} is not on the ground`).toBeGreaterThan(
+            SURFACE,
+          );
+        }
       }
       host.dispose();
     },
@@ -531,6 +622,85 @@ describe("what each demo claims it does", () => {
     // would be asserting the demo's staging rather than its capability, and the
     // first of these two is the one that cannot be skipped.
     expect(asked.some((line) => line.startsWith("move:"))).toBe(true);
+    host.dispose();
+  });
+
+  /**
+   * The hospital's summary promises a *coroutine*, and the observable difference from
+   * the TypeScript twin is that there is nothing to observe: the journey yielded at a
+   * `walkTo` and the VM resumed it, so the patient walks. That is what "the ceremony is
+   * gone" means when a test can say it — the figure moves, one step at a time, with no
+   * compiled `next` chain and no `JourneyNode` anywhere in the files.
+   */
+  it("the hospital walks its patient, in Luau, on the language's own coroutine", async () => {
+    const { host, figures, run } = await load("animal-hospital");
+    const patient = figures.get("patient:0");
+    expect(patient, "the place stood its patient at load").toBeDefined();
+    const start = patient!.transform.at.z;
+    // The patient enters at z=85 and walks toward the counter at z=-15, 0.3 a frame;
+    // forty frames is twelve units, far short of arrival and far past float noise.
+    run(40);
+    expect(figures.get("patient:0")!.transform.at.z).toBeLessThan(start - 5);
+    host.dispose();
+  });
+
+  /**
+   * The shutter, whole. **This is the test the first port failed while every other
+   * assertion kept passing**: the guest library handed scripts the *wire* events, where
+   * `entityId` lives under `payload`, and the twin flattens — so `event.entityId` read
+   * nil, the camera-prop branch never matched, and nothing anywhere reported it. A flow
+   * that runs on an event nobody refused is exactly what a claim about the flow is for,
+   * and it drives the host's own `use()` (the game's entry point, with its own
+   * figure-existence check) rather than authoring events behind its back.
+   */
+  it("the hospital photographs, prints, and serves — the shutter flow end to end", async () => {
+    const { host, asked, notices, figures, run } =
+      await load("animal-hospital");
+
+    // Reach the counter: 334 frames of the first walk, a turn, ~77 more, and the
+    // first nag line lands on counter tick 0.
+    run(440);
+    expect(notices).toEqual([]);
+    expect(
+      figures.get("patient:0")!.transform.at.x,
+      "the patient is at the counter",
+    ).toBeCloseTo(-290, 1);
+
+    // The shutter: use on the camera prop photographs the desk and puts the photo on
+    // the wall — and, first visit only, the forms appear on the counter.
+    host.use("level/prop-hospital-camera", undefined);
+    run(1);
+    expect(asked.some((line) => line === "photo:reception-photo")).toBe(true);
+    expect(asked.some((line) => line === "image:reception-image")).toBe(true);
+    expect(figures.get("forms"), "the forms were shown").toBeDefined();
+
+    // Fill the forms; they are taken away and the patient waits quietly.
+    host.use("forms", undefined);
+    run(1);
+    expect(figures.get("forms")).toBeUndefined();
+    expect(notices).toEqual([]);
+
+    // Process, print, take the label, and hand it over at the desk.
+    host.use("level/prop-hospital-computer", undefined);
+    run(1);
+    host.use("level/prop-hospital-printer", undefined);
+    run(1);
+    expect(figures.get("label"), "the printer printed").toBeDefined();
+    host.use("label", undefined);
+    run(1);
+    expect(figures.get("label")).toBeUndefined();
+
+    // Empty hands on the patient is the conversation that delivers the label — and
+    // `served` sends the journey on to its bed, which is a branch on a value the
+    // *resumer* passed back into a coroutine, the plan's whole argument in one line.
+    host.use("patient:0", undefined);
+    run(140);
+    expect(notices).toEqual([]);
+    const x = figures.get("patient:0")!.transform.at.x;
+    expect(
+      x,
+      "the served patient walked back from the counter",
+    ).toBeGreaterThan(-280);
     host.dispose();
   });
 });

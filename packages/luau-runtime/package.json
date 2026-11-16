@@ -1,0 +1,29 @@
+{
+  "name": "@big-mesh-studios/luau-runtime",
+  "version": "0.0.0",
+  "description": "The official Luau VM compiled to WebAssembly with the caps this repository measures: a pinned source commit, a committed binary, and a frozen glue surface",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "packages/luau-runtime"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./wasm": "./dist/luau.wasm"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run --testTimeout=30000",
+    "build-wasm": "./build.sh",
+    "check-wasm": "./build.sh --check",
+    "probe": "vite --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

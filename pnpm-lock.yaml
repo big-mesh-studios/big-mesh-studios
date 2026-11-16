@@ -312,6 +312,9 @@ importers:
       '@big-mesh-studios/csg':
         specifier: workspace:*
         version: link:../../packages/csg
+      '@big-mesh-studios/luau-runtime':
+        specifier: workspace:*
+        version: link:../../packages/luau-runtime
       '@big-mesh-studios/meshing':
         specifier: workspace:*
         version: link:../../packages/meshing
@@ -590,6 +593,18 @@ importers:
         specifier: workspace:*
         version: link:../sdf
     devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+
+  packages/luau-runtime:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.4.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

@@ -215,7 +215,7 @@ import { ModelLibrary } from "./places/model-library";
 import { FigureSet } from "./figures/figure-set";
 import { PlaceOverlay } from "./places/ui/PlaceOverlay";
 import { MAX_DRAWN_LIGHTS } from "./render/point-lights";
-import { demoPlace, loadDemoModels } from "./places/demos";
+import { demoPlace, demoProject, loadDemoModels } from "./places/demos";
 import { surfaceHeightAt } from "./world/surface-height";
 import { PLACE_MIME_TYPE, type PlaceSpawn } from "./places/place-file";
 import type { LoadedPlace } from "./places/load-place";
@@ -2834,19 +2834,24 @@ export default function App() {
       // at `getHeightAt(0, 0)` — the surface above the origin — so the player has to be put
       // there, or a person who had walked to the far side of the planet would load a place and
       // never see it. The height is the same one the script asks for, from the same function.
+      //
+      // **Resolved here rather than in `demoProject`, because the fallback is a question about
+      // the world** — the surface over the origin, which only this session can answer. A demo
+      // that states its own spawn passes it through unchanged.
       const half = DEFAULT_PLAYER_CONFIG.halfSize ?? 5;
-      return startPlace({
-        files: demo.files,
-        entry: demo.entry,
-        seed: DEFAULT_TERRAIN.seed,
-        name: demo.id,
-        spawn:
-          demo.spawn ??
-          ([
-            demo.spawnAt?.[0] ?? 0,
-            groundHeightAt(0, 0) + (demo.spawnLift ?? 0) + half + 1,
-            demo.spawnAt?.[1] ?? 0,
-          ] as const),
+      const spawn: PlaceSpawn =
+        demo.spawn ??
+        ([
+          demo.spawnAt?.[0] ?? 0,
+          groundHeightAt(0, 0) + (demo.spawnLift ?? 0) + half + 1,
+          demo.spawnAt?.[1] ?? 0,
+        ] as const);
+
+      // **One project, adopted and then run**, so what `/place:editor` shows and what the world
+      // is running cannot be two different places. The alternative — passing the fields to
+      // `startPlace` and rebuilding a second, slightly different object for the editor — is
+      // exactly how the manifest's `seed`, `mesh` and `editable` came to be dropped once.
+      const project = demoProject(demo, {
         // **A demo's models are URLs and are fetched here rather than at module scope**, so a
         // demo with none costs nothing to open and a model that is not there costs a notice
         // rather than a thrown 404.
@@ -2854,10 +2859,24 @@ export default function App() {
           demo.models === undefined
             ? undefined
             : await loadDemoModels(demo.models),
-        // **And the world the demo is about, if it says.** Every shipped demo is a sphere,
-        // and this is here because the day one is not is the day the field earns its place.
-        world: demo.world,
+        spawn,
       });
+
+      /**
+       * **Adopted as well as run.** A demo is the example a person is most likely to want to
+       * read, so the code that is running is the code `/place:editor` opens — `demo.entry` in
+       * front, with its level and models beside it.
+       *
+       * **The same two steps `/place:load at://…` takes**, over a shipped place instead of a
+       * published one. A refusal here would mean `demoProject` produced a project
+       * `isPlaceProject` does not accept, which the tests refuse first; the place still runs,
+       * and the line says so rather than leaving the editor quietly holding something else.
+       */
+      const refused = placeEditor.adopt(project);
+      const summary = await startProject(project);
+      return refused === null
+        ? `${summary}\ncode     ${demo.entry} — /place:editor`
+        : `${summary}\n— the editor did not take this place: ${refused}`;
     };
 
     // The place commands, as the same interface the table in `place-commands.ts` takes — so

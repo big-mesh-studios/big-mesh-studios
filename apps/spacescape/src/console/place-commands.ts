@@ -133,7 +133,8 @@ export const placeCommands = (
   },
 
   "/place:load": {
-    description: "load a shipped place by name, or a published one by address",
+    description:
+      "load a shipped place by name, or a published one by address — its code goes to the editor",
     args: "<id | at://…>",
     run: async (rest) => {
       const wanted = rest[0];

@@ -1,0 +1,12 @@
+# The pinned Luau version. One commit, one binary — ADR 0015's discipline,
+# applied. Changing this file means re-running `build.sh`, re-measuring the
+# caps, and updating ADR 0060; the artifact hashes below are what a dev loop
+# checks the shipped `dist/` against.
+tag = 0.747
+commit = c87565b8b0db5d5d5bfd2b8b00ad6573e5d06d9f
+repository = https://github.com/luau-lang/luau
+
+# sha256 of the built artifacts, as produced by build.sh (filled in after the
+# first build; `build.sh --check` compares dist/ against these):
+# artifact luau.wasm = dc4af662c84174d7e95d5b5fe986513c7e5c8e28fb0f54d43ebd7c6dd59e02cc
+# artifact luau.mjs = eb2d751e597ccfa42d87a58cbf2d7d7cb7b1d13b5977a8c78678cccfd3b54157

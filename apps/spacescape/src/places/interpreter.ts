@@ -105,6 +105,9 @@ export type ScriptErrorKind =
   | "memory"
   /** Recursed past the interpreter's stack limit. Also an `InternalError`. */
   | "stack"
+  /** The bundle did not compile: a syntax error, in `message` with the line. A Luau
+   * addition (ADR 0060) — the QuickJS path never compiled on the load path. */
+  | "compile"
   /** The script threw. Whatever it threw is in `message`. */
   | "exception"
   /** The interpreter could not run the code at all. */
