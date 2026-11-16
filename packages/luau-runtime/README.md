@@ -20,7 +20,11 @@ const state = await LuauState.create({
   },
 });
 
-state.load(state.compile(`return function(engine)\n  engine.dispatch("log", "\\"hi\\"")\nend`));
+state.load(
+  state.compile(
+    `return function(engine)\n  engine.dispatch("log", "\\"hi\\"")\nend`,
+  ),
+);
 state.setDeadline(250); // one step budget over everything it runs
 state.call();
 state.step("1700000000000", "[]"); // every onTick handler, one budget, synchronous
@@ -53,9 +57,9 @@ Luau's does not. Run it with `pnpm probe`, open the printed URL. As of this writ
 claims pass on this machine's browser: **both browser hosts print the same 19 997 frames
 Node does**, catchable, state alive, freed clean.
 
-Each claim prints *before* it runs: a page that goes dark mid-list dies naming the row
+Each claim prints _before_ it runs: a page that goes dark mid-list dies naming the row
 that trapped, which is the artefact to bring back. The worker row is built so that any
-failure *answers* rather than going silent, because "a silent worker" is exactly the
+failure _answers_ rather than going silent, because "a silent worker" is exactly the
 symptom a wasm trap would produce and the harness must never be able to fake it. (The
 first run taught that the hard way: the page constructed the worker but never sent it a
 start message, so the worker waited out the watchdog politely doing nothing — a
@@ -86,12 +90,12 @@ CI never rebuilds. When a GitHub-hosted rebuild is wanted, the shape is a
 
 `glue/glue.cpp` — the whole C side, ~700 lines, in four parts:
 
-| part | what it is |
-| --- | --- |
-| states | `state_new(cap, seed)` / `state_close` / `close_error`; the caps are armed here |
-| programs | `compile` / `load` / `call` / `step` — the bundle's pipeline; syntax errors surface at `load` with the compiler's line-naming message |
-| probes | `eval(id, src, len, withEngine, mode)` / `resume` / `thread_status` / `top_string` / `top_type` / `handler_count` / `thread_count` / `mem_used` / `version` — the host's answer channel, so the spike tests the VM rather than a product surface |
-| bridge | the five engine members as C closures on a read-only table handed to the program as its **parameter**, not a global; the JS halves of `dispatch`/`query`/`now`/`random` live in `glue/bridge-library.js` (an Emscripten JS library), and `onTick` never crosses into JS at all — `step` drives what it registered |
+| part     | what it is                                                                                                                                                                                                                                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| states   | `state_new(cap, seed)` / `state_close` / `close_error`; the caps are armed here                                                                                                                                                                                                                                   |
+| programs | `compile` / `load` / `call` / `step` — the bundle's pipeline; syntax errors surface at `load` with the compiler's line-naming message                                                                                                                                                                             |
+| probes   | `eval(id, src, len, withEngine, mode)` / `resume` / `thread_status` / `top_string` / `top_type` / `handler_count` / `thread_count` / `mem_used` / `version` — the host's answer channel, so the spike tests the VM rather than a product surface                                                                  |
+| bridge   | the five engine members as C closures on a read-only table handed to the program as its **parameter**, not a global; the JS halves of `dispatch`/`query`/`now`/`random` live in `glue/bridge-library.js` (an Emscripten JS library), and `onTick` never crosses into JS at all — `step` drives what it registered |
 
 Status contract: `0 OK · 1 LOAD · 2 RUNTIME · 3 DEADLINE · 4 MEMORY · 5 STACK · 6 FATAL ·
 7 YIELD`, classified in C once, mapped to `ScriptErrorKind` in TypeScript once.
@@ -115,10 +119,10 @@ guarantee does not care which app is holding it.
   measured idle (~214 KiB) fails at construction as a thrown error rather than a
   polite `memory` kind. The default 16 MiB has 78× headroom; nothing ships near that floor.
 - `luau_compile` allocates from the module heap, not the capped guest heap. Source-size
-  bounds are Phase 1's `limits.ts` job; this glue bounds the *runtime*, the way QuickJS
+  bounds are Phase 1's `limits.ts` job; this glue bounds the _runtime_, the way QuickJS
   bounds its runtime.
 - The VM's error model here is `LUA_USE_LONGJMP=1` (set in `glue/CMakeLists.txt`), so
-  guest errors never rely on wasm exception support; the *compiler*'s C++ exceptions are
+  guest errors never rely on wasm exception support; the _compiler_'s C++ exceptions are
   caught at the glue boundary (`-fwasm-exceptions` link) and reported as `FATAL`, which
   is the difference between a refusal and a dead peer.
 

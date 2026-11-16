@@ -33,7 +33,10 @@ self.onmessage = async () => {
   } catch (error) {
     (self as unknown as Worker).postMessage({
       result: "fatal",
-      depth: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      depth:
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error),
     });
   }
 };

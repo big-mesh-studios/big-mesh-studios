@@ -17,7 +17,12 @@
  * the last line naming itself, which is the artefact a person can read afterwards.
  */
 
-import { LuauState, mulberry32, ScriptExecutionError, type BridgeHost } from "../src/index";
+import {
+  LuauState,
+  mulberry32,
+  ScriptExecutionError,
+  type BridgeHost,
+} from "../src/index";
 
 const out = document.getElementById("out");
 if (out === null) throw new Error("no #out on the page");
@@ -77,7 +82,10 @@ const run = async (): Promise<void> => {
   out.innerHTML = lines.join("\n");
 
   // 1. The claim this page exists for. Everything below is downstream of it.
-  report(true, "loading the interpreter (watch this line if the page goes dark)…");
+  report(
+    true,
+    "loading the interpreter (watch this line if the page goes dark)…",
+  );
   const loaded = performance.now();
   let s: Awaited<ReturnType<typeof state>>;
   try {
@@ -86,7 +94,9 @@ const run = async (): Promise<void> => {
     report(
       false,
       "the interpreter's WebAssembly loads under Vite",
-      reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason),
+      reason instanceof Error
+        ? `${reason.name}: ${reason.message}`
+        : String(reason),
     );
     report(false, "everything below it (nothing can run without a state)");
     return;
@@ -114,20 +124,34 @@ const run = async (): Promise<void> => {
       JSON.stringify(value),
     );
   } catch (reason) {
-    report(false, "runs code, including metatables and coroutines", String(reason));
+    report(
+      false,
+      "runs code, including metatables and coroutines",
+      String(reason),
+    );
   }
 
   // 3. Isolation. The list is the plan's own, extended to Luau's dynamic-code names.
   const reachable: string[] = [];
-  for (
-    const name of ["os", "io", "debug", "load", "loadstring", "require", "tick", "module", "engine"]
-  ) {
+  for (const name of [
+    "os",
+    "io",
+    "debug",
+    "load",
+    "loadstring",
+    "require",
+    "tick",
+    "module",
+    "engine",
+  ]) {
     if (s.evalText(`return typeof(${name})`) !== "nil") reachable.push(name);
   }
   report(
     reachable.length === 0,
     "no forbidden global is reachable from a script",
-    reachable.length === 0 ? "9 probed, all nil" : `REACHABLE: ${reachable.join(", ")}`,
+    reachable.length === 0
+      ? "9 probed, all nil"
+      : `REACHABLE: ${reachable.join(", ")}`,
   );
 
   // 4. The three caps, each its own claim because each fails differently.
@@ -158,11 +182,16 @@ const run = async (): Promise<void> => {
   small.dispose();
 
   // **The row this page exists for: honest recursion depth on the main thread.**
-  report(true, "about to run unbounded recursion on this thread — the window row…");
+  report(
+    true,
+    "about to run unbounded recursion on this thread — the window row…",
+  );
   s.setDeadline(5000);
   const depth = s.evalText(DEPTH_PROGRAM);
   s.setDeadline(0);
-  const stackKind = kindOf(() => s.eval(`local function f() return f() end; f(0)`));
+  const stackKind = kindOf(() =>
+    s.eval(`local function f() return f() end; f(0)`),
+  );
   report(
     stackKind === "stack" && depth !== undefined,
     "runaway recursion is refused rather than trapping the page (main thread)",
@@ -172,13 +201,19 @@ const run = async (): Promise<void> => {
   // Still alive, still freeable — the second half is what QuickJS could not promise
   // without its cap, and what the ADR row for the dispose assertion quotes.
   try {
-    report(s.evalText(`return "still here"`) === "still here", "the state survives all three");
+    report(
+      s.evalText(`return "still here"`) === "still here",
+      "the state survives all three",
+    );
   } catch (reason) {
     report(false, "the state survives all three", String(reason));
   }
   try {
     s.dispose();
-    report((await LuauState.closeError()) === "", "the state frees cleanly after all three");
+    report(
+      (await LuauState.closeError()) === "",
+      "the state frees cleanly after all three",
+    );
   } catch (reason) {
     report(false, "the state frees cleanly after all three", String(reason));
   }
@@ -244,29 +279,42 @@ const run = async (): Promise<void> => {
   );
 
   // 7. The same window row on a worker thread — the third host of the plan's table.
-  report(true, "spawning a worker for its recursion row (watch for silence here)…");
+  report(
+    true,
+    "spawning a worker for its recursion row (watch for silence here)…",
+  );
   const worker = new Worker(new URL("./probe-worker.ts", import.meta.url), {
     type: "module",
   });
   worker.postMessage("probe"); // the worker waits on onmessage; without this it waits forever
-  const workerAnswer: { ok: boolean; detail: string } = await new Promise((resolve) => {
-    const timer = setTimeout(
-      () => resolve({ ok: false, detail: "no answer within 30 s — worker died or hung" }),
-      30_000,
-    );
-    worker.onmessage = (event: MessageEvent<Record<string, string>>) => {
-      clearTimeout(timer);
-      resolve({
-        ok: event.data.result === "stack" && event.data.depth !== "",
-        detail: `kind ${event.data.result}, honest depth ${event.data.depth} frames`,
-      });
-    };
-    worker.onerror = (event) => {
-      clearTimeout(timer);
-      resolve({ ok: false, detail: `worker error: ${event.message}` });
-    };
-  });
-  report(workerAnswer.ok, "runaway recursion is refused on a worker too", workerAnswer.detail);
+  const workerAnswer: { ok: boolean; detail: string } = await new Promise(
+    (resolve) => {
+      const timer = setTimeout(
+        () =>
+          resolve({
+            ok: false,
+            detail: "no answer within 30 s — worker died or hung",
+          }),
+        30_000,
+      );
+      worker.onmessage = (event: MessageEvent<Record<string, string>>) => {
+        clearTimeout(timer);
+        resolve({
+          ok: event.data.result === "stack" && event.data.depth !== "",
+          detail: `kind ${event.data.result}, honest depth ${event.data.depth} frames`,
+        });
+      };
+      worker.onerror = (event) => {
+        clearTimeout(timer);
+        resolve({ ok: false, detail: `worker error: ${event.message}` });
+      };
+    },
+  );
+  report(
+    workerAnswer.ok,
+    "runaway recursion is refused on a worker too",
+    workerAnswer.detail,
+  );
   worker.terminate();
 
   lines.push("");

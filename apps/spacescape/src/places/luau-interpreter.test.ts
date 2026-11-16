@@ -15,7 +15,9 @@ import { createLuauInterpreter } from "./luau-interpreter";
 
 const NOW = 1_700_000_000_000;
 
-const options = (overrides: Partial<InterpreterOptions> = {}): InterpreterOptions => ({
+const options = (
+  overrides: Partial<InterpreterOptions> = {},
+): InterpreterOptions => ({
   seed: 20260901,
   now: () => NOW,
   onDispatch: () => "",
@@ -45,7 +47,9 @@ describe("the Interpreter seam, in Luau", () => {
         },
       }),
     );
-    second.load(place(`engine.onTick(function() engine.dispatch("hello", "[]") end)`));
+    second.load(
+      place(`engine.onTick(function() engine.dispatch("hello", "[]") end)`),
+    );
     second.step(String(NOW), "[]");
     expect(tags).toEqual(["hello"]);
     interpreter.dispose();
@@ -54,10 +58,10 @@ describe("the Interpreter seam, in Luau", () => {
 
   it("refuses a second load, naming the seam that owns the choice", async () => {
     const interpreter = await createLuauInterpreter(options());
-    interpreter.load(place("engine.dispatch(\"one\", \"[]\")"));
-    expect(() => interpreter.load(place("engine.dispatch(\"two\", \"[]\")"))).toThrow(
-      /load\(\) may be called once per interpreter/,
-    );
+    interpreter.load(place('engine.dispatch("one", "[]")'));
+    expect(() =>
+      interpreter.load(place('engine.dispatch("two", "[]")')),
+    ).toThrow(/load\(\) may be called once per interpreter/);
     interpreter.dispose();
   });
 
@@ -80,7 +84,9 @@ describe("the Interpreter seam, in Luau", () => {
   });
 
   it("interrupts a runaway step inside the budget, as the same kind the host names", async () => {
-    const interpreter = await createLuauInterpreter(options({ stepBudgetMs: 200 }));
+    const interpreter = await createLuauInterpreter(
+      options({ stepBudgetMs: 200 }),
+    );
     interpreter.load(
       place(`engine.onTick(function()
         while true do end
@@ -116,7 +122,9 @@ describe("the Interpreter seam, in Luau", () => {
 
   it("does nothing once disposed, and does not throw doing it", async () => {
     const interpreter = await createLuauInterpreter(options());
-    interpreter.load(place(`engine.onTick(function() engine.dispatch("x", "[]") end)`));
+    interpreter.load(
+      place(`engine.onTick(function() engine.dispatch("x", "[]") end)`),
+    );
     interpreter.dispose();
     expect(interpreter.handlerCount).toBe(0);
     interpreter.step(String(NOW), "[]");
@@ -133,7 +141,9 @@ describe("the Interpreter seam, in Luau", () => {
         },
       }),
     );
-    const answer = interpreter.evaluate(`return engine.query("getSecret", "[]")`);
+    const answer = interpreter.evaluate(
+      `return engine.query("getSecret", "[]")`,
+    );
     expect(String(answer)).toContain("no query called");
     expect(asked).toBe(false);
     interpreter.dispose();

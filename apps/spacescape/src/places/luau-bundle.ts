@@ -208,7 +208,9 @@ const guestModuleSource = (
   if (Object.keys(levels).length === 0) return GUEST_SOURCE;
   // A function replacement: the level JSON can contain `$`, which `String.replace` would
   // otherwise read as a substitution pattern in the injected text.
-  const injected = GUEST_SOURCE.replace(LEVELS_SENTINEL, () => levelsTable(levels));
+  const injected = GUEST_SOURCE.replace(LEVELS_SENTINEL, () =>
+    levelsTable(levels),
+  );
   if (injected === GUEST_SOURCE) {
     // A library edited without its sentinel is a place that silently lost its levels —
     // the failure is loud here precisely because it would be silent later.
@@ -276,7 +278,8 @@ const render = (
   );
   const moduleEntries: string[] = [];
   for (const name of ordered) {
-    const key = name === GUEST_MODULE ? GUEST_MODULE : (ids.get(name) as string);
+    const key =
+      name === GUEST_MODULE ? GUEST_MODULE : (ids.get(name) as string);
     moduleEntries.push(
       `__modules[${luaString(key)}] = function()\n${compiled.get(name)}\nend`,
     );

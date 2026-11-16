@@ -30,25 +30,25 @@ author's problem. Secondary draw: Roblox modders already write this language.
 
 ## Source material
 
-|                                            |                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| The seam to reuse                          | `src/places/interpreter.ts` — the `Interpreter` interface            |
-| The boundary that must not change          | `src/places/bridge.ts` — `GuestBridge`, five members                 |
-| The bundler to parallel                    | `src/places/bundle.ts` — its three reproducibility rules             |
-| The ADRs that bind us                      | 0015 (sandbox), 0016 (fold recomputation), 0018 (guest lib), 0021 (zip) |
-| The probe to mirror                        | `places-probe.html` + `interpreter.test.ts` (20 tests)               |
-| The showcase to port                       | `animal-hospital/main.ts` — the `-200 lines` ad                      |
+|                                   |                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------- |
+| The seam to reuse                 | `src/places/interpreter.ts` — the `Interpreter` interface               |
+| The boundary that must not change | `src/places/bridge.ts` — `GuestBridge`, five members                    |
+| The bundler to parallel           | `src/places/bundle.ts` — its three reproducibility rules                |
+| The ADRs that bind us             | 0015 (sandbox), 0016 (fold recomputation), 0018 (guest lib), 0021 (zip) |
+| The probe to mirror               | `places-probe.html` + `interpreter.test.ts` (20 tests)                  |
+| The showcase to port              | `animal-hospital/main.ts` — the `-200 lines` ad                         |
 
 ## The VM, and what we are not choosing
 
 No Luau WASM engine is benchmarked against QuickJS in a way that matters here. The field as
 found (Nov 2026):
 
-| Candidate                       | Verdict                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------- |
-| **Official Luau + own Emscripten glue** (precedent: `luau-lang/playground` `wasm/build.sh`) | **Pick.** Battle-tested VM, MIT, and we control the allocator, the hook, and what globals exist. ~a few hundred lines of C. |
-| `luau-web` / `luau-interop` (npm, MIT) | Probe it in the spike for API ideas, but it is a **fork** with a rewritten execution API; ADR 0015's whole lesson is that caps we cannot measure are caps we do not have. |
-| **ulua** (Rust Luau, wasm32, JIT) | Rejected. Its headline is a JIT that cannot run in a browser, a young VM rewritten wholesale, and no embedding story for a per-place memory cap. "Fastest" was never the claim we needed; "unproven under untrusted scripts" is the claim we cannot risk. |
+| Candidate                                                                                        | Verdict                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Official Luau + own Emscripten glue** (precedent: `luau-lang/playground` `wasm/build.sh`)      | **Pick.** Battle-tested VM, MIT, and we control the allocator, the hook, and what globals exist. ~a few hundred lines of C.                                                                                                                                                                                                                                      |
+| `luau-web` / `luau-interop` (npm, MIT)                                                           | Probe it in the spike for API ideas, but it is a **fork** with a rewritten execution API; ADR 0015's whole lesson is that caps we cannot measure are caps we do not have.                                                                                                                                                                                        |
+| **ulua** (Rust Luau, wasm32, JIT)                                                                | Rejected. Its headline is a JIT that cannot run in a browser, a young VM rewritten wholesale, and no embedding story for a per-place memory cap. "Fastest" was never the claim we needed; "unproven under untrusted scripts" is the claim we cannot risk.                                                                                                        |
 | `@luau-rs/luau` (npm; Rust bindings over official Luau compiled to wasm; found during the spike) | Rejected, for 0015's reason rather than ulua's: its interrupt and memory surfaces are the bindings' defaults, per-`execute` and per-`LuaWorker`, with no knob for a step deadline spanning N handler resumes or a per-state allocator budget. A cap we cannot set is a cap we do not have — measured against our own, the glue won. See ADR 0060's alternatives. |
 
 Version discipline mirrors QuickJS: **one pinned Luau commit, one prebuilt `luau.wasm`
@@ -134,7 +134,7 @@ exporting exactly `state_new(cap) / state_close / compile / load_bytecode / call
 plus the C→JS trampoline for the five bridge functions. Prove, in Node under vitest and in
 `luau-probe.html` in a real browser:
 
-- the three caps, one table row per cap, the ADR 0015 way — with the *recursion* row
+- the three caps, one table row per cap, the ADR 0015 way — with the _recursion_ row
   measured on a browser main thread, a worker, and Node, because that window moved last time
   between hosts;
 - isolation: the absent-names probe extended to Luau (`os`, `io`, `debug`, `load`,
@@ -165,15 +165,15 @@ Exit: the measurements exist, ADR 0060 is written with them, and the glue surfac
 > document the worker cannot parse, which is Phase 2's highlighting row arriving early as
 > "do not lie about it" rather than as syntax colours.
 
-| File                                | What it is                                                |
-| ----------------------------------- | ---------------------------------------------------------- |
-| `packages/luau-runtime/`            | new workspace package: `luau.wasm` + typed bindings        |
-| `src/places/luau-bundle.ts`         | the `bundle.ts` twin: sorted module ids, pinned compile options, one-chunk `require` shim, guest library prepended, per-file syntax errors. Byte-identical across peers, by the same three rules. |
-| `src/places/guest/place-api.luau`   | handwritten mirror of `guest/place-api.ts` over `GuestBridge` |
-| `src/places/luau-interpreter.ts`    | implements `Interpreter`; owns caps, handlers, step loop   |
-| `src/places/host.ts`                | `load()` picks the interpreter from the manifest           |
-| `src/places/place-file.ts`          | `language?: "typescript" \| "luau"`, extension checks in `scripts`/`entry`, `.luau` accepted |
-| `src/places/limits.ts`              | Luau source + compile budgets                              |
+| File                              | What it is                                                                                                                                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/luau-runtime/`          | new workspace package: `luau.wasm` + typed bindings                                                                                                                                               |
+| `src/places/luau-bundle.ts`       | the `bundle.ts` twin: sorted module ids, pinned compile options, one-chunk `require` shim, guest library prepended, per-file syntax errors. Byte-identical across peers, by the same three rules. |
+| `src/places/guest/place-api.luau` | handwritten mirror of `guest/place-api.ts` over `GuestBridge`                                                                                                                                     |
+| `src/places/luau-interpreter.ts`  | implements `Interpreter`; owns caps, handlers, step loop                                                                                                                                          |
+| `src/places/host.ts`              | `load()` picks the interpreter from the manifest                                                                                                                                                  |
+| `src/places/place-file.ts`        | `language?: "typescript" \| "luau"`, extension checks in `scripts`/`entry`, `.luau` accepted                                                                                                      |
+| `src/places/limits.ts`            | Luau source + compile budgets                                                                                                                                                                     |
 
 Tests: mirror the `interpreter.test.ts` suite (caps, isolation, parameter), mirror
 `bundle.test.ts` (reproducibility, refusal rules), host round-trip with a real `.luau` place,
@@ -206,4 +206,4 @@ bundle, and never touching the load path (decision 8).
 3. **Wasm weight** (~1–2 MB vs QuickJS's half-MB, both cached after first load) is paid per
    app, not per place — same shared-module note as `interpreter.ts`.
 4. **Coroutines invite per-frame work in threads**, which the step budget already handles —
-   threads are charged; nothing new, but it should be *tested* new.
+   threads are charged; nothing new, but it should be _tested_ new.

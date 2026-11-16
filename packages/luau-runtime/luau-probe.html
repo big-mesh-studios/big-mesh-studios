@@ -41,14 +41,15 @@
   <body>
     <h1>luau probe — can a Luau place run in *this* browser?</h1>
     <p class="note">
-      Phase 0 of <code>docs/luau-scripting-plan.md</code>, on the browser side: the
-      same claims as <code>src/spike.test.ts</code> (which runs them under Node), plus
-      the two rows a Node process cannot make — honest recursion depth on a browser
-      main thread, and in a module worker. The QuickJS spike found that the window
-      between "catchable error" and "wasm trap" <em>moves between hosts</em> (ADR
-      0015), so Luau's window is measured here rather than assumed from Node. Each
-      claim is printed before it runs: if this page ever goes dark mid-list, the last
-      line printed names the row that killed the tab, and that is the finding.
+      Phase 0 of <code>docs/luau-scripting-plan.md</code>, on the browser side:
+      the same claims as <code>src/spike.test.ts</code> (which runs them under
+      Node), plus the two rows a Node process cannot make — honest recursion
+      depth on a browser main thread, and in a module worker. The QuickJS spike
+      found that the window between "catchable error" and "wasm trap"
+      <em>moves between hosts</em> (ADR 0015), so Luau's window is measured here
+      rather than assumed from Node. Each claim is printed before it runs: if
+      this page ever goes dark mid-list, the last line printed names the row
+      that killed the tab, and that is the finding.
     </p>
     <pre id="out">running…</pre>
     <script type="module" src="/probe/probe.ts"></script>

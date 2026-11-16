@@ -42,7 +42,7 @@ downstream of `bridge.ts` stays language-blind.
    self-reports its pin: `version()` answers `"0.747 c87565b8…"`, compiled in, not
    assumed from the build.
 2. **The engine stays a parameter.** The bundle is the body of `return function(engine)
-   … end`, compiled to bytecode; `load`/`loadstring` are removed from the globals and
+… end`, compiled to bytecode; `load`/`loadstring` are removed from the globals and
    `require` is the bundler shim's local, never a VM global.
 3. **The bridge is unchanged, in both directions.** Strings and numbers only; the Luau
    guest library is a handwritten twin (`src/places/guest/place-api.luau`), not a
@@ -65,13 +65,13 @@ downstream of `bridge.ts` stays language-blind.
 8. **The type checker is a tool, never a load-path dependency** — this build does not
    compile Analysis at all, which is what makes the rule structural rather than hopeful.
 9. **The two open questions the plan left are resolved.** (a): stated plainly — a Luau
-   place's reproducibility is versioned against *our shipped binary*; app-version skew is
+   place's reproducibility is versioned against _our shipped binary_; app-version skew is
    the only divergence source, and a peer logs the artifact's own version string with its
    session so a skew is nameable when it happens. This is the regime QuickJS is already
    in, said out loud this time. (b): **public places do not require `--!strict`.** The
    spike answered this empirically: the animal-hospital port is written unannotated, and
    the strict mode's first fight is the JSON decoder — a handwritten decoder's output has
-   no inferable shape, which is the shape *every* place's `require("spacescape")` hands it.
+   no inferable shape, which is the shape _every_ place's `require("spacescape")` hands it.
    A load path that refuses a working program because the author skipped types is a load
    path that depends on analysis, which decision 8 already forbids. The editor's
    diagnostics (Phase 3) work on unannotated code too.
@@ -84,14 +84,14 @@ the interrupt hook, 16 MiB memory cap via the custom allocator, no stack cap —
 
 **The caps.**
 
-| cap | mechanism | measured on Node |
-| --- | --- | --- |
-| deadline | `set_deadline(budgetMs)` → interrupt hook vs `emscripten_get_now`, trips at VM and string-library safepoints only (GC assists defer to the next VM hit, so the collector is never exited mid-cycle) | kind `interrupt`, stopped 200 ms into a 200 ms budget; three failing steps cost three budgets, not one allowance |
-| memory | `state_new(cap, seed)` installs a counting allocator; `NULL` past the cap is Luau's catchable `not enough memory` | kind `memory`, refused at 803 104 bytes of a 1 048 576 cap (one 1 KB block short — the refusal granularity is the block that did not fit, and the byte count means what it says) |
-| stack | none, because the VM's own bound is the catchable one: nested Luau calls grow heap CallInfo arrays to `LUAI_MAXCALLS` (20 000) and raise `stack overflow`; nested C re-entry is bounded at `LUAI_MAXCCALLS` (200) with `C stack overflow` | honest depth **19 997 frames**, catchable, state usable after, dispose clean. The wasm C stack is *not* the recursion's limit here — that is the difference from 0015's finding, and it is the row that had to be measured |
+| cap      | mechanism                                                                                                                                                                                                                                 | measured on Node                                                                                                                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| deadline | `set_deadline(budgetMs)` → interrupt hook vs `emscripten_get_now`, trips at VM and string-library safepoints only (GC assists defer to the next VM hit, so the collector is never exited mid-cycle)                                       | kind `interrupt`, stopped 200 ms into a 200 ms budget; three failing steps cost three budgets, not one allowance                                                                                                           |
+| memory   | `state_new(cap, seed)` installs a counting allocator; `NULL` past the cap is Luau's catchable `not enough memory`                                                                                                                         | kind `memory`, refused at 803 104 bytes of a 1 048 576 cap (one 1 KB block short — the refusal granularity is the block that did not fit, and the byte count means what it says)                                           |
+| stack    | none, because the VM's own bound is the catchable one: nested Luau calls grow heap CallInfo arrays to `LUAI_MAXCALLS` (20 000) and raise `stack overflow`; nested C re-entry is bounded at `LUAI_MAXCCALLS` (200) with `C stack overflow` | honest depth **19 997 frames**, catchable, state usable after, dispose clean. The wasm C stack is _not_ the recursion's limit here — that is the difference from 0015's finding, and it is the row that had to be measured |
 
 The QuickJS horror row does not repeat: there is no value of a host-side stack cap to set,
-because unbounded Luau recursion never reaches the host's stack. What must never *be*
+because unbounded Luau recursion never reaches the host's stack. What must never _be_
 reached is the C stack via bridge re-entry, and the bridge does not re-enter the VM —
 Phase 1 keeps it that way by construction, one direction per call.
 
@@ -112,17 +112,17 @@ The full demo ran its identical event script on two fresh states and produced
 
 **Size and speed.**
 
-| | |
-| --- | --- |
-| `luau.wasm` | 709 648 bytes; **263 008 gzipped (-9)** — roughly half QuickJS's gzipped half-megabyte, not the 1–2 MB the plan guessed; shared per peer, not per place |
-| idle state | 213 568 guest bytes; 1 000 strings later, 336 304 — the 16 MiB cap's "runtime plus a modest script" sentence keeps its units, with ~78× headroom over idle |
-| the animal hospital | 29 439 source bytes → 21 518 bytecode, **compile 10.3 ms, load 0.2 ms** on a phone; its first 521 steps run in well under a frame budget each |
-| syntax error | `[string "place.luau"]:1: Expected identifier when parsing expression, got '='` — line-naming, from the compiler the load path already runs (0018's "bundling already compiles" holds in both languages) |
+|                     |                                                                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `luau.wasm`         | 709 648 bytes; **263 008 gzipped (-9)** — roughly half QuickJS's gzipped half-megabyte, not the 1–2 MB the plan guessed; shared per peer, not per place                                                  |
+| idle state          | 213 568 guest bytes; 1 000 strings later, 336 304 — the 16 MiB cap's "runtime plus a modest script" sentence keeps its units, with ~78× headroom over idle                                               |
+| the animal hospital | 29 439 source bytes → 21 518 bytecode, **compile 10.3 ms, load 0.2 ms** on a phone; its first 521 steps run in well under a frame budget each                                                            |
+| syntax error        | `[string "place.luau"]:1: Expected identifier when parsing expression, got '='` — line-naming, from the compiler the load path already runs (0018's "bundling already compiles" holds in both languages) |
 
 **The payoff, measured.** The port lands at 578 lines beside the original's 816, and the
 107 lines of journey ceremony become 26 lines of functions that yield. The executor
 survives in both files — walking a patient 0.3 units a frame is the place's behaviour, not
-its plumbing — but the *type* machinery was the plumbing, and it is gone.
+its plumbing — but the _type_ machinery was the plumbing, and it is gone.
 
 **The browser rows.** The plan required the recursion window on a main thread and in a
 worker as well as Node, because that window moved between hosts for QuickJS. For Luau the
@@ -136,7 +136,7 @@ identical across fresh states; a thread resumed inside a step charged to that st
 budget. The window that moved for QuickJS does not move for Luau, and the reason is in
 the mechanism rather than in the numbers: there is no host stack in the race.
 
-The harness earns one sentence of its own: the worker row's *first* run timed out
+The harness earns one sentence of its own: the worker row's _first_ run timed out
 because the page constructed the worker and never sent it the start message, so the
 worker waited 30 s for a nudge that had not been written. It is named here because the
 symptom it faked — a silent worker on the recursion row — is exactly the symptom a
@@ -165,7 +165,7 @@ last_error(id)  top_string(id)  top_type(id)  mem_used(id)  version()
 
 plus the five-member bridge trampoline (`luau_dispatch`, `luau_query`, `luau_now`,
 `luau_random` as wasm imports in `bridge-library.js`; `onTick` lands VM-side in a registry
-table and is *driven* by `step`, so no guest function ever crosses into JS — one exception
+table and is _driven_ by `step`, so no guest function ever crosses into JS — one exception
 smaller than the TypeScript sandbox's). The status contract is
 `0 OK · 1 LOAD · 2 RUNTIME · 3 DEADLINE · 4 MEMORY · 5 STACK · 6 FATAL · 7 YIELD`.
 Compile options are pinned in one struct (optimizationLevel 1, debugLevel 1, everything
@@ -174,7 +174,7 @@ else default) — the bundler's reproducibility rule, enforced where the compile
 Known limits, stated: `state_new`'s library opens are the one path without a protected
 landing, so a cap below the VM's ~214 KB idle cost fails loudly at construction rather
 than erroring politely (the API throws; it does not corrupt); and `luau_compile` allocates
-from the *module's* heap, not the capped guest heap — source-size bounds are Phase 1's
+from the _module's_ heap, not the capped guest heap — source-size bounds are Phase 1's
 `limits.ts` job, not a property of this glue.
 
 ## Consequences
@@ -194,10 +194,10 @@ from the *module's* heap, not the capped guest heap — source-size bounds are P
   in the glue and one line in the isolation probe, and Phase 1's parity test extends both
   at once.
 - **Two guest libraries can still drift** (plan risk 2), and the spike's evidence raises the
-  stakes honestly: the Luau twin is 415 lines covering a *subset* of the TS library's
+  stakes honestly: the Luau twin is 415 lines covering a _subset_ of the TS library's
   1 599 — the parity test has to cover the whole surface as Phase 1 completes it, and the
   wire contract (five members, JSON both ways) is what makes that test finite.
-- The wasm carries exception support (`-fwasm-exceptions`) because the *compiler* half of
+- The wasm carries exception support (`-fwasm-exceptions`) because the _compiler_ half of
   Luau throws C++ the ordinary way and the glue catches at the boundary — `bad_alloc` from
   a hostile 300 KB source becomes a `FATAL` that names itself, never a trap. The VM's own
   errors are longjmps (`LUA_USE_LONGJMP=1`), which is why the deadline hook can land a
@@ -231,8 +231,8 @@ coroutine machinery was not reachable; now it is.
 
 **Capping the stack from the host, like QuickJS.** Rejected by measurement: there is no
 host-side stack to overflow (the row above), and setting a `LUAI_MAXCALLS` override would
-cap *honest* recursion (20 000 frames is a real depth a place's parser might reach) to
-protect against a vector that does not exist. The QuickJS cap fixed a bug in how *that VM*
+cap _honest_ recursion (20 000 frames is a real depth a place's parser might reach) to
+protect against a vector that does not exist. The QuickJS cap fixed a bug in how _that VM_
 hit the host stack; porting the cure without the disease is how spikes are supposed to
 stop you.
 

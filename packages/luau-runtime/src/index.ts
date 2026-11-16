@@ -188,13 +188,16 @@ const loadGlue = (): Promise<LoadedModule> => {
       // file beside the file that names it cannot move independently.
       const here = fileURLToPath(import.meta.url);
       const root = join(here, "..", "..");
-      const bytes = new Uint8Array(await readFile(join(root, "dist", "luau.wasm")));
+      const bytes = new Uint8Array(
+        await readFile(join(root, "dist", "luau.wasm")),
+      );
       // A computed specifier: the literal would be resolved and rewritten by exactly
       // the pipeline that cannot be trusted with it — which is allowed here because
       // this branch only ever runs under Node, where there is no bundler in motion.
       const spec = pathToFileURL(join(root, "dist", "luau.mjs")).href;
-      const factory = (await import(spec))
-        .default as (options: Record<string, unknown>) => Promise<LuauModule>;
+      const factory = (await import(spec)).default as (
+        options: Record<string, unknown>,
+      ) => Promise<LuauModule>;
       const hosts = new Map<number, BridgeHost>();
       const mod = await factory({ luauHosts: hosts, wasmBinary: bytes });
       return { mod, hosts };
@@ -207,9 +210,7 @@ const loadGlue = (): Promise<LoadedModule> => {
     // bytes rather than under them — which is the half ADR 0015 got wrong first.
     const { default: wasmUrl } = await import("../dist/luau.wasm?url");
     const bytes = new Uint8Array(await (await fetch(wasmUrl)).arrayBuffer());
-    const factory = (
-      await import("../dist/luau.mjs")
-    ).default as unknown as (
+    const factory = (await import("../dist/luau.mjs")).default as unknown as (
       options: Record<string, unknown>,
     ) => Promise<LuauModule>;
     const hosts = new Map<number, BridgeHost>();
@@ -279,7 +280,9 @@ export class LuauState {
       this.mod.HEAPU8.set(bytes, src);
       // compile only fails when the compiler cannot allocate; syntax errors ride
       // inside the module and announce themselves at load, with a real message.
-      this.throwIfFailed(this.mod._compile(this.id, src, bytes.length, out, out + 4));
+      this.throwIfFailed(
+        this.mod._compile(this.id, src, bytes.length, out, out + 4),
+      );
       const ptr = heapU32(this.mod, out);
       const len = heapU32(this.mod, out + 4);
       return this.mod.HEAPU8.slice(ptr, ptr + len);

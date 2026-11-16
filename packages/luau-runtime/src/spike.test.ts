@@ -37,8 +37,9 @@ const host = (overrides: Partial<BridgeHost> = {}): BridgeHost => ({
   ...overrides,
 });
 
-const state = (overrides: Partial<Parameters<typeof LuauState.create>[0]> = {}) =>
-  LuauState.create({ seed: 20260901, host: host(), ...overrides });
+const state = (
+  overrides: Partial<Parameters<typeof LuauState.create>[0]> = {},
+) => LuauState.create({ seed: 20260901, host: host(), ...overrides });
 
 /**
  * A place, per plan decision 2: the author's source is the *body* of
@@ -199,9 +200,9 @@ describe("the three caps, one table row per cap", () => {
   it("surfaces unbounded recursion as a catchable error, and measures the honest depth", async () => {
     const s = await state();
     s.setDeadline(5000);
-    expect(kind(() => s.eval(`local function f(n) return f(n + 1) end; f(0)`))).toBe(
-      "stack",
-    );
+    expect(
+      kind(() => s.eval(`local function f(n) return f(n + 1) end; f(0)`)),
+    ).toBe("stack");
     const depth = s.evalText(`
       local depth = 0
       local function f()
@@ -326,9 +327,9 @@ describe("isolation is by construction", () => {
         },
       }),
     });
-    expect(s.evalText(`return engine.query("getSecret", "[]")`, true)).toContain(
-      "no query called",
-    );
+    expect(
+      s.evalText(`return engine.query("getSecret", "[]")`, true),
+    ).toContain("no query called");
     expect(asked).toBe(false);
     s.dispose();
   });
@@ -394,7 +395,8 @@ describe("coroutines: threads are charged, not free", () => {
     // on the error variant is a type error exactly where the run would have gone
     // wrong, and that is the assertion in a stronger form than `status === ...`.
     const yielded = s.resume(co, "next");
-    if (yielded.status !== "yielded") throw new Error(`expected yielded, got ${yielded.status}`);
+    if (yielded.status !== "yielded")
+      throw new Error(`expected yielded, got ${yielded.status}`);
     expect(yielded.value).toBe("at-counter");
 
     const finished = s.resume(co, "served");
@@ -477,11 +479,14 @@ describe("two peers running the same program agree", () => {
     const want = [0, 1, 2, 3].map(() => Math.floor(reference() * 2 ** 31));
     const s = await state({ seed, host: host({ random }) });
     const got = s
-      .evalText(`
+      .evalText(
+        `
         local n = {}
         for i = 1, 4 do n[i] = tostring(math.floor(engine.random() * 2^31)) end
         return table.concat(n, ",")
-      `, true)!
+      `,
+        true,
+      )!
       .split(",")
       .map(Number);
     expect(got).toEqual(want);
@@ -562,10 +567,7 @@ describe("numbers the ADR quotes", () => {
     // harness becomes a call to it rather than a string template.
     const appFile = (path: string): string =>
       readFileSync(
-        new URL(
-          `../../../apps/spacescape/src/places/${path}`,
-          import.meta.url,
-        ),
+        new URL(`../../../apps/spacescape/src/places/${path}`, import.meta.url),
         "utf8",
       );
 
@@ -579,8 +581,7 @@ describe("numbers the ADR quotes", () => {
      * the spike hand-builds what that file does properly, which is exactly the split
      * the plan drew: this harness measures the engine, the app's tests run the bundler.
      */
-    const luaQuote = (text: string): string =>
-      JSON.stringify(text); // Luau's double-quote escapes are a subset of JSON's here
+    const luaQuote = (text: string): string => JSON.stringify(text); // Luau's double-quote escapes are a subset of JSON's here
 
     const bundleLuau = (
       library: string,
@@ -699,13 +700,21 @@ describe("numbers the ADR quotes", () => {
     // fold. The first line out of a fresh hospital is therefore a lamp.
     expect(trace[0]).toContain("light-add");
     expect(trace.filter((t) => t.startsWith("light-add"))).toHaveLength(8);
-    expect(trace.some((t) => t.startsWith("entity-add") && t.includes('"kind":"npc"'))).toBe(true);
+    expect(
+      trace.some(
+        (t) => t.startsWith("entity-add") && t.includes('"kind":"npc"'),
+      ),
+    ).toBe(true);
     const hello = trace.find(
       (row) => row.startsWith("narrate") && row.includes("Hello!"),
     );
     expect(hello).toBeDefined();
     expect(trace.some((row) => row.startsWith("photo-take"))).toBe(true);
-    expect(trace.some((row) => row.startsWith("entity-add") && row.includes('"kind":"prop"'))).toBe(true); // the forms
+    expect(
+      trace.some(
+        (row) => row.startsWith("entity-add") && row.includes('"kind":"prop"'),
+      ),
+    ).toBe(true); // the forms
 
     /**
      * **The fold property at its smallest honest scale:** the identical event script

@@ -17,12 +17,19 @@ import { MAX_SCRIPT_SOURCE } from "./limits";
 
 // (The guest library the bundler embeds is the real `guest/place-api.luau` — that is
 // the point of bundling the app's own files here rather than a stub.)
-const main = (body: string): string => `local M = require("${GUEST_MODULE}")\n${body}`;
+const main = (body: string): string =>
+  `local M = require("${GUEST_MODULE}")\n${body}`;
 
 describe("reproducibility, the three rules", () => {
   it("is a function of its inputs alone", () => {
-    const a = bundlePlaceLuau({ "main.luau": main("print(M.double(2))") }, "main.luau");
-    const b = bundlePlaceLuau({ "main.luau": main("print(M.double(2))") }, "main.luau");
+    const a = bundlePlaceLuau(
+      { "main.luau": main("print(M.double(2))") },
+      "main.luau",
+    );
+    const b = bundlePlaceLuau(
+      { "main.luau": main("print(M.double(2))") },
+      "main.luau",
+    );
     expect(a).toBe(b);
   });
 
@@ -53,7 +60,7 @@ describe("reproducibility, the three rules", () => {
     expect(bundle).toContain(`__modules["0"]`);
     expect(bundle).toContain(`__modules["1"]`);
     expect(bundle).toContain('require("0")');
-    expect(bundle).not.toContain("__modules[\"main.luau\"]");
+    expect(bundle).not.toContain('__modules["main.luau"]');
   });
 
   it("includes the guest library exactly once, however many files ask for it", () => {
@@ -91,7 +98,9 @@ describe("what a place may require, and what the answer costs", () => {
   it("refuses a file that is not there, naming the importer and the name", () => {
     expect(
       refuses({ "main.luau": 'require("./door.luau")' }, "main.luau"),
-    ).toContain('imports "./door.luau", which is not one of this place\'s files');
+    ).toContain(
+      'imports "./door.luau", which is not one of this place\'s files',
+    );
   });
 
   it("refuses the host, with the same sentence the TypeScript twin says", () => {
@@ -108,7 +117,10 @@ describe("what a place may require, and what the answer costs", () => {
       "/etc/passwd.luau",
       "../outside.luau",
     ]) {
-      const message = refuses({ "main.luau": `require("${specifier}")` }, "main.luau");
+      const message = refuses(
+        { "main.luau": `require("${specifier}")` },
+        "main.luau",
+      );
       expect(message, specifier).toContain(specifier);
     }
   });
@@ -168,10 +180,10 @@ describe("levels, in the shape the guest library asserts", () => {
   });
 
   it("is order-independent in the injected table too", () => {
-    const levels = { "b.json": "{}", "a.json": "{\"k\":1}" };
+    const levels = { "b.json": "{}", "a.json": '{"k":1}' };
     const a = bundlePlaceLuau({ "main.luau": "" }, "main.luau", levels);
     const b = bundlePlaceLuau({ "main.luau": "" }, "main.luau", {
-      "a.json": "{\"k\":1}",
+      "a.json": '{"k":1}',
       "b.json": "{}",
     });
     expect(a).toBe(b);
