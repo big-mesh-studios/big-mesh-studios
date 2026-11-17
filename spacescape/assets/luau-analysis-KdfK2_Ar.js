@@ -1,0 +1,1 @@
+var e=new URL(`luau-analysis-C223jizc.wasm`,import.meta.url).href;export{e as default};

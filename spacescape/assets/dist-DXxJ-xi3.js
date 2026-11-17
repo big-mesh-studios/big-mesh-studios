@@ -1,0 +1,1 @@
+import{N as e}from"./index-Wf8MsYlC.js";var t={type:`sync`,importFFI:()=>e(()=>import(`./ffi-4V2b7xu3.js`).then(e=>e.QuickJSFFI),[],import.meta.url),importModuleLoader:()=>e(()=>import(`./emscripten-module.browser-YIdDcqRI.js`).then(e=>e.default),[],import.meta.url)};export{t as default};
