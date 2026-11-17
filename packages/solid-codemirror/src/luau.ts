@@ -35,21 +35,28 @@ import {
   type CompletionSource,
 } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
-import type { Extension } from "@codemirror/state";
+import type { EditorState, Extension } from "@codemirror/state";
+import type { SyntaxNode } from "@lezer/common";
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
 import {
   luau as luauLanguageSupport,
   luauLanguage,
 } from "@fazelstudio/codemirror-lang-luau";
 
 /**
- * The words the language package already offers, so the document-word source
- * does not show a second copy of each.
+ * The words the language reserves, in the order the package lists them.
  *
- * Keep this in step with the package's own `autocomplete` list: its keywords,
- * builtin types and base-library functions. A duplicate is not a bug in the
- * grammar, only a duplicate in the popup.
+ * **A separate list from the completion vocabulary below** so keyword
+ * highlighting never colours a library function blue. This is also the exact
+ * set the grammar fails to emit as tokens — see `luauKeywordRanges`.
  */
-const languageVocabulary = new Set([
+const keywords = [
   "and",
   "break",
   "continue",
@@ -75,6 +82,17 @@ const languageVocabulary = new Set([
   "typeof",
   "until",
   "while",
+];
+
+/**
+ * The remaining words the language package already offers, so the document-word
+ * source does not show a second copy of each.
+ *
+ * Keep this in step with the package's own `autocomplete` list: its builtin
+ * types and base-library functions. A duplicate is not a bug in the grammar,
+ * only a duplicate in the popup.
+ */
+const builtins = [
   "any",
   "boolean",
   "buffer",
@@ -98,7 +116,106 @@ const languageVocabulary = new Set([
   "tostring",
   "unpack",
   "xpcall",
-]);
+];
+
+const languageVocabulary = new Set([...keywords, ...builtins]);
+
+/**
+ * A keyword-looking word in code, strings or comments — filtered after
+ * matching, because the grammar's string and comment nodes are the only way to
+ * tell prose from code.
+ */
+const keywordPattern = new RegExp(`\\b(?:${keywords.join("|")})\\b`, "g");
+
+/** Nodes whose contents are prose rather than code. */
+const proseNode = /Comment|String/;
+
+/**
+ * Every keyword range in `[from, to)` that the grammar left untagged.
+ *
+ * **Why this exists at all.** The grammar's `styleTags` names `if`, `then`,
+ * `end` and the rest, but Lezer never puts those tokens in the tree — the parse
+ * of `if true then return 1 end` contains `IfStatement`, `Expression` and
+ * `ReturnStatement` nodes and not one keyword child. A `HighlightStyle` for
+ * `tags.keyword` therefore has nothing to format, and every keyword falls
+ * through to the editor's plain text colour. The theme still colours
+ * `tags.keyword` for grammars that do emit tokens; this scan covers the gap in
+ * this one.
+ *
+ * **Textual, but not naive.** A word only counts if no `Comment` or `String`
+ * node encloses it, so `-- if` and `"then else"` stay prose. Positions inside a
+ * parse error are treated as code, which is the useful choice while typing.
+ */
+export function luauKeywordRanges(
+  state: EditorState,
+  from: number,
+  to: number,
+): Array<{ from: number; to: number }> {
+  const tree = syntaxTree(state);
+  const text = state.doc.sliceString(from, to);
+  const ranges: Array<{ from: number; to: number }> = [];
+
+  for (const match of text.matchAll(keywordPattern)) {
+    const start = from + (match.index ?? 0);
+    const end = start + match[0].length;
+
+    let node: SyntaxNode | null = tree.resolveInner(start, 1);
+    let prose = false;
+    for (; node; node = node.parent) {
+      // An interpolation is code inside an `InterpolatedString`, so stop before
+      // the enclosing string would classify its expression as prose.
+      if (node.name === "Interpolation") {
+        break;
+      }
+      if (proseNode.test(node.name)) {
+        prose = true;
+        break;
+      }
+    }
+    if (!prose) {
+      ranges.push({ from: start, to: end });
+    }
+  }
+
+  return ranges;
+}
+
+const keywordMark = Decoration.mark({ class: "cm-luau-keyword" });
+
+const keywordHighlighter = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = this.build(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = this.build(update.view);
+      }
+    }
+
+    build(view: EditorView): DecorationSet {
+      const decorations = [];
+      for (const { from, to } of view.visibleRanges) {
+        for (const range of luauKeywordRanges(view.state, from, to)) {
+          decorations.push(keywordMark.range(range.from, range.to));
+        }
+      }
+      return Decoration.set(decorations, true);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+const keywordTheme = EditorView.theme({
+  ".cm-luau-keyword": { color: "var(--cm-keyword, #7dcfff)" },
+});
 
 /**
  * The libraries a Luau state opens here, and the members of each.
@@ -275,6 +392,8 @@ const documentWords: CompletionSource = (context) => {
  */
 export const luau = (): Extension => [
   luauLanguageSupport(),
+  keywordHighlighter,
+  keywordTheme,
   luauLanguage.data.of({
     autocomplete: [documentWords, libraryMembers],
   }),

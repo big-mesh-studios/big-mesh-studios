@@ -5,7 +5,7 @@ import {
 } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
-import { luau } from "./luau";
+import { luau, luauKeywordRanges } from "./luau";
 
 const stateFor = (doc: string): EditorState =>
   EditorState.create({ doc, extensions: [luau()] });
@@ -67,5 +67,44 @@ print(add(value.x, value.y), label)
 
   it("does not mistake a dotted comment for a field access", () => {
     expect(completionLabels("-- table.")).not.toContain("insert");
+  });
+});
+
+/**
+ * The keyword words `luauKeywordRanges` finds in `doc`, in order.
+ *
+ * The grammar emits no keyword tokens (see the function's doc comment), so this
+ * is the only place the decoration source can be checked without a DOM.
+ */
+const highlightedKeywords = (doc: string): Array<string> =>
+  luauKeywordRanges(stateFor(doc), 0, doc.length).map(({ from, to }) =>
+    doc.slice(from, to),
+  );
+
+describe("Luau keyword highlighting", () => {
+  it("finds every keyword in code", () => {
+    expect(highlightedKeywords("if true then return 1 end")).toEqual([
+      "if",
+      "true",
+      "then",
+      "return",
+      "end",
+    ]);
+  });
+
+  it("leaves comments and strings alone", () => {
+    expect(
+      highlightedKeywords('-- if true\nlocal label = "then else"\n'),
+    ).toEqual(["local"]);
+  });
+
+  it("does not colour builtins as keywords", () => {
+    expect(highlightedKeywords('print(string.format("if"))')).toEqual([]);
+  });
+
+  it("treats an interpolation expression as code", () => {
+    expect(
+      highlightedKeywords("local s = `value {if true then 1 else 2}`"),
+    ).toEqual(["local", "if", "true", "then", "else"]);
   });
 });

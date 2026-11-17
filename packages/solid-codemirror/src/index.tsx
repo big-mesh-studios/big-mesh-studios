@@ -62,7 +62,7 @@ export const darkTheme: Extension = [
         // (see packages/code-mirror/src/codemirror-ts), so every overlay
         // this editor renders draws from this one palette instead of its own.
         "--cm-editor-color": "#d6d6d6",
-        "--cm-keyword": "#c678dd",
+        "--cm-keyword": "#7dcfff",
         "--cm-variable": "#61afef",
         "--cm-variable2": "#d6d6d6",
         "--cm-type": "#e5c07b",
@@ -224,7 +224,7 @@ export const darkTheme: Extension = [
   ),
   syntaxHighlighting(
     HighlightStyle.define([
-      { tag: tags.keyword, color: "#c678dd" },
+      { tag: tags.keyword, color: "#7dcfff" },
       {
         tag: [tags.function(tags.variableName), tags.labelName],
         color: "#61afef",
