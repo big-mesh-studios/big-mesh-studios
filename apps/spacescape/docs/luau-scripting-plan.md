@@ -160,10 +160,13 @@ Exit: the measurements exist, ADR 0060 is written with them, and the glue surfac
 >
 > **The demo also opens in the editor.** `/place:load animal-hospital` adopts its project
 > into the editor (`demoProject` in `demos.ts`), so `/place:editor` shows `main.luau`, its
-> level and its models — the code that is running is the code being read. It renders as
-> plain text, not Luau: the shared `CodeMirror` now takes `typescript={false}` for a
-> document the worker cannot parse, which is Phase 2's highlighting row arriving early as
-> "do not lie about it" rather than as syntax colours.
+> level and its models — the code that is running is the code being read. It now renders as
+> Luau: the shared `CodeMirror` takes a `language` prop, and a `.luau` document gets
+> `@fazelstudio/codemirror-lang-luau` — a native Lezer grammar with highlighting,
+> indentation, folding, and the package's keyword/global completion. `solid-codemirror` adds
+> the document's own identifiers and standard-library members on top, which are the honest
+> completions available without semantic analysis. The worker remains TypeScript's alone; a
+> `.luau` path is still not something it can parse.
 
 | File                              | What it is                                                                                                                                                                                        |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -185,7 +188,13 @@ cross-instance fold equality in `place-registry`/session tests.
   pattern, so the payoff is the first thing an author sees.
 - `.luau` in `guest-library-files.ts`: `spacescape.d.luau` so annotations resolve.
 - Luau highlighting in `solid-codemirror` (the playground's CM6 Luau mode is prior art);
-  syntax/compile diagnostics come free — bundling already compiles.
+  syntax/compile diagnostics come free — bundling already compiles. **Highlighting and
+  textual completion are in:** the grammar is `@fazelstudio/codemirror-lang-luau`, and the
+  pane picks it from the `.luau` extension. **Type-aware completion is not**, because the
+  playground gets it from `Luau::autocomplete` in the Analysis library, which this runtime
+  deliberately does not build (ADR 0060 decision 8). The Compiler half already in
+  `luau.wasm` has no autocomplete entry point; Phase 3's lazy analysis artifact is what
+  would bring one, and it should stay off the load path.
 - place-reference gets a Luau view of the API surface, and the cookbook gains the journeys
   page. `animal-hospital` ported to Luau as the showcase; the diff is the announcement.
 
@@ -194,6 +203,10 @@ cross-instance fold equality in `place-registry`/session tests.
 Lazy-load the analysis half (diagnostics, autocomplete, hover — same capability split as the
 official playground) behind an editor-only import, tens of MB staying out of the main
 bundle, and never touching the load path (decision 8).
+
+**Autocomplete has its own plan:** `luau-autocomplete-plan.md` — the separate analysis
+artifact, its build and pin, the worker, the editor source, and the fallback ladder.
+Diagnostics and hover are deliberately left open.
 
 ## Risks, honestly listed
 

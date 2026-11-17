@@ -11,10 +11,12 @@
  * line of prose until the chunk lands. The sibling project does the same for the same reason (its
  * ADR 0028).
  *
- * **Authoring needs a network, and this is where that is true.** The worker fetches TypeScript and
- * the standard library `lib.*.d.ts` from esm.sh. Until it answers, each editor runs plain — no
- * completions, no lint — and rebuilds itself with the TypeScript extensions when it does. A person
- * offline gets a working text editor, which is the degraded case rather than a broken one.
+ * **Authoring needs a network, and this is where that is true for TypeScript.** The worker
+ * fetches TypeScript and the standard library `lib.*.d.ts` from esm.sh. Until it answers, a
+ * TypeScript editor has no type-aware completions or lint, and rebuilds itself when it does. A
+ * person offline gets a working text editor, which is the degraded case rather than a broken
+ * one. A Luau pane is not waiting on that worker at all: its grammar and local completions are
+ * in the editor chunk.
  */
 
 import { For, Show, createMemo, type Component } from "solid-js";
@@ -23,6 +25,7 @@ import {
   CodeMirror,
   darkTheme,
   LSPProvider,
+  type CodeMirrorLanguage,
 } from "@big-mesh-studios/solid-codemirror";
 
 import {
@@ -50,14 +53,20 @@ export interface PlaceEditorPanesProps {
 }
 
 /**
- * Whether a place file is TypeScript the language worker can serve.
+ * The language a place file is written in.
  *
  * **The extension is the same signal the host branches on** (ADR 0060): a `.luau` entry is
- * a Luau place, so its pane is plain text rather than a JavaScript grammar applied to a
- * language it does not describe. The worker also cannot parse a `.luau` path, and asking
- * it for lint on one answers `Could not find source file` — noise, not help.
+ * a Luau place, so its pane gets the Luau grammar rather than a JavaScript one applied to a
+ * language it does not describe. Only the TypeScript branch reaches the language worker —
+ * asking it about a `.luau` path answers `Could not find source file`, which is noise
+ * rather than help. A file that is neither is shown as plain text, the honest fallback.
  */
-const isTypeScript = (name: string): boolean => /\.[cm]?[jt]sx?$/.test(name);
+const languageOf = (name: string): CodeMirrorLanguage =>
+  /\.[cm]?[jt]sx?$/.test(name)
+    ? "typescript"
+    : name.endsWith(".luau")
+      ? "luau"
+      : "plain";
 
 /**
  * Every file's editor, with the guest library's types in reach.
@@ -103,7 +112,7 @@ export const PlaceEditorPanes: Component<PlaceEditorPanesProps> = (props) => {
                   <CodeMirror
                     path={name}
                     theme={darkTheme}
-                    typescript={isTypeScript(name)}
+                    language={languageOf(name)}
                     onInput={({ source }) => props.onInput(name, source)}
                   />
                 </div>

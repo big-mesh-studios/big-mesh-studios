@@ -20,13 +20,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createSignal, flush, type Accessor } from "solid-js";
 import { render } from "@solidjs/web";
 
-const { mounts } = vi.hoisted(() => ({ mounts: [] as string[] }));
+const { mounts, languages } = vi.hoisted(() => ({
+  mounts: [] as string[],
+  languages: [] as string[],
+}));
 
 vi.mock("@big-mesh-studios/solid-codemirror", () => ({
   darkTheme: {},
   LSPProvider: (props: { children?: unknown }) => props.children,
-  CodeMirror: (props: { path: string }) => {
+  CodeMirror: (props: { path: string; language?: string }) => {
     mounts.push(props.path);
+    languages.push(props.language ?? "typescript");
     return null;
   },
 }));
@@ -42,31 +46,39 @@ import { PlaceEditorPanes } from "./PlaceEditorPanes";
 const Harness = (props: {
   revision: Accessor<number>;
   files: Accessor<Record<string, string>>;
+  active: string;
 }) => (
   <PlaceEditorPanes
     files={props.files()}
-    active="main.ts"
+    active={props.active}
     revision={props.revision()}
     onActive={() => {}}
     onInput={() => {}}
   />
 );
 
-const mount = (): {
+const mount = (
+  options: {
+    active?: string;
+    files?: Record<string, string>;
+  } = {},
+): {
   revision: ReturnType<typeof createSignal<number>>;
   files: ReturnType<typeof createSignal<Record<string, string>>>;
   container: HTMLElement;
   dispose: () => void;
 } => {
   mounts.length = 0;
+  languages.length = 0;
   const revision = createSignal(1);
-  const files = createSignal<Record<string, string>>({
-    "main.ts": "export {};\n",
-  });
+  const files = createSignal<Record<string, string>>(
+    options.files ?? { "main.ts": "export {};\n" },
+  );
+  const active = options.active ?? "main.ts";
   const container = document.createElement("div");
   document.body.append(container);
   const dispose = render(
-    () => <Harness revision={revision[0]} files={files[0]} />,
+    () => <Harness revision={revision[0]} files={files[0]} active={active} />,
     container,
   );
   flush();
@@ -99,6 +111,20 @@ describe("rebuilding the code panes", () => {
     // **Still one mount.** The source reached the provider, but the editor under the caret was
     // not replaced; CodeMirror already holds the text the person typed.
     expect(mounts).toEqual(["main.ts"]);
+
+    dispose();
+    container.remove();
+  });
+
+  it("chooses the pane's grammar from the file extension", () => {
+    const { container, dispose } = mount({
+      active: "main.luau",
+      files: { "main.luau": "return 1\n" },
+    });
+
+    // `.luau` is the host's own language signal (ADR 0060), so the pane must ask for the
+    // Luau grammar rather than the TypeScript worker that cannot parse it.
+    expect(languages).toEqual(["luau"]);
 
     dispose();
     container.remove();

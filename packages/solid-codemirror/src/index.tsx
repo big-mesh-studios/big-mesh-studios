@@ -36,6 +36,7 @@ import {
   tsSync,
   tsTwoslash,
 } from "./codemirror-ts";
+import { luau } from "./luau";
 import type { LSPAPI } from "./types";
 import { createDebug, trackDeep } from "./utils";
 export * from "./use-ata";
@@ -240,7 +241,13 @@ export const darkTheme: Extension = [
       { tag: [tags.string, tags.special(tags.string)], color: "#98c379" },
       { tag: [tags.regexp, tags.escape], color: "#56b6c2" },
       {
-        tag: [tags.operator, tags.operatorKeyword, tags.bool, tags.null],
+        tag: [
+          tags.operator,
+          tags.operatorKeyword,
+          tags.atom,
+          tags.bool,
+          tags.null,
+        ],
         color: "#56b6c2",
       },
       { tag: [tags.comment, tags.meta], color: "#7f848e" },
@@ -350,6 +357,9 @@ export function LSPProvider(props: LSPProviderProps) {
   return <LspContext value={context}>{props.children}</LspContext>;
 }
 
+/** The language a `CodeMirror` pane is showing. */
+export type CodeMirrorLanguage = "typescript" | "luau" | "plain";
+
 export interface CodeMirrorProps {
   /** The path of the file this editor shows, as a key into the provider's files. */
   path: string;
@@ -360,18 +370,25 @@ export interface CodeMirrorProps {
   /** Called with each editor as it is created, for a caller to hold onto. */
   onEditor?(editor: EditorView): void;
   /**
-   * Whether this file is TypeScript the worker should serve, default `true`.
+   * The language of the document shown here, default `"typescript"`.
    *
-   * **A file that is not TypeScript must not be shown as if it were.** The package's
-   * language is JavaScript/TypeScript: highlighting a Luau file with it is a lie about the
-   * syntax, and the linter asks the TypeScript service about a path it cannot parse — which
-   * answers `Could not find source file`. A caller with a second language says so here and
-   * gets a plain text editor over the same provider; completions and diagnostics are simply
-   * absent for that document, which is the honest state rather than a noisy wrong one.
+   * **Only a TypeScript document reaches the language worker.** The worker parses
+   * JavaScript/TypeScript, so asking it about a `.luau` path answers `Could not find
+   * source file` — noise rather than help. `"luau"` instead attaches the community Lezer
+   * grammar (highlighting, indentation, folding, and the textual completions described in
+   * `./luau`); `"plain"` attaches no grammar at all.
    *
    * The file still has to be in the provider's `files` map, because that map is where the
    * editor reads its source from. This prop decides what is *attached* to the document, not
    * whether the document exists.
+   */
+  language?: CodeMirrorLanguage;
+  /**
+   * Whether this file is TypeScript, default `true`.
+   *
+   * @deprecated Use `language`; `typescript={false}` is `language="plain"`, and
+   * `language="luau"` is the Luau grammar. Kept for callers that only ever chose between
+   * TypeScript and plain text.
    */
   typescript?: boolean;
   config?: {
@@ -383,9 +400,12 @@ export interface CodeMirrorProps {
 
 /**
  * One code editor bound to a path in the surrounding `LSPProvider`'s files.
- * Until the language worker is ready it runs plain, then it is rebuilt with
- * the TypeScript extensions — completion, hover, lint, go-to-definition and
- * twoslash queries — wired to the worker.
+ *
+ * A TypeScript document runs plain until the language worker is ready, then it
+ * is rebuilt with the TypeScript extensions — completion, hover, lint,
+ * go-to-definition and twoslash queries — wired to the worker. A Luau document
+ * has its grammar and local completion from the start and never waits for that
+ * worker; a plain document has no grammar at all.
  */
 export function CodeMirror(props: CodeMirrorProps) {
   const lsp = useContext(LspContext);
@@ -393,13 +413,23 @@ export function CodeMirror(props: CodeMirrorProps) {
   let editor: EditorView | undefined;
   let editorPath: string | undefined;
   let editorInitialized: boolean | undefined;
-  let editorTypescript: boolean | undefined;
+  let editorLanguage: CodeMirrorLanguage | undefined;
+
+  /**
+   * The language this pane is showing, from `language` or the deprecated `typescript`
+   * switch. Read in the tracked phase of the rebuild effect, so a change to either prop
+   * rebuilds the editor.
+   */
+  const language = createMemo<CodeMirrorLanguage>(
+    () =>
+      props.language ?? (props.typescript === false ? "plain" : "typescript"),
+  );
 
   function createEditor(
     parent: HTMLDivElement,
     source: string,
     extensions: Array<Extension>,
-    typescript: boolean,
+    language: CodeMirrorLanguage,
   ): EditorView {
     return new EditorView({
       parent,
@@ -410,10 +440,10 @@ export function CodeMirror(props: CodeMirrorProps) {
           "&": { height: "100%" },
           ".cm-scroller": { overflow: "auto" },
         }),
-        // **Only for a TypeScript document.** A Luau file parsed by the JavaScript
-        // grammar is not "roughly highlighted", it is highlighted wrongly at every
-        // keyword; plain text is the truthful rendering. See the `typescript` prop.
-        ...(typescript
+        // **A grammar only for the language the document is actually written in.** A
+        // Luau file parsed by the JavaScript grammar is not "roughly highlighted", it is
+        // highlighted wrongly at every keyword; plain text is the truthful rendering.
+        ...(language === "typescript"
           ? [
               javascript({
                 typescript: true,
@@ -421,6 +451,7 @@ export function CodeMirror(props: CodeMirrorProps) {
               }),
             ]
           : []),
+        ...(language === "luau" ? [luau()] : []),
         ...(props.theme ? [props.theme] : []),
         keymap.of([
           {
@@ -467,9 +498,9 @@ export function CodeMirror(props: CodeMirrorProps) {
   // typed keystroke normally flows out through `onInput` and back in as an
   // update to `files`, which would otherwise be indistinguishable here from
   // a first load — rebuilding the whole EditorView (and fighting the user's
-  // cursor) on every keystroke. `path`/`initialized` identity is what a
-  // rebuild is actually for, so once built for a given (path, initialized)
-  // pair, further `source` changes for that same pair are exactly that echo
+  // cursor) on every keystroke. `path`/language/worker-readiness identity is
+  // what a rebuild is actually for, so once built for a given combination,
+  // further `source` changes for that same combination are exactly that echo
   // and are left for CodeMirror's own state to already reflect.
   createEffect(
     () =>
@@ -478,18 +509,21 @@ export function CodeMirror(props: CodeMirrorProps) {
         lsp.initialized(),
         props.path,
         lsp.files()[props.path],
-        props.typescript ?? true,
+        language(),
         trackDeep(props.config ?? {}),
       ] as const,
-    ([target, initialized, path, source, typescript]) => {
+    ([target, initialized, path, source, activeLanguage]) => {
       if (!target || source === undefined) {
         return;
       }
+      // A Luau or plain document does not use the worker, so its becoming
+      // ready must not rebuild that editor and throw away its undo history.
+      const workerReady = initialized && activeLanguage === "typescript";
       if (
         editor &&
         editorPath === path &&
-        editorInitialized === initialized &&
-        editorTypescript === typescript
+        editorInitialized === workerReady &&
+        editorLanguage === activeLanguage
       ) {
         return;
       }
@@ -507,7 +541,7 @@ export function CodeMirror(props: CodeMirrorProps) {
       editor = createEditor(
         target,
         source ?? "",
-        initialized && typescript
+        workerReady
           ? [
               autocompletion({ override: [tsAutocomplete()] }),
               tsFacet.of({
@@ -521,11 +555,11 @@ export function CodeMirror(props: CodeMirrorProps) {
               tsTwoslash(),
             ]
           : [],
-        typescript,
+        activeLanguage,
       );
       editorPath = path;
-      editorInitialized = initialized;
-      editorTypescript = typescript;
+      editorInitialized = workerReady;
+      editorLanguage = activeLanguage;
 
       if (selection) {
         editor.dispatch({ selection });
