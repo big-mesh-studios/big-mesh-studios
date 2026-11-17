@@ -244,3 +244,11 @@ spike's hand-built `require` shim is not the promise), the editor's language pic
 `Function`-constructor probes need Luau-side siblings in `bundle.test.ts` (they do; Phase 1
 writes them). Whether voxelscape adopts the same package is that application's decision on
 the same evidence — the package has no opinion (ADR 0024).
+
+**Update: Phase 3's analysis loading has a first customer.** Autocomplete ships as
+`@big-mesh-studios/luau-runtime/analysis`, a second artifact built from the same pin and
+committed with its own hashes (`dist/luau-analysis.wasm`, 3.38 MB / 1.13 MB gzipped). It
+links `Luau.Analysis`, and only the app's editor worker imports it. `dist/luau.wasm` is
+byte-identical to the artifact before the target existed, so decision 8 is unchanged: the
+tool got an artifact, the load path did not. Diagnostics and hover are the same artifact's
+next customers, not part of this decision.

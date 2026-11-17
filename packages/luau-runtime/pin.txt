@@ -10,3 +10,5 @@ repository = https://github.com/luau-lang/luau
 # first build; `build.sh --check` compares dist/ against these):
 # artifact luau.wasm = dc4af662c84174d7e95d5b5fe986513c7e5c8e28fb0f54d43ebd7c6dd59e02cc
 # artifact luau.mjs = eb2d751e597ccfa42d87a58cbf2d7d7cb7b1d13b5977a8c78678cccfd3b54157
+# artifact luau-analysis.wasm = c635bae39c24684c43151aaa7c887605a431490dd1aeddf31d3476c23e802dea
+# artifact luau-analysis.mjs = 1a01ccd3b9cae1a4b585453797b8a6b4c6a0122c4d6aba41b00d2ffa75439848

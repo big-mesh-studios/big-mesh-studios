@@ -32,7 +32,7 @@ state.dispose();
 ```
 
 `dist/luau.wasm` (≈693 KiB, 257 KiB gzipped), `dist/luau.mjs`, and the hand-written
-`dist/luau.d.mts` that types the factory are **committed artifacts** with the two built
+`dist/luau.d.mts` that types the factory are **committed artifacts** with the four built
 files' SHA-256 recorded in `pin.txt`. Tests, dev, and CI load them as bytes and hand them
 to the loader — nothing in the daily loop touches emscripten, cmake, or the Luau source,
 which is the point of the pattern ADR 0015 learned the hard way. This package is the one
@@ -41,11 +41,39 @@ where the artifacts exist but are not tracked — a fresh clone is the thing the
 for.
 
 ```
-pnpm test          # src/spike.test.ts — the plan's Phase 0 claims, 24 of them
+pnpm test          # src/spike.test.ts and src/analysis.test.ts
 pnpm check-types   # tsc over src/ and probe/
 pnpm check-wasm    # dist/ matches pin.txt, in one line
 pnpm probe         # then open /luau-probe.html in a real browser
 ```
+
+### Type-aware completion (the analysis tool)
+
+`@big-mesh-studios/luau-runtime/analysis` is a **separate, lazy artifact** built from the
+same pin: `dist/luau-analysis.wasm` (3.38 MB, 1.13 MB gzipped) and `.mjs`, plus the
+hand-written `dist/luau-analysis.d.mts`. It links `Luau.Analysis` and provides
+`LuauAnalysis.complete`; nothing in `src/index.ts` imports it, so a peer that runs places
+never downloads it. That separation is ADR 0060 decision 8 kept by the build.
+
+```ts
+import { LuauAnalysis } from "@big-mesh-studios/luau-runtime/analysis";
+
+const analysis = await LuauAnalysis.create();
+analysis.setSource("door.luau", "return { open = function() end }");
+analysis.setSpecifier("./door", "door.luau");
+analysis.setSource("main.luau", 'local door = require("./door")\ndoor.');
+analysis.complete("main.luau", 1, 5); // [{ label: "open", kind: "property", … }]
+analysis.dispose();
+```
+
+The specifier map is authored by the bundler (`luauModuleSpecifiers` in
+`apps/spacescape/src/places/luau-bundle.ts`), so the C++ resolver is an exact lookup and
+the module rules live in one place. Positions are **0-based lines and UTF-8 byte
+columns**, which is what Luau's lexer counts; the editor client performs that conversion.
+
+`build.sh` builds both executables in one cmake tree, records all four hashes, and
+`--check` verifies both pairs. The VM's bytes are unchanged by the second target — that
+is the boundary's proof, not a claim.
 
 ## The probe
 

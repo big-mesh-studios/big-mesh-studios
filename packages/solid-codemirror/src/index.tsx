@@ -37,9 +37,10 @@ import {
   tsTwoslash,
 } from "./codemirror-ts";
 import { luau } from "./luau";
-import type { LSPAPI } from "./types";
+import type { LSPAPI, LuauAnalyzer } from "./types";
 import { createDebug, trackDeep } from "./utils";
 export * from "./use-ata";
+export type { LuauAnalyzer, LuauCompletionItem } from "./types";
 
 const debug = createDebug("code-mirror");
 
@@ -384,6 +385,15 @@ export interface CodeMirrorProps {
    */
   language?: CodeMirrorLanguage;
   /**
+   * The optional type-aware analyzer for a Luau document.
+   *
+   * **Only consulted when `language` is `"luau"`.** It is an app-owned object — this
+   * package knows nothing about places or the module rules that connect them — and its
+   * identity is expected to be stable for an editor session; replacing it rebuilds the
+   * editor, which is the correct response to a different analyzer.
+   */
+  luauAnalysis?: LuauAnalyzer;
+  /**
    * Whether this file is TypeScript, default `true`.
    *
    * @deprecated Use `language`; `typescript={false}` is `language="plain"`, and
@@ -414,6 +424,7 @@ export function CodeMirror(props: CodeMirrorProps) {
   let editorPath: string | undefined;
   let editorInitialized: boolean | undefined;
   let editorLanguage: CodeMirrorLanguage | undefined;
+  let editorAnalysis: LuauAnalyzer | undefined;
 
   /**
    * The language this pane is showing, from `language` or the deprecated `typescript`
@@ -430,6 +441,8 @@ export function CodeMirror(props: CodeMirrorProps) {
     source: string,
     extensions: Array<Extension>,
     language: CodeMirrorLanguage,
+    path: string,
+    analysis: LuauAnalyzer | undefined,
   ): EditorView {
     return new EditorView({
       parent,
@@ -451,7 +464,7 @@ export function CodeMirror(props: CodeMirrorProps) {
               }),
             ]
           : []),
-        ...(language === "luau" ? [luau()] : []),
+        ...(language === "luau" ? [luau({ path, analysis })] : []),
         ...(props.theme ? [props.theme] : []),
         keymap.of([
           {
@@ -510,9 +523,10 @@ export function CodeMirror(props: CodeMirrorProps) {
         props.path,
         lsp.files()[props.path],
         language(),
+        props.luauAnalysis,
         trackDeep(props.config ?? {}),
       ] as const,
-    ([target, initialized, path, source, activeLanguage]) => {
+    ([target, initialized, path, source, activeLanguage, analysis]) => {
       if (!target || source === undefined) {
         return;
       }
@@ -523,7 +537,8 @@ export function CodeMirror(props: CodeMirrorProps) {
         editor &&
         editorPath === path &&
         editorInitialized === workerReady &&
-        editorLanguage === activeLanguage
+        editorLanguage === activeLanguage &&
+        editorAnalysis === analysis
       ) {
         return;
       }
@@ -556,10 +571,13 @@ export function CodeMirror(props: CodeMirrorProps) {
             ]
           : [],
         activeLanguage,
+        path,
+        analysis,
       );
       editorPath = path;
       editorInitialized = workerReady;
       editorLanguage = activeLanguage;
+      editorAnalysis = analysis;
 
       if (selection) {
         editor.dispatch({ selection });

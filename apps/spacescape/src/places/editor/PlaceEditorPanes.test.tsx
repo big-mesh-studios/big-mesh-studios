@@ -20,17 +20,23 @@ import { describe, expect, it, vi } from "vitest";
 import { createSignal, flush, type Accessor } from "solid-js";
 import { render } from "@solidjs/web";
 
-const { mounts, languages } = vi.hoisted(() => ({
+const { mounts, languages, analyzed } = vi.hoisted(() => ({
   mounts: [] as string[],
   languages: [] as string[],
+  analyzed: [] as boolean[],
 }));
 
 vi.mock("@big-mesh-studios/solid-codemirror", () => ({
   darkTheme: {},
   LSPProvider: (props: { children?: unknown }) => props.children,
-  CodeMirror: (props: { path: string; language?: string }) => {
+  CodeMirror: (props: {
+    path: string;
+    language?: string;
+    luauAnalysis?: unknown;
+  }) => {
     mounts.push(props.path);
     languages.push(props.language ?? "typescript");
+    analyzed.push(props.luauAnalysis !== undefined);
     return null;
   },
 }));
@@ -70,6 +76,7 @@ const mount = (
 } => {
   mounts.length = 0;
   languages.length = 0;
+  analyzed.length = 0;
   const revision = createSignal(1);
   const files = createSignal<Record<string, string>>(
     options.files ?? { "main.ts": "export {};\n" },
@@ -125,6 +132,38 @@ describe("rebuilding the code panes", () => {
     // `.luau` is the host's own language signal (ADR 0060), so the pane must ask for the
     // Luau grammar rather than the TypeScript worker that cannot parse it.
     expect(languages).toEqual(["luau"]);
+
+    dispose();
+    container.remove();
+  });
+
+  it("gives a Luau pane an analyzer", () => {
+    const { container, dispose } = mount({
+      active: "main.luau",
+      files: {
+        "main.ts": "export {};\n",
+        "main.luau": "return 1\n",
+      },
+    });
+
+    expect(analyzed).toEqual([true]);
+
+    dispose();
+    container.remove();
+  });
+
+  it("leaves a TypeScript pane without an analyzer", () => {
+    const { container, dispose } = mount({
+      active: "main.ts",
+      files: {
+        "main.ts": "export {};\n",
+        "main.luau": "return 1\n",
+      },
+    });
+
+    // The analyzer exists for the project, but a `.ts` document is the TypeScript
+    // worker's; attaching an analysis worker to it would be the wrong grammar twice.
+    expect(analyzed).toEqual([false]);
 
     dispose();
     container.remove();

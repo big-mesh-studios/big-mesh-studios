@@ -10,7 +10,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { bundlePlaceLuau } from "./luau-bundle";
+import {
+  bundlePlaceLuau,
+  luauGuestSource,
+  luauModuleSpecifiers,
+} from "./luau-bundle";
 import { BundleError } from "./bundle";
 import { GUEST_MODULE, RESERVED_HOST_MODULE } from "./bridge";
 import { MAX_SCRIPT_SOURCE } from "./limits";
@@ -187,5 +191,53 @@ describe("levels, in the shape the guest library asserts", () => {
       "b.json": "{}",
     });
     expect(a).toBe(b);
+  });
+});
+
+/**
+ * The map the analyzer's resolver is handed.
+ *
+ * **Authored by the bundler, not re-derived in C++**, so these are the same spellings
+ * `resolveSpecifier` accepts. A spelling with no entry is one the analyzer cannot
+ * complete, which is the honest answer: the bundler would refuse it too.
+ */
+describe("the analysis specifier map", () => {
+  it("maps every spelling a place file can be required by", () => {
+    const specifiers = luauModuleSpecifiers({
+      "main.luau": "",
+      "door.luau": "",
+    });
+
+    expect(specifiers[GUEST_MODULE]).toBe(GUEST_MODULE);
+    expect(specifiers.voxelscape).toBe(GUEST_MODULE);
+    expect(specifiers.door).toBe("door.luau");
+    expect(specifiers["./door"]).toBe("door.luau");
+    expect(specifiers["door.luau"]).toBe("door.luau");
+    expect(specifiers["./door.luau"]).toBe("door.luau");
+  });
+
+  it("omits spellings the bundler refuses", () => {
+    const specifiers = luauModuleSpecifiers({ "main.luau": "" });
+
+    expect(specifiers[RESERVED_HOST_MODULE]).toBeUndefined();
+    expect(specifiers["../escape"]).toBeUndefined();
+    expect(specifiers.missing).toBeUndefined();
+  });
+
+  it("prefers the .luau candidate the resolver would pick", () => {
+    const specifiers = luauModuleSpecifiers({
+      door: "",
+      "door.luau": "",
+    });
+
+    expect(specifiers.door).toBe("door.luau");
+    expect(specifiers["./door"]).toBe("door.luau");
+  });
+
+  it("shares the guest source with the bundler rather than copying it", () => {
+    expect(luauGuestSource({})).toContain("M.createNpc");
+
+    const bundle = bundlePlaceLuau({ "main.luau": "" }, "main.luau");
+    expect(bundle).toContain("M.createNpc");
   });
 });

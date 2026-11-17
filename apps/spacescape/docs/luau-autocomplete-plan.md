@@ -1,16 +1,25 @@
 # Luau autocomplete: the analysis artifact, the worker, and the editor wiring
 
-**Status: not scheduled.** This is the plan for later, written while the reasoning is
-fresh. Nothing here is implemented and nothing here is a promise about ordering — it is
-the process, the boundaries, and the traps, so that the next person does not have to
-rediscover them from the Luau playground's source.
+**Status: implemented (v1).** The artifact, loader, worker, editor source, fallback
+ladder, and tests below are in the tree; the measured artifact is 3.38 MB (1.13 MB
+gzipped), and `dist/luau.wasm` is byte-identical to its pre-target hash. The remaining
+open items are the browser probe and the diagnostics/hover scope, both marked below. This
+document stays as the record of the boundaries and traps, so the next person does not have
+to rediscover them from the Luau playground's source.
 
-**What ships today** is the honest, small version: a Lezer grammar for highlighting,
-indentation and folding, plus textual completion — the package's keywords and base
-globals, the document's own identifiers, and the members of the five standard libraries
-this VM opens (`packages/solid-codemirror/src/luau.ts`). **What is missing is the one
-thing a grammar cannot know:** what a name _is_ at a position, and therefore what may
-follow a dot.
+**What shipped before this work** was the honest, small version: a Lezer grammar for
+highlighting, indentation and folding, plus textual completion — the package's keywords
+and base globals, the document's own identifiers, and the members of the five standard
+libraries this VM opens (`packages/solid-codemirror/src/luau.ts`). **What was missing is
+the one thing a grammar cannot know:** what a name _is_ at a position, and therefore what
+may follow a dot.
+
+**What ships now** is the analysis path described below: a lazily loaded
+`luau-analysis.wasm`, an editor-only worker, and a completion source that asks types
+first and falls back to the textual sources. Member completion, standard-library members,
+the guest API through `require`, cross-file members, and `require("…")` specifiers are
+implemented. Diagnostics and hover remain the next customers of the same artifact, not
+part of v1.
 
 **Why it is not a language server.** The official Luau playground does not use an LSP
 either. It calls `Luau::autocomplete` from Luau's **Analysis** library, in the same wasm
@@ -559,6 +568,11 @@ export interface LuauAnalyzer {
     line: number; // 0-based
     column: number; // UTF-8 bytes into the line
   }): Promise<LuauCompletionItem[]>;
+  /**
+   * The specifier spellings the bundler accepts, for `require("…")` completion.
+   * The analyzer does not answer that request; the client already holds the map.
+   */
+  specifiers?(): readonly string[];
 }
 ```
 
@@ -632,8 +646,9 @@ ever inform a type, pass them down rather than growing a second guest source.
 
 `require("…")` completion is TypeScript's, as in the playground: detect the string
 bounds before the cursor, list the specifier map's keys (filtered by prefix), and insert
-the spelling the author is already using (`./door` stays `./door`). The analyzer is not
-asked; its `StringCompletionCallback` stays `nullptr`.
+the spelling the author is already using (`./door` stays `./door`). The editor package
+asks the client's `specifiers()` for those keys; the analyzer is not asked, and its
+`StringCompletionCallback` stays `nullptr`.
 
 **Honest limit:** the guest library's `spec: table` parameters mean nested completion
 inside a spec literal (`M.createNpc({ ki| })`) is weak. Member completion on the module
@@ -808,45 +823,46 @@ Copy this into the PR description. Each line is a thing that can be wrong on its
 
 **Artifact**
 
-- [ ] `glue/analysis.cpp`: session, resolvers, specifier map, four exports plus reset.
-- [ ] `glue/CMakeLists.txt`: `luau_analysis` target; execution target's link line untouched.
-- [ ] `build.sh`: copy four artifacts; hash all four; `--check` tracks the two new `dist/` files.
-- [ ] `pin.txt`: two new `# artifact` lines, filled by the build.
-- [ ] Build on a machine with emsdk; **confirm `dist/luau.wasm`'s hash did not change**.
-- [ ] Measure size/time on the probe; record in `README.md`.
+- [x] `glue/analysis.cpp`: session, resolvers, specifier map, four exports plus reset.
+- [x] `glue/CMakeLists.txt`: `luau_analysis` target; execution target's link line untouched.
+- [x] `build.sh`: copy four artifacts; hash all four; `--check` tracks the two new `dist/` files.
+- [x] `pin.txt`: two new `# artifact` lines, filled by the build.
+- [x] Build on a machine with emsdk; **confirm `dist/luau.wasm`'s hash did not change**.
+- [ ] Measure size/time on the probe; record in `README.md`. (Size is measured: 3.38 MB /
+      1.13 MB gzipped. The browser probe and warm/cold timings are still open.)
 
 **Wrapper**
 
-- [ ] `src/analysis.ts`: both load branches, typed methods, `version()`, `dispose()`.
-- [ ] `package.json`: `"./analysis"` subpath; no import of it from `src/index.ts`.
-- [ ] `dist/luau-analysis.d.mts`: hand-written factory types, committed with the artifact.
-- [ ] `src/analysis.test.ts`: the glue and loader tests above.
+- [x] `src/analysis.ts`: both load branches, typed methods, `version()`, `dispose()`.
+- [x] `package.json`: `"./analysis"` subpath; no import of it from `src/index.ts`.
+- [x] `dist/luau-analysis.d.mts`: hand-written factory types, committed with the artifact.
+- [x] `src/analysis.test.ts`: the glue and loader tests above.
 
 **Worker and client**
 
-- [ ] `luau-analysis.worker.ts`: configure/source/complete/reset, lazy create, error responses.
-- [ ] `luau-analysis.ts`: lazy spawn, buffered sources, latest-id coalescing, timeout, dead state.
-- [ ] `luau-bundle.ts`: export `luauGuestSource` and `luauModuleSpecifiers`; test that every
+- [x] `luau-analysis.worker.ts`: configure/source/complete/reset, lazy create, error responses.
+- [x] `luau-analysis.ts`: lazy spawn, buffered sources, latest-id coalescing, timeout, dead state.
+- [x] `luau-bundle.ts`: export `luauGuestSource` and `luauModuleSpecifiers`; test that every
       emitted spelling resolves back through the bundler.
-- [ ] Client test with a fake worker.
+- [x] Client test with a fake worker.
 
 **Editor**
 
-- [ ] `luau.ts`: `LuauAnalyzer`, `luau({ path, analysis })`, composed override, byte column,
+- [x] `luau.ts`: `LuauAnalyzer`, `luau({ path, analysis })`, composed override, byte column,
       triggers, item→option mapping, textual fallback.
-- [ ] `index.tsx`: `luauAnalysis` prop, tracked in the rebuild effect.
-- [ ] `PlaceEditorPanes.tsx`: create the client once when a `.luau` file exists; push sources on
+- [x] `index.tsx`: `luauAnalysis` prop, tracked in the rebuild effect.
+- [x] `PlaceEditorPanes.tsx`: create the client once when a `.luau` file exists; push sources on
       input; pass it to Luau panes; dispose on cleanup.
-- [ ] Tests: source fallback, position conversion, no-recursion, pane wiring.
+- [x] Tests: source fallback, position conversion, no-recursion, pane wiring.
 
 **Proof**
 
-- [ ] `pnpm --filter @big-mesh-studios/luau-runtime check-wasm`
-- [ ] `pnpm --filter @big-mesh-studios/luau-runtime test`
-- [ ] `pnpm --filter @big-mesh-studios/solid-codemirror check-types test build`
-- [ ] `pnpm --filter @big-mesh-studios/spacescape check-types test build`
-- [ ] Confirm the analysis chunk is separate and the entry chunk has no analysis bytes.
-- [ ] Docs: scripting plan Phase 3, ADR 0060 update, runtime README.
+- [x] `pnpm --filter @big-mesh-studios/luau-runtime check-wasm`
+- [x] `pnpm --filter @big-mesh-studios/luau-runtime test`
+- [x] `pnpm --filter @big-mesh-studios/solid-codemirror check-types test build`
+- [x] `pnpm --filter @big-mesh-studios/spacescape check-types test build`
+- [x] Confirm the analysis chunk is separate and the entry chunk has no analysis bytes.
+- [x] Docs: scripting plan Phase 3, ADR 0060 update, runtime README.
 
 ## What this plan deliberately does not do
 

@@ -12,6 +12,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./analysis": "./src/analysis.ts",
     "./wasm": "./dist/luau.wasm"
   },
   "scripts": {

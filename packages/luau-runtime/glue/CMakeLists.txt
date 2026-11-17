@@ -1,11 +1,13 @@
-# CMakeLists.txt — one executable, `luau.mjs` + `luau.wasm`, from glue.cpp over the
-# pinned Luau in ../vendor/luau. This file is only reached by build.sh, and build.sh is
-# only reached when pin.txt changes: emsdk must never be in the dev loop, per ADR 0015's
-# Termux lesson. Normal development consumes dist/, which is committed.
+# CMakeLists.txt — two executables over the pinned Luau in ../vendor/luau:
+# `luau.mjs` + `luau.wasm` from glue.cpp, and `luau-analysis.mjs` + `.wasm` from
+# analysis.cpp. This file is only reached by build.sh, and build.sh is only reached
+# when pin.txt changes: emsdk must never be in the dev loop, per ADR 0015's Termux
+# lesson. Normal development consumes dist/, which is committed.
 #
-# The subset that is built matters: Common, Ast, Bytecode, Compiler, VM. Not Analysis —
-# decision 8 says the type checker is a tool, never a load-path dependency, and leaving
-# it out of this build is how that stays true by construction rather than by discipline.
+# The execution subset is Common, Ast, Bytecode, Compiler, VM. Analysis is a second
+# target that the first does not link — decision 8 says the type checker is a tool,
+# never a load-path dependency, and the two link lines are how that stays true by
+# construction rather than by discipline.
 
 cmake_minimum_required(VERSION 3.16)
 project(luau_glue CXX)
@@ -69,4 +71,32 @@ target_link_options(luau PRIVATE
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s SUPPORT_LONGJMP=wasm"
     "--js-library=${CMAKE_CURRENT_SOURCE_DIR}/bridge-library.js"
+)
+
+# The analysis artifact is built in the same tree; it does not link into luau.wasm.
+# It links Luau.Analysis explicitly (the VM's own link line does not change).
+add_executable(luau_analysis analysis.cpp)
+set_target_properties(luau_analysis PROPERTIES
+    SUFFIX ".mjs" OUTPUT_NAME "luau-analysis")
+target_compile_features(luau_analysis PRIVATE cxx_std_17)
+target_compile_definitions(luau_analysis PRIVATE
+    LUAU_PINNED_TAG="${LUAU_PINNED_TAG}"
+    LUAU_PINNED_COMMIT="${LUAU_PINNED_COMMIT}")
+target_link_libraries(luau_analysis PRIVATE
+    Luau.Analysis Luau.Config Luau.Compiler Luau.Ast Luau.Common)
+target_link_options(luau_analysis PRIVATE
+    "-O2"
+    "-fwasm-exceptions"
+    "SHELL:-s MODULARIZE=1"
+    "SHELL:-s EXPORT_NAME=createLuauAnalysisModule"
+    "SHELL:-s EXPORT_ES6=1"
+    "SHELL:-s ENVIRONMENT=web,worker,node"
+    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+    "SHELL:-s INITIAL_MEMORY=32MB"
+    "SHELL:-s MAXIMUM_MEMORY=256MB"
+    "SHELL:-s STACK_SIZE=1MB"
+    "SHELL:-s EXPORTED_RUNTIME_METHODS=HEAPU8,HEAP8,HEAP32,HEAPU32,HEAPF64"
+    "SHELL:-s EXPORTED_FUNCTIONS=_malloc,_free"
+    "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s EXIT_RUNTIME=0"
 )

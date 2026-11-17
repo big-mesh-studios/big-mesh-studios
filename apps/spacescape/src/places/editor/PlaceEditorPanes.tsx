@@ -19,7 +19,15 @@
  * in the editor chunk.
  */
 
-import { For, Show, createMemo, type Component } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  onCleanup,
+  untrack,
+  type Component,
+} from "solid-js";
 import { Activity } from "@big-mesh-studios/ui/activity";
 import {
   CodeMirror,
@@ -28,6 +36,9 @@ import {
   type CodeMirrorLanguage,
 } from "@big-mesh-studios/solid-codemirror";
 
+import { GUEST_MODULE } from "../bridge";
+import { luauGuestSource, luauModuleSpecifiers } from "../luau-bundle";
+import { LuauAnalysisClient } from "./luau-analysis";
 import {
   EDITOR_COMPILER_OPTIONS,
   GUEST_LIBRARY_FILES,
@@ -93,6 +104,66 @@ export const PlaceEditorPanes: Component<PlaceEditorPanesProps> = (props) => {
     ...props.files,
   }));
 
+  /**
+   * Whether this place has a Luau document at all.
+   *
+   * **A boolean memo, not `props.files` directly**, so typing in a Luau file does not
+   * recreate the analyzer: the client is one object for the session, and its identity is
+   * part of the editor's rebuild key.
+   */
+  const hasLuau = createMemo(() =>
+    Object.keys(props.files).some((name) => name.endsWith(".luau")),
+  );
+
+  /**
+   * The analyzer client for this editor session. Constructing it is cheap; the worker
+   * and the wasm are created on the first completion, so opening the panel costs
+   * nothing.
+   */
+  const clients = new Set<LuauAnalysisClient>();
+  onCleanup(() => {
+    for (const client of clients) client.dispose();
+    clients.clear();
+  });
+
+  const analyzer = createMemo(() => {
+    if (!hasLuau()) return undefined;
+    const client = new LuauAnalysisClient();
+    clients.add(client);
+    return client;
+  });
+
+  /**
+   * The set of file names, which is what a `configure` is for. Contents change on every
+   * keystroke and go through `setSource` instead.
+   */
+  const fileSet = createMemo(() => Object.keys(props.files).sort().join("\n"));
+
+  createEffect(
+    () => {
+      // Tracked: a revision is a project replaced from outside, even when the names
+      // did not change. Contents are read untracked so a keystroke does not replay them.
+      void props.revision;
+      fileSet();
+      return analyzer();
+    },
+    (client) => {
+      if (!client) return;
+
+      untrack(() => {
+        const place = Object.fromEntries(
+          Object.entries(props.files).filter(([name]) =>
+            name.endsWith(".luau"),
+          ),
+        );
+        client.configure(
+          { ...place, [GUEST_MODULE]: luauGuestSource({}) },
+          luauModuleSpecifiers(place),
+        );
+      });
+    },
+  );
+
   return (
     <LSPProvider files={files()} tsconfig={EDITOR_COMPILER_OPTIONS}>
       {/* **Keyed by `revision`**, so an adopted project replaces every open document rather
@@ -113,7 +184,15 @@ export const PlaceEditorPanes: Component<PlaceEditorPanesProps> = (props) => {
                     path={name}
                     theme={darkTheme}
                     language={languageOf(name)}
-                    onInput={({ source }) => props.onInput(name, source)}
+                    luauAnalysis={
+                      name.endsWith(".luau") ? analyzer() : undefined
+                    }
+                    onInput={({ source }) => {
+                      if (name.endsWith(".luau")) {
+                        analyzer()?.setSource(name, source);
+                      }
+                      props.onInput(name, source);
+                    }}
                   />
                 </div>
               </Activity>

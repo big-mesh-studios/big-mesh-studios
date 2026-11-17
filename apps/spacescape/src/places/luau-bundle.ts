@@ -139,6 +139,42 @@ const resolveSpecifier = (
   );
 };
 
+/**
+ * Every spelling a place's files may be required by, resolved to the file it names.
+ *
+ * **The bundler is the author of this map**, which is the point: the analyzer's resolver
+ * is an exact lookup, so the flat-namespace rules (`./name`, bare `name`, `.luau`
+ * optional, no directories) are written once, here, and never re-implemented in C++.
+ * Guest names are included because they are modules too; `engine-host` is not, because
+ * the bundler refuses it.
+ *
+ * The map is built by asking the same candidate list `resolveSpecifier` asks, so a file
+ * that can be required can be completed, and a spelling that cannot resolve is absent.
+ */
+export const luauModuleSpecifiers = (
+  files: PlaceFiles,
+): Record<string, string> => {
+  const names = new Set(Object.keys(files));
+  const specifiers: Record<string, string> = {
+    [GUEST_MODULE]: GUEST_MODULE,
+    [LEGACY_GUEST_MODULE]: GUEST_MODULE,
+  };
+
+  for (const name of Object.keys(files).sort()) {
+    const bare = name.replace(/\.luau$/, "");
+    const target = [`${bare}.luau`, bare].find((candidate) =>
+      names.has(candidate),
+    );
+    if (!target) continue;
+
+    for (const spelling of new Set([name, `./${name}`, bare, `./${bare}`])) {
+      specifiers[spelling] = target;
+    }
+  }
+
+  return specifiers;
+};
+
 /** Rewrite one module's `require` specifiers to the ids this function chose. */
 const rewriteRequires = (
   file: string,
@@ -201,8 +237,14 @@ const levelsTable = (levels: Readonly<Record<string, string>>): string => {
   return `local __levels = {\n${entries.join(",\n")}\n}`;
 };
 
-/** The guest library, with levels injected if the place carries any. */
-const guestModuleSource = (
+/**
+ * The guest library, with levels injected if the place carries any.
+ *
+ * **Exported because the analyzer must read the source the bundler compiles**, not a
+ * second copy of it. `luau-analysis.ts` registers this under `spacescape` so
+ * `require("spacescape").` completes against the same signatures the place will run.
+ */
+export const luauGuestSource = (
   levels: Readonly<Record<string, string>>,
 ): string => {
   if (Object.keys(levels).length === 0) return GUEST_SOURCE;
@@ -247,7 +289,7 @@ export const bundlePlaceLuau = (
   names.forEach((name, index) => ids.set(name, String(index)));
 
   const compiled = new Map<string, string>();
-  compiled.set(GUEST_MODULE, guestModuleSource(levels));
+  compiled.set(GUEST_MODULE, luauGuestSource(levels));
 
   const pending: string[] = [entry];
   while (pending.length > 0) {

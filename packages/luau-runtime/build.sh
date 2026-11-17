@@ -19,20 +19,22 @@ recorded_tag=$(awk -F' = ' '/^tag = /{print $2}' "$PIN_FILE")
 recorded_commit=$(awk -F' = ' '/^commit = /{print $2}' "$PIN_FILE")
 
 if [[ "${1:-}" == "--check" ]]; then
-	[[ -f dist/luau.wasm && -f dist/luau.mjs ]] || fail "dist/ artifacts are missing"
-	for artifact in luau.wasm luau.mjs; do
+	[[ -f dist/luau.wasm && -f dist/luau.mjs ]] || fail "dist/ luau artifacts are missing"
+	[[ -f dist/luau-analysis.wasm && -f dist/luau-analysis.mjs ]] ||
+		fail "dist/ analysis artifacts are missing"
+	for artifact in luau.wasm luau.mjs luau-analysis.wasm luau-analysis.mjs; do
 		want=$(sed -n "s|^# artifact ${artifact} = ||p" "$PIN_FILE")
 		[[ -n "$want" ]] || fail "$PIN_FILE records no hash for $artifact"
 		have=$(sha256sum "dist/$artifact" | cut -d' ' -f1)
 		[[ "$want" == "$have" ]] || fail "dist/$artifact does not match $PIN_FILE ($have != $want)"
 	done
-	# **And the artifact must be committed, not merely present.** The README's promise is
-	# that a fresh clone runs the tests and the app without emscripten; an ignored `dist/`
+	# **And the artifacts must be committed, not merely present.** The README's promise is
+	# that a fresh clone runs the tests and the app without emscripten; ignored `dist/`
 	# builds fine on the machine that ran the build and is absent from every clone — which
 	# is exactly how this check came to exist. Only meaningful inside a work tree; a
 	# release tarball has no git and is not making this promise.
 	if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-		for artifact in dist/luau.wasm dist/luau.mjs dist/luau.d.mts; do
+		for artifact in dist/luau.wasm dist/luau.mjs dist/luau-analysis.wasm dist/luau-analysis.mjs dist/luau.d.mts dist/luau-analysis.d.mts; do
 			git ls-files --error-unmatch "$artifact" >/dev/null 2>&1 ||
 				fail "$artifact is not tracked by git — a fresh clone would not have it"
 		done
@@ -63,13 +65,13 @@ emcmake cmake ../glue \
 cmake --build .
 
 mkdir -p ../dist
-cp luau.mjs luau.wasm ../dist/
+# Both targets are built by the same cmake invocation: the analysis target is a
+# sibling executable, not a second build tree, and it links Analysis only.
+cp luau.mjs luau.wasm luau-analysis.mjs luau-analysis.wasm ../dist/
 cd ..
 
-# Record what we just made, so --check can hold the tree to it. The lines live in
-# pin.txt commented out; the build is what fills them in, and a pin bump that
-# forgot to rebuild fails --check rather than shipping a mismatched pair.
-for artifact in luau.wasm luau.mjs; do
+# Record all four hashes so --check can hold the tree to them.
+for artifact in luau.wasm luau.mjs luau-analysis.wasm luau-analysis.mjs; do
 	hash=$(sha256sum "dist/$artifact" | cut -d' ' -f1)
 	line="# artifact ${artifact} = ${hash}"
 	if grep -q "^# artifact ${artifact} = " "$PIN_FILE"; then
@@ -80,4 +82,5 @@ for artifact in luau.wasm luau.mjs; do
 done
 
 echo "luau $recorded_tag built; dist/luau.wasm $(wc -c <dist/luau.wasm) bytes," \
-	"$(gzip -9 -c dist/luau.wasm | wc -c) gzipped. pin.txt updated."
+	"$(gzip -9 -c dist/luau.wasm | wc -c) gzipped; dist/luau-analysis.wasm $(wc -c <dist/luau-analysis.wasm) bytes," \
+	"$(gzip -9 -c dist/luau-analysis.wasm | wc -c) gzipped. pin.txt updated."

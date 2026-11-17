@@ -190,11 +190,11 @@ cross-instance fold equality in `place-registry`/session tests.
 - Luau highlighting in `solid-codemirror` (the playground's CM6 Luau mode is prior art);
   syntax/compile diagnostics come free — bundling already compiles. **Highlighting and
   textual completion are in:** the grammar is `@fazelstudio/codemirror-lang-luau`, and the
-  pane picks it from the `.luau` extension. **Type-aware completion is not**, because the
-  playground gets it from `Luau::autocomplete` in the Analysis library, which this runtime
-  deliberately does not build (ADR 0060 decision 8). The Compiler half already in
-  `luau.wasm` has no autocomplete entry point; Phase 3's lazy analysis artifact is what
-  would bring one, and it should stay off the load path.
+  pane picks it from the `.luau` extension. **Type-aware completion is in too**, through a
+  second lazy artifact (`luau-analysis.wasm`) built from the same pin and kept off the
+  load path, as decision 8 requires; the editor worker and fallback ladder are described
+  in `luau-autocomplete-plan.md`. Diagnostics and hover are the remaining Phase 3
+  candidates on that artifact.
 - place-reference gets a Luau view of the API surface, and the cookbook gains the journeys
   page. `animal-hospital` ported to Luau as the showcase; the diff is the announcement.
 
@@ -204,9 +204,23 @@ Lazy-load the analysis half (diagnostics, autocomplete, hover — same capabilit
 official playground) behind an editor-only import, tens of MB staying out of the main
 bundle, and never touching the load path (decision 8).
 
-**Autocomplete has its own plan:** `luau-autocomplete-plan.md` — the separate analysis
-artifact, its build and pin, the worker, the editor source, and the fallback ladder.
-Diagnostics and hover are deliberately left open.
+**Autocomplete is implemented as its own artifact.** `luau-autocomplete-plan.md` records
+the design; the shipped version is:
+
+- `packages/luau-runtime/glue/analysis.cpp` and a second CMake target produce
+  `dist/luau-analysis.wasm` (3.38 MB, 1.13 MB gzipped) from the same pin. `dist/luau.wasm`
+  is byte-identical — the second target did not touch the execution link line.
+- `src/analysis.ts` is behind the `./analysis` subpath and is never imported by
+  `src/index.ts`.
+- `apps/spacescape/src/places/editor/luau-analysis.worker.ts` owns a session; the client
+  is lazy, coalesces requests, and falls back to the textual sources after a timeout or an
+  error.
+- The editor source completes member access, standard-library members, the guest API
+  through `require("spacescape")`, cross-file members, and `require("…")` specifiers. The
+  `typeCorrect`/`parentheses`/dot-to-colon fields are mapped to CodeMirror options.
+
+Diagnostics and hover are deliberately left open; the artifact's `Frontend::check` returns
+both, but where they appear is a separate UX question.
 
 ## Risks, honestly listed
 
