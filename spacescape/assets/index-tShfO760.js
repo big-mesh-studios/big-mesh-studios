@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./jszip.min-7Fclil_m.js","./rolldown-runtime-Dd_uD5pT.js","./luau-DnpPA-aL.js","./PlaceEditor-BlpdfvTd.js","./load-place-CUIBdlsL.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./jszip.min-7Fclil_m.js","./rolldown-runtime-Dd_uD5pT.js","./luau-DUfuz-is.js","./PlaceEditor-BdOOHV84.js","./load-place-CSY94dsT.js"])))=>i.map(i=>d[i]);
 import{i as e,n as t,r as n,t as r}from"./rolldown-runtime-Dd_uD5pT.js";(function(){let e=document.createElement(`link`).relList;if(e&&e.supports&&e.supports(`modulepreload`))return;for(let e of document.querySelectorAll(`link[rel="modulepreload"]`))n(e);new MutationObserver(e=>{for(let t of e)if(t.type===`childList`)for(let e of t.addedNodes)e.tagName===`LINK`&&e.rel===`modulepreload`&&n(e)}).observe(document,{childList:!0,subtree:!0});function t(e){let t={};return e.integrity&&(t.integrity=e.integrity),e.referrerPolicy&&(t.referrerPolicy=e.referrerPolicy),t.credentials=e.crossOrigin===`use-credentials`?`include`:e.crossOrigin===`anonymous`?`omit`:`same-origin`,t}function n(e){if(e.ep)return;e.ep=!0;let n=t(e);fetch(e.href,n)}})();var i=class extends Error{source;constructor(e){let t=Error,n=t.stackTraceLimit;n!==void 0&&(t.stackTraceLimit=0),super(),n!==void 0&&(t.stackTraceLimit=n),this.source=e}},a=class extends Error{source;constructor(e,t){super(t instanceof Error?t.message:String(t),{cause:t}),this.source=e}};function o(e){return e instanceof a?e.cause:e}var s=class extends Error{constructor(){super(``)}},c=class extends Error{constructor(){super(``)}},l=1024,u=2048,d={},f={};function p(e){return e===f?void 0:e}var m={},h=Symbol(`refresh`),g=new Set;function _(e){for(;e.tn;)e=e.tn;return e}function v(e,t){if(e=_(e),t=_(t),e===t)return e;t.tn=e;for(let n of t.Ne)e.Ne.add(n);return t.Ne.clear(),e.rn[0].push(...t.rn[0]),e.rn[1].push(...t.rn[1]),t.rn[0].length=0,t.rn[1].length=0,e}function y(e){let t=e.Me;if(!t)return;let n=_(t);if(g.has(n))return n;e.Me=void 0}function b(e){if(x(e)&&e.sn){let t=e.sn=ve(e.sn);if(t.fn!==!0)return t;e.sn=null}return y(e)?.Ie??e.Ie}function x(e){return e.Ae!==void 0&&e.Ae!==d}function S(e,t){let n=_(t),r=e.Me;if(r){if(r.tn){e.Me=t;return}let i=_(r);if(g.has(i)){i!==n&&!x(e)&&(n.an&&_(n.an)===i?e.Me=t:i.an&&_(i.an)===n||v(n,i));return}}e.Me=t}var C=new Set,w={eE:Array(2e3).fill(void 0),tE:!1,He:0,EE:0},T={eE:Array(2e3).fill(void 0),tE:!1,He:0,EE:0},E=0,D=null,O=!1,k=!1,A=!1,j=0,ee=new Set;function te(e){let t=e.m;return C.size===0&&g.size===0&&e.vt.length===0&&t.je.length===0&&t.A.length===0&&t.cn.size===0&&ee.size===0}function M(){if(ee.size!==0)for(let e of ee){if(e.o!==null){ee.delete(e);continue}e.De===d&&(e.Ae===void 0||e.Ae===d)&&(e.t||(ee.delete(e),e.ut?.()))}}function N(){return{Se:E,Qt:[],Ee:new Map,je:[],A:[],cn:new Set,ie:[],yt:{gt:[[],[]],vt:[]},fn:!1,ln:new Set}}function P(e,t){t.fn=e,e.ie.push(...t.ie);for(let n of g)n.Ie===t&&(n.Ie=e);t.je.length&&(e.je.push(...t.je),t.je.length=0),t.A.length&&(e.A.push(...t.A),t.A.length=0);for(let n of t.cn)e.cn.add(n);for(let[n,r]of t.Ee){let t=e.Ee.get(n);t||e.Ee.set(n,t=new Set);for(let e of r)t.add(e)}for(let n of t.ln)e.ln.add(n)}function F(){if(k){I();return}O||(O=!0,!j&&!fe.bt&&queueMicrotask(me))}function ne(e){if(k)return;k=!0;let t=`[REACTIVITY_HALTED]`;e===void 0?console.error(t):console.error(t,e)}function I(){A||(A=!0,console.error(`[REACTIVITY_HALTED]`))}var re=0,ie=class{ve=null;gt=[[],[]];vt=[];kt=0;created=E;addChild(e){this.vt.push(e),e.ve=this}removeChild(e){let t=this.vt.indexOf(e);t>=0&&(this.vt.splice(t,1),e.ve=null)}notify(e,t,n,r){return this.ve?this.ve.notify(e,t,n,r):!1}run(e){if(this.gt[e-1].length){let t=this.gt[e-1];this.gt[e-1]=[],he(t,e)}let t=this.vt,n=++re;for(let r=0;r<t.length;){let i=t[r];if(i.kt!==n&&(i.kt=n,i.run?.(e),t[r]!==i)){r=0;continue}r++}}enqueue(e,t){e&&(z?_(z).rn[e-1].push(t):this.gt[e-1].push(t)),F()}stashQueues(e){e.gt[0].push(...this.gt[0]),e.gt[1].push(...this.gt[1]),this.gt=[[],[]];for(let t=0;t<this.vt.length;t++){let n=this.vt[t],r=e.vt[t];r||(r={gt:[[],[]],vt:[]},e.vt[t]=r),n.stashQueues(r)}}restoreQueues(e){this.gt[0].push(...e.gt[0]),this.gt[1].push(...e.gt[1]);for(let t=0;t<e.vt.length;t++){let n=e.vt[t],r=this.vt[t];r&&r.restoreQueues(n)}}},ae=class e extends ie{bt=!1;m=N();static Ce;static me;static Xe;static Dt=null;static p=null;static G=null;static M=null;static h=null;static dt=null;static It=null;static _e=null;static ce=null;static Ge=null;static un=null;static St=null;static At=null;static Pt=null;static $e=null;static k=null;static Lt=null;static ht=null;static En=null;static dn=null;static Tn=null;static In=null;static Ot=null;static Ct=null;static Rt=null;static Ze=null;static ze=null;static Ke=null;static Nn=null;flush(){if(!this.bt){this.bt=!0;try{if(Oe(w,e.Ce),D){if(!_e(D)){let t=D;Oe(T,e.Ce),this.m===t&&(pe=this.m=N()),g.size&&(e.In(1),e.In(2)),this.stashQueues(t.yt),E++,O=w.EE>=w.He||this.m.Qt.length>0,de(t.Qt),D=null,le(null,!0);return}let t=D,n=this.m;if(n!==t&&n.Qt.push(...t.Qt),this.restoreQueues(t.yt),C.delete(t),D=null,de(n.Qt),le(t),n===t){let e=N();e.Qt=n.Qt,e.je=n.je,e.A=n.A,e.cn=n.cn,pe=this.m=e}}else te(this)?(ce(),w.EE>=w.He&&(Oe(w,e.Ce),ce())):(C.size&&Oe(T,e.Ce),le());E++,O=w.EE>=w.He,g.size&&e.In(1),this.run(1),g.size&&e.In(2),this.run(2)}finally{this.bt=!1}}}notify(e,t,n,r){if(t&1){if(n&1){let t=r===void 0?e._:r;if(t?.l)return!0;if(D&&t){let n=t.source,r=D.Ee.get(n);r||D.Ee.set(n,r=new Set);let i=r.size;r.add(e),r.size!==i&&F()}}return!0}return!1}initTransition(e){if(e&&=ve(e),e&&e===D||!e&&D&&D.Se===E)return;if(!D)D=e??N();else if(e){let t=D;P(e,t),C.delete(t),D=e}C.add(D),D.Se=E;let t=this.m;if(t!==D){for(let e=0;e<t.Qt.length;e++){let n=t.Qt[e];n.Ie=D,D.Qt.push(n)}for(let e=0;e<t.je.length;e++){let n=t.je[e];n.Ie=D,D.je.push(n)}t.A.length&&D.A.push(...t.A);for(let e of t.cn)D.cn.add(e);pe=this.m=D}for(let e of g)e.Ie||=D}};function L(e){pe.Qt.push(e)}var oe=!1;function se(e,t=!1){let n=e.Me||z,r=e.xe!==void 0,i=oe;for(let a=e.o;a!==null;a=a.ue){if(i&&(a.le.se&=~u),r&&a.le.T&8){a.le.se|=256;continue}t&&n?(a.le.se|=128,S(a.le,n)):t&&(a.le.se|=128,a.le.Me=void 0),xe(a.le)}}function R(e){let t=e;if(!t.ae){e.De!==d&&(e.Ue=e.De,e.De=d),(e.he||e.pe)&&ae.un(e);return}e.De!==d&&(e.Ue=e.De,e.De=d,e.Pe&&e.Pe!==3&&(e.Be=!0)),t.se&=~l,t.S&1||(t.S&=-5),(t.Qe!==null||t.ye!==null)&&ae.me(t,!1,!0),(e.he||e.pe)&&ae.un(e)}function ce(){let e=pe.Qt;for(let t=0;t<e.length;t++)R(e[t]);e.length=0}function le(e=null,t=!1){let n=!t;n&&ce(),!t&&fe.vt.length&&ue(fe);let r=w.EE>=w.He;if(r&&Oe(w,ae.Ce),n){r&&ce();let t=e??fe.m;if(t.je.length&&ae.En(t.je),e&&e.ln.size){for(let t of e.ln)t.se&64||xe(t);e.ln.clear()}t.A.length&&(ae.G(t.A),fe.vt.length&&ue(fe)),t.cn.size&&ae.Dt(t.cn,e),M(),g.size&&ae.Tn(e)}}function ue(e){for(let t of e.vt)t.ne?.(),ue(t)}function de(e){for(let t=0;t<e.length;t++)e[t].Ie=D}var fe=new ae,pe=fe.m;function me(e){if(e){j++;try{return e()}finally{try{me()}finally{j--}}}if(!fe.bt&&!k)for(;O||D;)fe.flush()}function he(e,t){for(let n=0;n<e.length;n++)e[n](t)}function ge(e,t){if(e.se&96)return!1;if(e.oe?.has(t))return!0;for(let n=e.et;n;n=n.tt){let e=n.nt;for(;e;){if(e===t||e.it===t)return!0;e=e.nn}}return!!(e.S&1&&e._ instanceof i&&e._.source===t)}function _e(e){if(e.fn)return!0;if(e.ie.length)return!1;let t=!0;for(let[n,r]of e.Ee){let i=!1;for(let e of r){if(ge(e,n)){i=!0;break}r.delete(e)}if(!i)e.Ee.delete(n);else if(n.S&1&&n._?.source===n){t=!1;break}}return t&&ae.dn?.(e)&&(t=!1),t&&(e.fn=!0),t}function ve(e){for(;e.fn&&typeof e.fn==`object`;)e=e.fn;return e}function ye(e,t){let n=D;try{return D=ve(e),t()}finally{D=n}}function be(e){return e.se&32?T:w}function xe(e){if(e.Pe===3){let t=e;t.Be||(t.Be=!0,t.C.enqueue(2,t.Ft));return}let t=be(e);t.He>e.Ve&&(t.He=e.Ve),Ce(e,t)}function Se(e,t){let n=(e.ve?.Nt?e.ve.Tt?.Ve:e.ve?.Ve)??-1;n>=e.Ve&&(e.Ve=n+1);let r=e.Ve,i=t.eE[r];if(i===void 0)t.eE[r]=e;else{let t=i.ot;t.lt=e,e.ot=t,i.ot=e}r>t.EE&&(t.EE=r)}function Ce(e,t){let n=e.se;n&1036||(n&1?e.se=n&-4|10:(e.se=n|8,t.tE&&!(n&2)&&(t.tE=!1)),n&16||Se(e,t))}function we(e,t){let n=e.se;n&1052||(e.se=n|16,Se(e,t))}function Te(e,t){let n=e.se;if(!(n&24))return;e.se=n&-25;let r=e.Ve;if(e.ot===e)t.eE[r]=void 0;else{let n=e.lt,i=t.eE[r],a=n??i;e===i?t.eE[r]=n:e.ot.lt=n,a.ot=e.ot}e.ot=e,e.lt=void 0}function Ee(e){if(!e.tE){e.tE=!0;for(let t=0;t<=e.EE;t++)for(let n=e.eE[t];n!==void 0;n=n.lt)n.se&8&&De(n)}}function De(e,t=2){let n=e.se;if(!((n&3)>=t)){e.se=n&-4|t;for(let t=e.o;t!==null;t=t.ue)De(t.le,1);if(e.u!==null)for(let t=e.u;t!==null;t=t.fe)for(let e=t.o;e!==null;e=e.ue)De(e.le,1)}}function Oe(e,t){for(e.tE=!1,e.He=0;e.He<=e.EE;e.He++){let n=e.eE[e.He];for(;n!==void 0;)n.se&8?t(n):ke(n,e),n=e.eE[e.He]}e.EE=0}function ke(e,t){Te(e,t);let n=e.Ve;for(let t=e.et;t;t=t.tt){let e=t.nt,r=e.it||e;r.ae&&r.Ve>=n&&(n=r.Ve+1)}if(e.Ve!==n){e.Ve=n;for(let t=e.o;t!==null;t=t.ue)we(t.le,be(t.le))}}function Ae(e){let t=e.ke;for(;t;){let e=t.se;t.se=e|32,e&24&&(Te(t,e&32?T:w),e&8?Ce(t,T):we(t,T)),Ae(t),t=t.Fe}}function je(e,t=!1,n){let r=e.se;if(r&64)return;if(t){e.se=r|64;let t=e;(t.he||t.pe)&&ae.un(t)}t&&e.ae&&(e.Te=null);let i=n?e.Qe:e.ke;for(;i;){let e=i.Fe;if(i.et){let e=i;Te(e,be(e));let t=e.et;do t=He(t);while(t!==null);e.et=null,e.We=null}je(i,!0),i=e}if(n?e.Qe=null:(e.ke=null,e.qe=0),t&&!n&&!(r&32)&&e.ve!==null&&!(e.ve.se&64)){let t=e.rt,n=e.Fe;t===null?e.ve.ke=n:t.Fe=n,n!==null&&(n.rt=t),e.rt=null}if(Me(e,n),t&&e.Et){let t=e.Et;e.Et=void 0,t()}}function Me(e,t){let n=t?e.ye:e.Le;if(n){if(Array.isArray(n))for(let e=0;e<n.length;e++){let t=n[e];t.call(t)}else n.call(n);t?e.ye=null:e.Le=null}}function Ne(e,t){let n=e;for(;n.T&4&&n.ve;)n=n.ve;if(n.id!=null)return Ie(n.id,t?n.qe++:n.qe);throw Error(``)}function Pe(e){return Ne(e,!0)}function Fe(e,t,n){return e?.id??(t?n?.id:n?.id==null?void 0:Pe(n))}function Ie(e,t){let n=t.toString(36),r=n.length-1;return e+(r?String.fromCharCode(64+r):``)+n}function Le(){return lt}function Re(e){return lt&&(lt.Le?Array.isArray(lt.Le)?lt.Le.push(e):lt.Le=[lt.Le,e]:lt.Le=e),e}function ze(e=!0){je(this,e)}function Be(e){let t=lt,n=e?.transparent??!1,r={id:Fe(e,n,t),T:n?4:0,Nt:!0,Tt:t?.Nt?t.Tt:t,ke:null,Fe:null,rt:null,Le:null,C:t?.C??fe,we:t?.we||m,qe:0,ye:null,Qe:null,ve:t,dispose:ze};if(t){let e=t.ke;e===null?t.ke=r:(r.Fe=e,e.rt=r,t.ke=r)}return r}function Ve(e,t){let n=Be(t);return Ct(n,()=>e(()=>n.dispose()))}function He(e){let t=e.nt,n=e.tt,r=e.ue,i=e.ll;if(r===null?t.st=i:r.ll=i,i!==null)i.ue=r;else if(t.o=r,r===null){t.ut?.();let e=t;e.ae&&e.T&32&&!(e.se&32)&&!(e.S&1)&&We(e)}return n}function Ue(e){let t=e.We,n=t===null?e.et:t.tt;if(n!==null){do n=He(n);while(n!==null);t===null?e.et=null:t.tt=null}}function We(e){Te(e,be(e));let t=e.et;for(;t!==null;)t=He(t);e.et=null,e.We=null,je(e,!0)}function Ge(e,t,n=!1){let r=t.We;if(r!==null&&r.nt===e){r.Oe&&=n;return}let i=null,a=t.se&4;if(a&&(i=r===null?t.et:r.tt,i!==null&&i.nt===e)){i.nl=t.Ye,t.We=i,i.Oe=n;return}let o=e.st;if(o!==null&&o.le===t&&(!a||o.nl===t.Ye)){a?o.Oe&&=n:o.Oe=n;return}let s=t.We=e.st={nt:e,le:t,tt:i,ll:o,ue:null,nl:t.Ye,Oe:n};r===null?t.et=s:r.tt=s,o===null?e.o=s:o.ue=s}function Ke(e,t){return!e.oe?.has(t)&&((e.oe??=new Set).add(t),!0)}function qe(e,t){return e.oe?.delete(t)?(e.oe.size===0&&(e.oe=void 0),!0):!1}function Je(e){e.oe?.clear(),e.oe=void 0}function Ye(e,t,n){if(!t){e._=null;return}if(n instanceof i&&n.source===t){e._=n;return}let r=e._;(!(r instanceof i)||r.source!==t)&&(e._=new i(t))}function Xe(e,t){for(let n=e.o;n!==null;n=n.ue)t(n.le,n);for(let n=e.u??null;n!==null;n=n.fe)for(let e=n.o;e!==null;e=e.ue)t(e.le,e)}function Ze(e){e.ae&&e.T&32&&!e.o&&!(e.se&32)&&!(e.S&1)&&We(e)}function Qe(e){let t,n=new Set,r=e=>{n.has(e)||(n.add(e),!e.o&&e.T&32&&(t??=[]).push(e),Xe(e,r))};if(Xe(e,r),t)for(let e of t)Ze(e)}function $e(e,t){let n=!1,r=new Set,i=e=>{r.has(e)||(r.add(e),e._===t&&(xe(e),n=!0),Xe(e,i))};Xe(e,i),n&&F()}function et(e){let t=!1,n,r=new Set,i=ae.ce,a=o=>{if(r.has(o)||!qe(o,e))return;r.add(o),o.Se=E;let s=o.oe?.values().next().value;s?(Ye(o,s),i!==null&&i(o)):(o.S&=-2,Ye(o),i!==null&&i(o),o.de&&(xe(o),t=!0),o.de=!1,!o.o&&o.T&32&&(n??=[]).push(o)),Xe(o,a)};if(Xe(e,a),n)for(let e of n)Ze(e);t&&F()}function tt(e){return typeof e==`object`&&!!e&&typeof e.then==`function`}function nt(e,t,n){let r=!1,a=!1;if(typeof t==`object`&&t&&_t(()=>{r=t[Symbol.asyncIterator],a=!r&&tt(t)}),!a&&!r)return e.Te=null,t;e.Te=t;let o,s=()=>{let t=b(e);if(t&&e.S&4&&!ve(t).Ee.has(e)){e.Ie=null;return}fe.initTransition(t)},c=n=>{if(e.Te!==t)return;s();let r=n instanceof i;it(e,r?1:2,n),e.Se=E,r||Qe(e)},l=(r,i)=>{if(e.Te!==t||e.se&130)return;s();let a=!!(e.S&4);Ue(e),rt(e);let o=y(e);if(o&&o.Ne.delete(e),n)n(r),a&&rt(e,!0);else if(e.Ae!==void 0)e.De===d&&L(e),e.De=r,ae._e!==null&&ae._e(e,r),x(e)||se(e),e.Se=E;else if(o){let t=e.Pe,n=e.Ue,i=e.be;try{(!t&&a||!i||!i(r,n))&&(e.Ue=r,e.Se=E,ae._e!==null&&ae._e(e,r),se(e,!0))}catch(t){it(e,2,t)}}else try{bt(e,()=>r)}catch(t){it(e,2,t)}et(e),F(),me(),i?.()},u=()=>e.T&32&&!e.o&&!(e.S&1)?(We(e),!0):!1;if(a){let n=!1,r=!1,a,s=!0;if(t.then(e=>{s?(o=e,n=!0):(l(e),u())},e=>{s?(a=e,r=!0):(c(e),u())}),s=!1,r)throw c(a),a;if(!n)throw fe.initTransition(b(e)),new i(lt)}if(r){let n=t[Symbol.asyncIterator](),r=!1,a=!1,s=!0;Re(()=>{if(!a){a=!0;try{let e=n.return?.();tt(e)&&e.then(void 0,()=>{})}catch{}}});let d=()=>{u()||f()},f=()=>{let i,p,m=!1,h=!1,g=!0;if(n.next().then(n=>{if(g)i=n,m=!0,n.done&&(a=!0);else if(e.Te!==t)return;else n.done?(a=!0,r?(F(),me()):l(void 0),u()):(r=!0,l(n.value,d))},n=>{g?(p=n,h=!0):e.Te===t&&(a=!0,c(n),u())}),g=!1,h){if(a=!0,c(p),s)throw p;return!0}return m&&!i.done?(o=i.value,r=!0,f()):m&&i.done},p=f();if(s=!1,!r&&!p)throw fe.initTransition(b(e)),new i(lt)}return o}function rt(e,t=!1){e.oe&&Je(e),e.de&&=!1,e.Re=!1,e.S=t?0:e.S&4,e._&&Ye(e),(e.he||e.pe)&&ae.ce(e),e.u&&ae.Ge!==null&&ae.Ge(e),e.i&&e.i()}function it(e,t,n,r,o){t===2&&!(n instanceof a)&&!(n instanceof i)&&(n=new a(e,n));let s=t===1&&n instanceof i?n.source:void 0,c=s===e,l=t===1&&e.Ae!==void 0&&!c,u=l&&x(e);r||(t===1&&s?(Ke(e,s),e.S=1|e.S&4,Ye(e,s,n)):(Je(e),e.S=t|(t===2?0:e.S&4),e._=n),ae.ce!==null&&ae.ce(e),e.u&&ae.Ge!==null&&ae.Ge(e)),o&&!r&&S(e,o);let d=r||u,f=r||l?void 0:o;if(e.i){if(r&&t===1)return;d?e.i(t,n):e.i();return}Xe(e,(e,r)=>{if(e.Se=E,t===1&&s&&!e.oe?.has(s)||t!==1&&(e._!==n||e.oe)){if(r.Oe&&t!==1&&!(n instanceof i)){xe(e),F();return}!d&&!e.Ie&&L(e),it(e,t,n,d,f)}})}ae.Ce=ut,ae.me=je;var at=!1,ot=!1,st=!1,ct=!1,lt=null,z=null;function ut(e,t=!1){let n=e.Pe;t||(e.Ie&&(!n||D)&&D!==e.Ie&&fe.initTransition(e.Ie),Te(e,be(e)),e.Te=null,e.Ie||n===3?je(e):(e.ke!==null||e.Le!==null)&&(Ae(e),e.ye=e.Le,e.Qe=e.ke,e.Le=null,e.ke=null,e.qe=0));let r=!!(e.se&128),a=e.Ae!==void 0&&e.Ae!==d,o=!!(e.S&4),s=e.S&2?e._:void 0,c=(e.se&u)!==0,l=lt;lt=e,e.We=null,e.Ye++,e.se=4,e.Se=E;let m=e.De===d?e.Ue:e.De,h=e.Ve,g=at,_=z;at=!0;let v=ct;if(ct=!1,r){let t=ae.Ze(e,!0);t&&(z=t)}else if(D&&!t&&D.je.length){let t=ae.Ze(e,!1);t&&(r=!0,z=t)}let y=n&&n!==2,b=ot;y&&(ot=!0);try{if(e.T&64)m=e.ae(m),e.Te=null;else{let t=e.Te,n=e.ae(m),r=typeof n==`object`&&!!n,i=e.Te!==t;m=i||!r?n:nt(e,n),!i&&!r&&(e.Te=null)}(e.S!==0||e.i!==void 0||e._||e.Re||e.de||e.oe!==void 0||e.he!==void 0||e.pe!==void 0||e.u!==null)&&rt(e,t),e.Me&&ae.Ke(e)}catch(t){t instanceof i&&z&&ae.ze(e);let n=!1;t instanceof i&&(e.de=!0,ae.$e!==null&&(n=ae.$e(e,c))),it(e,t instanceof i?1:2,t,void 0,t instanceof i?e.Me:void 0),n&&ae.k(e)}finally{at=g,ct=v,y&&(ot=b),e.se=0|(t?e.se&256:0),lt=l}if(!e._){Ue(e);let i=a?p(e.Ae):e.De===d?e.Ue:e.De,c=!1;try{c=!n&&o||!e.be||!e.be(i,m)}catch(t){it(e,2,t)}if(n&&c&&(e.Be=!e._,t||e.C.enqueue(n,e.Je??=ae.Xe.bind(null,e))),!e._){if(c){let i=a?e.Ae:void 0;t||n&&(D!==e.Ie||D===null)||r?(e.Ue=m,a&&r&&(e.Ae=m===void 0?f:m,e.De=d)):(e.De=m,(D||e.Ie)&&ae._e!==null&&ae._e(e,m)),e.o!==null&&(!a||r||e.Ae!==i)&&se(e,r||a)}else if(a)e.De===d&&L(e),e.De=m;else if(e.Ve!=h)for(let t=e.o;t!==null;t=t.ue)we(t.le,be(t.le))}s!==void 0&&!c&&!e._&&$e(e,s)}z=_,(e.De!==d||e.Qe!==null||e.ye!==null||e.S&5)&&(!t||e.S&1)&&(!e.Ie||a)&&L(e),e.Ie&&n&&D!==e.Ie&&ye(e.Ie,()=>ut(e))}function B(e){if(e.se&1)for(let t=e.et;t;t=t.tt){let n=t.nt,r=n.it||n;if(r.ae&&B(r),e.se&2)break}(e.se&130||e._&&e.Se<E&&!e.Te)&&ut(e),e.se&=280}function dt(e,t){let n=t?.transparent??!1,r={id:Fe(t,n,lt),T:(n?4:0)|!!t?.ownedWrite|(!lt||t?.lazy?32:0)|(t?.sync?64:0)|(t?.V?2:0)|0,be:t?.equals==null?gt:t.equals,ut:t?.unobserved,Le:null,C:lt?.C??fe,we:lt?.we??m,qe:0,ae:e,Ue:void 0,Ve:0,u:null,lt:void 0,ot:null,et:null,We:null,Ye:0,o:null,st:null,ve:lt,Fe:null,rt:null,ke:null,se:t?.lazy?512:0,S:4,Se:E,De:d,ye:null,Qe:null,Te:null,Ie:null,Re:!1};return mt(r,t),r}function ft(e,t,n,r,i,a){let o=a?.transparent??!1,s={id:Fe(a,o,lt),T:(o?4:0)|!!a?.ownedWrite|(a?.sync?64:0)|0,be:!1,ut:a?.unobserved,Le:null,C:lt?.C??fe,we:lt?.we??m,qe:0,ae:e,Ue:void 0,Ve:0,u:null,lt:void 0,ot:null,et:null,We:null,Ye:0,o:null,st:null,ve:lt,Fe:null,rt:null,ke:null,se:512,S:4,Se:E,De:d,ye:null,Qe:null,Te:null,Ie:null,Re:!1,Be:!1,ct:void 0,_t:t,ft:n,Et:void 0,Pe:r,i};return mt(s,pt),s}var pt={lazy:!0};function mt(e,t){e.ot=e;let n=lt?.Nt?lt.Tt:lt;if(lt){let t=lt.ke;t===null?lt.ke=e:(e.Fe=t,t.rt=e,lt.ke=e)}n&&(e.Ve=n.Ve+1),ae.dt!==null&&ae.dt(e),!t?.lazy&&ut(e,!0)}function ht(e,t,n=null){let r={be:t?.equals==null?gt:t.equals,T:+!!t?.ownedWrite|(t?.V?2:0),ut:t?.unobserved,Ue:e,o:null,st:null,Se:E,it:n,fe:n?.u||null,De:d};return n&&(n.u=r),r}function gt(e,t){return e===t}function _t(e,t){if(ae.It===null&&!at)return e();let n=at;at=!1;try{return ae.It===null?e():ae.It(e)}finally{at=n}}function vt(e,t){e.se&512?(e.se&=-513,ut(e,!0)):e.se&64?ut(e,!0):t&&B(e)}function yt(e){if(ct)return ae.St(e);let t=lt;t?.Nt&&(t=t.Tt);let n=e,r=e.it||e;if(typeof n.ae==`function`&&vt(e,!1),!n.ae&&r===e&&e.Ae===void 0&&e.xe===void 0&&D===null&&z===null)return t&&at&&Ge(e,t),!t||e.De===d?e.Ue:e.De;if(t&&at&&(Ge(e,t,st),r.ae)){let n=be(e);r.Ve>=n.He&&(De(t),Ee(n),B(r));let i=r.Ve;i>=t.Ve&&e.ve!==t&&(t.Ve=i+1)}if(r.S&1){if(t&&!(ot&&r.Ie&&D!==r.Ie)){if(z===null||ae.Ct(r))throw!at&&e!==t&&Ge(e,t),r._}else if(t&&r!==e&&r.S&4)throw!at&&e!==t&&Ge(e,t),r._;else if(!t&&r.S&4)throw r._}if(r.ae&&r.S&2){if(at&&r.Se<E)return ut(r),yt(e);throw r._}if(e.Ae!==void 0&&e.Ae!==d)return p(e.Ae);if(z!==null&&D!==null&&t!==null&&ae.Ot(e,r,t))return e.Ue;let i=!t||z!==null&&ae.Rt(e,r,t)||e.De===d||ot&&e.Ie&&D!==e.Ie?e.Ue:e.De;return!t&&r===e&&typeof n.ae==`function`&&e.T&32&&!(r.S&1)&&!e.o&&We(e),i}function bt(e,t){if(e.Ie&&D!==e.Ie&&fe.initTransition(e.Ie),e.Ae!==void 0)return ae.ht(e,t);let n=e.De===d?e.Ue:e.De;return typeof t==`function`&&(t=t(n)),e.S&4||!e.be||!e.be(n,t)?(e.De===d&&L(e),e.De=t,(e.he!==void 0||e.pe!==void 0)&&ae._e!==null&&ae._e(e,t),e.Se=E,se(e),F(),t):t}function xt(e){Te(e,be(e)),!(e.se&1024)&&e.De===d&&(L(e),F()),e.se=e.se&-4|l}function St(e,t){let n=bt(e,t);return xt(e),n}function Ct(e,t){let n=lt,r=at;lt=e,at=!1;try{return t()}finally{lt=n,at=r}}function wt(e,t=!0){let n=ot;ot=t;try{return e()}finally{ot=n}}function Tt(e,t=Le()){if(!t)throw new s;let n=Dt(e,t)?t.we[e.id]:e.defaultValue;if(Ot(n))throw new c;return n}function Et(e,t,n=Le()){if(!n)throw new s;n.we={...n.we,[e.id]:Ot(t)?e.defaultValue:t}}function Dt(e,t){return!Ot(t?.we[e.id])}function Ot(e){return e===void 0}function kt(e,t,n,r){let i=ft(e,t,n,r?.user?2:1,At,r);ut(i,!0),!r?.defer&&(i.Pe===2||r?.schedule?i.C.enqueue(i.Pe,jt.bind(null,i)):jt(i))}function At(e,t){let n=e===void 0?this.S:e,r=t===void 0?this._:t;if(n&2){if(this.C.notify(this,1,0),this.Pe===2){this.S&2&&(this.Be=!0,this.C.enqueue(this.Pe,this.Je??=jt.bind(null,this)));return}if(!this.C.notify(this,2,2))throw ne(o(r)),r}else this.Pe===1&&this.C.notify(this,3,n,r)}function jt(e){if(!e.Be||e.se&64)return;if(e.S&2&&e.Pe===2){let t=o(e._);e.ct=e.Ue,e.Be=!1;try{e.ft?e.ft(t,()=>{let t=e.Et;e.Et=void 0,t?.()}):console.error(t)}catch(t){if(!e.C.notify(e,2,2))throw ne(t),t}return}let t=e.Et;e.Et=void 0;try{t?.(),e.Et=e._t(e.Ue,e.ct)}catch(t){if(e._=new a(e,t),e.S|=2,!e.C.notify(e,2,2))throw ne(t),t}finally{e.ct=e.Ue,e.Be=!1}}ae.Xe=jt;function Mt(e,t){let n=()=>{if(!(!r.Be||r.se&64))try{r.Be=!1,ut(r)}finally{}},r=dt(()=>{let t=r.Et;r.Et=void 0,t?.();let n=wt(e);r.Et=n},{...t,lazy:!0});r.Et=void 0,r.T=r.T&-33|16,r.Be=!0,r.Pe=3,r.i=(e,t)=>{if((e===void 0?r.S:e)&2){r.C.notify(r,1,0);let e=t===void 0?r._:t;if(!r.C.notify(r,2,2))throw ne(o(e)),e}},r.Ft=n,r.C.enqueue(2,n)}function Nt(e){return Re(e)}function Pt(e){let t=yt.bind(null,e);return t[h]=e,t}function Ft(e,t){if(typeof e==`function`){let n=dt(e,t);return n.T&=-33,[Pt(n),St.bind(null,n)]}let n=ht(e,t);return[Pt(n),bt.bind(null,n)]}function It(e,t){return Pt(dt(e,t))}function Lt(e,t,n){kt(e,t.effect||t,t.error,{user:!0,...n})}function Rt(e,t,n){kt(e,t,void 0,n)}function zt(e,t){Mt(e,t)}function Bt(e){let t=Le();t&&!(t.T&16)?zt(()=>_t(e),void 0):fe.enqueue(2,()=>{e()})}var Vt=Symbol(0);function Ht(e,t,n){let r=typeof n?.keyed==`function`?n.keyed:void 0,i=t.length>1,a=t,o={wt:Be(),jt:0,Wt:e,Mt:[],Kt:a,xt:[],Gt:[],Ut:r,$t:r||n?.keyed===!1?[]:void 0,qt:i&&n?.keyed!==!1?[]:void 0,zt:n?.keyed===!1,Bt:n?.fallback},s=dt(Wt.bind(o));return o.wt.Tt=s,s.T&=-33,Pt(s)}var Ut={ownedWrite:!0};function Wt(){let e=this.Wt()||[],t=e.length;return e[Vt],Ct(this.wt,()=>{let n,r,i,a,o=this.$t?this.zt?()=>(i[r]=ht(e[r],Ut),this.Kt(Pt(i[r]),r)):()=>(i[r]=ht(e[r],Ut),a&&(a[r]=ht(r,Ut)),this.Kt(Pt(i[r]),a?Pt(a[r]):void 0)):this.qt?()=>{let t=e[r];return a[r]=ht(r,Ut),this.Kt(t,Pt(a[r]))}:()=>{let t=e[r];return this.Kt(t)};if(t===0)this.jt!==0&&(this.wt.dispose(!1),this.Gt=[],this.Mt=[],this.xt=[],this.jt=0,this.$t&&=[],this.qt&&=[]),this.Bt&&!this.xt[0]&&(this.Gt[0]?.dispose(),this.xt[0]=Ct(this.Gt[0]=Be(),this.Bt));else if(this.jt===0){let s=Array(t),c=Array(t);i=this.$t&&Array(t),a=this.qt&&Array(t);try{for(r=0;r<t;r++)s[r]=Ct(c[r]=Be(),o)}catch(e){for(n=0;n<=r;n++)c[n]?.dispose();throw e}this.Gt[0]&&this.Gt[0].dispose(),this.xt=s,this.Gt=c,i&&(this.$t=i),a&&(this.qt=a),this.Mt=e.slice(0),this.jt=t}else{let s,c,l,u,d,f,p,m,h;for(s=0,c=Math.min(this.jt,t);s<c&&(this.Mt[s]===e[s]||this.$t&&Gt(this.Ut,this.Mt[s],e[s]));s++)this.$t&&bt(this.$t[s],e[s]);for(c=this.jt-1,l=t-1;c>=s&&l>=s&&(this.Mt[c]===e[l]||this.$t&&Gt(this.Ut,this.Mt[c],e[l]));c--,l--);if(s===t&&this.jt===t){this.Mt=e.slice(0);return}let g=t-this.jt,_=Array(t),v=Array(t);for(i=this.$t?Array(t):void 0,a=this.qt?Array(t):void 0,f=new Map,p=Array(l+1),r=l;r>=s;r--)u=e[r],d=this.Ut?this.Ut(u):u,n=f.get(d),p[r]=n===void 0?-1:n,f.set(d,r);for(n=s;n<=c;n++)u=this.Mt[n],d=this.Ut?this.Ut(u):u,r=f.get(d),r!==void 0&&r!==-1?(_[r]=this.xt[n],v[r]=this.Gt[n],i&&(i[r]=this.$t[n]),a&&(a[r]=this.qt[n]),r=p[r],f.set(d,r)):(m??=[]).push(this.Gt[n]);try{for(r=s;r<=l;r++)v[r]===void 0&&((h??=[]).push(v[r]=Be()),_[r]=Ct(v[r],o))}catch(e){if(h)for(n=0;n<h.length;n++)h[n].dispose();throw e}for(n=0;n<s;n++)_[n]=this.xt[n],v[n]=this.Gt[n],i&&(i[n]=this.$t[n]),a&&(a[n]=this.qt[n]);for(r=s;r<=l;r++)i&&bt(i[r],e[r]),a&&bt(a[r],r);for(r=l+1;r<t;r++)_[r]=this.xt[r-g],v[r]=this.Gt[r-g],i&&(i[r]=this.$t[r-g],bt(i[r],e[r])),a&&(a[r]=this.qt[r-g],g!==0&&bt(a[r],r));if(this.xt=_,this.Gt=v,i&&(this.$t=i),a&&(this.qt=a),this.jt=t,this.Mt=e.slice(0),m)for(n=0;n<m.length;n++)m[n].dispose()}}),this.xt}function Gt(e,t,n){return!e||e(t)===e(n)}function Kt(e,t){if(typeof e==`function`&&!e.length){if(t?.doNotUnwrap)return e;do e=e();while(typeof e==`function`&&!e.length)}if(!t?.skipNonRendered||e!=null&&e!==!0&&e!==!1&&e!==``){if(Array.isArray(e)){let n=[];return qt(e,n,t)?()=>{let e=[];return qt(n,e,{...t,doNotUnwrap:!1}),e}:n}return e}}function qt(e,t=[],n){let r=null,a=!1;for(let o=0;o<e.length;o++)try{let r=e[o];if(typeof r==`function`&&!r.length){if(n?.doNotUnwrap){t.push(r),a=!0;continue}do r=r();while(typeof r==`function`&&!r.length)}Array.isArray(r)?a=qt(r,t,n):n?.skipNonRendered&&(r==null||r===!0||r===!1||r===``)||t.push(r)}catch(e){if(!(e instanceof i))throw e;r=e}if(r)throw r;return a}var Jt=!1;function Yt(e,t){let n=Symbol(t&&t.name||``);function r(e){return Ve(()=>(Et(r,e.value),V(()=>e.children)))}return r.id=n,r.defaultValue=e,r}function Xt(e){return Tt(e)}function V(e){let t=It(e,{lazy:!0}),n=It(()=>Kt(t()),{lazy:!0,sync:!0});return n.toArray=()=>{let e=n();return Array.isArray(e)?e:e==null?[]:[e]},n}var Zt={hydrating:!1,registry:void 0,done:!1,isHydrationInProgress:en,onHydrationEnd:tn},Qt=null,$t=0;function en(){return Zt.hydrating||$t>0}function tn(e){if(!Zt.hydrating&&$t===0){queueMicrotask(e);return}Qt||=[],Qt.push(e)}var nn=(...e)=>It(...e),rn=(...e)=>Ft(...e),an=(...e)=>Rt(...e),on=(...e)=>Lt(...e);function H(e,t){return _t(()=>e(t||{}))}var sn=e=>`Stale read from <${e}>.`;function cn(e){let t=`fallback`in e?{keyed:e.keyed,fallback:()=>e.fallback}:{keyed:e.keyed};return Ht(()=>e.each,e.children,t)}function ln(e){let t=e.keyed,n=It(()=>e.when,void 0),r=t?n:It(n,{equals:(e,t)=>!e==!t,sync:!0});return It(()=>{let i=r();if(i){let a=e.children;return typeof a==`function`&&a.length>0?_t(t?()=>a(i):()=>a(()=>{if(!_t(r))throw sn(`Show`);return n()}),Jt):a}return e.fallback},{sync:!0})}var un=`modulepreload`,dn=function(e,t){return new URL(e,t).href},fn={},pn=function(e){return e.pathname.endsWith(`.css`)},mn=function(e,t,n){let r=Promise.resolve();if(t&&t.length>0){let e,i=document.querySelector(`meta[property=csp-nonce]`),a=i?.nonce||i?.getAttribute(`nonce`);function o(e){return Promise.all(e.map(e=>Promise.resolve(e).then(e=>({status:`fulfilled`,value:e}),e=>({status:`rejected`,reason:e}))))}function s(e){return import.meta.resolve?new URL(import.meta.resolve(e)):new URL(e,import.meta.url)}r=o(t.map(t=>{t=dn(t,n);let r=s(t);if(r.href in fn)return;fn[r.href]=!0;let i=pn(r);if(e===void 0){e={all:new Set,styles:new Set};let t=document.getElementsByTagName(`link`);for(let n=t.length-1;n>=0;n--){let r=t[n];e.all.add(r.href),r.rel===`stylesheet`&&e.styles.add(r.href)}}if((i?e.styles:e.all).has(r.href))return;let o=document.createElement(`link`);if(o.rel=i?`stylesheet`:un,i||(o.as=`script`),o.crossOrigin=``,o.href=r.href,a&&o.setAttribute(`nonce`,a),document.head.appendChild(o),i)return new Promise((e,t)=>{o.addEventListener(`load`,e),o.addEventListener(`error`,()=>t(Error(`Unable to preload CSS for ${r}`)))})}).filter(e=>e!==void 0))}function i(e){let t=new Event(`vite:preloadError`,{cancelable:!0});if(t.payload=e,window.dispatchEvent(t),!t.defaultPrevented)throw e}return r.then(t=>{for(let e of t||[])e.status===`rejected`&&i(e.reason);return e().catch(i)})},hn={INPUT:{value:1,defaultValue:2,checked:1,defaultChecked:2},SELECT:{value:1},OPTION:{value:1,selected:1,defaultSelected:2},TEXTAREA:{value:1,defaultValue:2},VIDEO:{muted:1,defaultMuted:2},AUDIO:{muted:1,defaultMuted:2}},gn=new Set([`innerHTML`,`textContent`,`innerText`,`children`]),_n=Symbol(`slot`),vn=Symbol(`host`),yn=new Set([`beforeinput`,`click`,`dblclick`,`contextmenu`,`focusin`,`focusout`,`input`,`keydown`,`keyup`,`mousedown`,`mousemove`,`mouseout`,`mouseover`,`mouseup`,`pointerdown`,`pointermove`,`pointerout`,`pointerover`,`pointerup`,`touchend`,`touchmove`,`touchstart`]),bn={svg:`http://www.w3.org/2000/svg`,mathml:`http://www.w3.org/1998/Math/MathML`,xlink:`http://www.w3.org/1999/xlink`,xml:`http://www.w3.org/XML/1998/namespace`},xn={transparent:!0,sync:!0},Sn={sync:!0},Cn=(e,t,n)=>an(e,t,n?{sync:!0,...n,transparent:!n.scope}:xn),wn=e=>nn(()=>e(),Sn);function Tn(e,t,n,r){let i=n.length,a=t.length,o=i,s=0,c=0,l=t[a-1],u=l[_n],d=l.parentNode===e&&(!u||u===r)?l.nextSibling:r||null,f=null,p,m;for(;s<a||c<o;){if(t[s]===n[c]){s++,c++;continue}for(;t[a-1]===n[o-1];)a--,o--;if(a===s){let t;if(o<i){if(c){let i=n[c-1],a=i[_n];t=i.parentNode===e&&(!a||a===r)?i.nextSibling:d}else t=n[o-c]}else t=d;for(;c<o;){let i=n[c++];e.insertBefore(i,t),r&&(i[_n]=r)}}else if(o===c)for(;s<a;){let n=t[s++];if(!f||!f.has(n)){let t=n[_n];n.parentNode===e&&(!t||t===r)&&n.remove()}}else if((p=t[s])===n[o-1]&&n[c]===t[a-1]&&p.parentNode===e&&(!(m=p[_n])||m===r)){if(r)do{let n=t[--a];if(e.insertBefore(n,p),n[_n]=r,c++,s>=a-1||c>=o)break}while(t[s]===n[o-1]&&n[c]===t[a-1]);else do if(e.insertBefore(t[--a],p),c++,s>=a-1||c>=o)break;while(t[s]===n[o-1]&&n[c]===t[a-1])}else{if(!f){f=new Map;let e=c;for(;e<o;)f.set(n[e],e++)}let i=f.get(t[s]);if(i!=null){if(c<i&&i<o){let l=s,u=1,p;for(;++l<a&&l<o&&(p=f.get(t[l]))!=null&&p===i+u;)u++;if(u>i-c){let a=t[s],o=a[_n],l=a.parentNode===e&&(!o||o===r)?a:d;for(;c<i;){let t=n[c++];e.insertBefore(t,l),r&&(t[_n]=r)}}else{let i=t[s++],a=n[c++],o=i[_n];i.parentNode===e&&(!o||o===r)?e.replaceChild(a,i):e.insertBefore(a,d),r&&(a[_n]=r)}}else s++}else{let n=t[s++],i=n[_n];n.parentNode===e&&(!i||i===r)&&n.remove()}}}}var En=`_$DX_EVENT_OWNER`,Dn={},U=new Set,On=new Map;function kn(e,t,n,r={}){let i;Nn(t);try{Ve(a=>{if(i=a,t===document){let t=e();Cn(()=>Kt(t),()=>{})}else{let i=e();Qn(t,()=>i,t.firstChild?null:void 0,n,r.insertOptions)}},{id:r.renderId})}catch(e){throw i&&i(),Pn(t),e}return()=>{i(),Pn(t),t.textContent=``}}function An(e,t,n){let r=document.createElement(`template`);return r.innerHTML=e,n===2?r.content.firstChild.firstChild:r.content.firstChild}function jn(e,t){let n;return t===1?r=>document.importNode(n||=An(e,r,t),!0):r=>(n||=An(e,r,t)).cloneNode(!0)}function Mn(e){for(let t=0,n=e.length;t<n;t++){let n=e[t];U.has(n)||(U.add(n),On.forEach((e,t)=>Ln(n,t,e)))}}function Nn(e){let t=Fn(e,e);t&&(t.roots=(t.roots||0)+1)}function Pn(e){let t=On.get(e);t&&(t.roots>1?t.roots--:delete t.roots),In(e,e)}function Fn(e,t=e){if(!e||!t)return;let n=On.get(e);return n||On.set(e,n={owners:new Map,handlers:new Map}),n.owners.set(t,(n.owners.get(t)||0)+1),U.forEach(t=>Ln(t,e,n)),n}function In(e,t=e){let n=On.get(e);if(!n)return;let r=n.owners.get(t);r>1?n.owners.set(t,r-1):n.owners.delete(t),!n.owners.size&&(n.handlers.forEach((t,n)=>e.removeEventListener(n,t)),On.delete(e))}function Ln(e,t,n){if(n.handlers.has(e))return;let r=e=>ir(e,t,n);n.handlers.set(e,r),t.addEventListener(e,r)}function Rn(e,t){let n=e,r=0;for(;n;){if(t.owners.has(n))return{owner:n,distance:r};r++,n=n._$host||n.parentNode||n.host}}var zn=null;function Bn(e){if(zn!==null)for(let t=0;t<zn.length;t++)zn[t](e);return e}function Vn(e,t,n){er(e)||(n==null||n===!1?e.removeAttribute(t):e.setAttribute(t,n===!0?``:n),zn!==null&&(t===`href`||t===`action`)&&Bn(e))}function Hn(e,t,n,r){er(e)||(r==null||r===!1?e.removeAttributeNS(t,n.indexOf(`:`)>-1?n.split(`:`).pop():n):e.setAttributeNS(t,n,r===!0?``:r))}function Un(e,t,n){if(er(e))return;if(t==null||t===!1){n&&e.removeAttribute(`class`);return}if(typeof t==`string`){t!==n&&e.setAttribute(`class`,t);return}typeof n==`string`?(n={},e.removeAttribute(`class`)):n=tr(n||{}),t=tr(t);let r=Object.keys(t||{}),i=Object.keys(n),a,o;for(a=0,o=i.length;a<o;a++){let n=i[a];n&&n!==`undefined`&&!t[n]&&e.classList.remove(n)}for(a=0,o=r.length;a<o;a++){let i=r[a],o=!!t[i];i&&i!==`undefined`&&n[i]!==o&&o&&e.classList.add(i)}}function Wn(e,t,n,r){if(r)Array.isArray(n)?(e[`$$${t}`]=n[0],e[`$$${t}Data`]=n[1]):e[`$$${t}`]=n;else if(Array.isArray(n)){let r=n[0];e.addEventListener(t,n[0]=t=>r.call(e,n[1],t))}else e.addEventListener(t,n,typeof n!=`function`&&n)}function Gn(e,t,n){if(!t){(n||e._$styles)&&(Vn(e,`style`),e._$styles=void 0);return}let r=e.style;if(typeof t==`string`)return e._$styles=void 0,r.cssText=t;typeof n==`string`&&(r.cssText=``,n=void 0);let i=e._$styles;i||=e._$styles=n?{...n}:{};let a,o;for(o in i)t[o]??(r.removeProperty(o),delete i[o]);for(o in t)a=t[o],a!=null&&a!==i[o]&&(r.setProperty(o,a),i[o]=a)}function Kn(e,t,n){n==null?e.style.removeProperty(t):e.style.setProperty(t,n)}function qn(e,t={},n){let r={};return n||Qn(e,()=>t.children),Cn(()=>{let n=t.ref;(typeof n==`function`||Array.isArray(n))&&Yn(()=>n,e)},()=>{}),Cn(()=>{let e={};for(let n in t)n!==`children`&&n!==`ref`&&(e[n]=t[n]);return e},t=>$n(e,t,!0,r,!0)),r}function Jn(e,t){Array.isArray(e)?e.flat(1/0).forEach(e=>e&&e(t)):e(t)}function Yn(e,t){let n=_t(e);Ct(null,()=>Jn(n,t))}var Xn={scope:!0},Zn=null;function Qn(e,t,n,r,i){let a=n!==void 0,o=i&&i.host;if(a&&!r&&(r=[]),Zn!==null&&(r=Zn.claimInitial(e,a,r)),typeof t!=`function`&&(t=or(t,r,a,!0),typeof t!=`function`)){ar(e,t,r,n),o&&sr(t,o);return}if(a&&r.length===0){let t=document.createTextNode(``);e.insertBefore(t,n),r=[t]}let s=r;Cn(r=>{Zn!==null&&(s=Zn.reclaimRegion(s,e,n));let c=or(t(),s,a,!0);return typeof c==`function`?(Cn(()=>(Zn!==null&&(s=Zn.reclaimRegion(s,e,n)),or(c,s,a)),t=>{ar(e,t,s,n),s=t,o&&sr(s,o)},r!==void 0&&!(i&&i.schedule)?{...i,schedule:!0}:i),Dn):c},t=>{t!==Dn&&(ar(e,t,s,n),s=t,o&&sr(s,o))},t.$s?i?{...i,scope:!0}:Xn:i)}function $n(e,t,n,r={},i=!1){let a=e.nodeName;t||={};for(let n in r)if(!(n in t)){if(n===`children`)continue;r[n]=rr(e,n,null,r[n],i,a)}for(let o in t){if(o===`children`){n||ar(e,or(t.children,void 0,!1));continue}r[o]=rr(e,o,t[o],r[o],i,a)}}function er(e){if(!Zt.hydrating)return!1;if(!e||e.isConnected)return!0;let t=Zt.claimRoots;if(t){for(let n=0;n<t.length;n++)if(t[n].contains(e))return!0}return!1}function tr(e){if(Array.isArray(e)){let t={};nr(e,t),e=t}if(e&&typeof e==`object`){let t={},n=Object.keys(e);for(let r=0,i=n.length;r<i;r++){let i=n[r];if(!e[i])continue;let a=i.trim().split(/\s+/);for(let e=0,n=a.length;e<n;e++)a[e]&&(t[a[e]]=!0)}return t}return e}function nr(e,t){for(let n=0,r=e.length;n<r;n++){let r=e[n];Array.isArray(r)?nr(r,t):typeof r==`object`&&r?Object.assign(t,r):(r||r===0)&&(t[r]=!0)}}function rr(e,t,n,r,i,a){if(t===`style`)return Gn(e,n,r),n;if(t===`class`)return Un(e,n,r),n;if(n===r&&hn[a]?.[t]!==1)return r;if(t===`ref`)return!i&&n&&Yn(()=>n,e),n;let o=t.indexOf(`:`)>-1;if(!o&&t.slice(0,2)===`on`){let i=t.slice(2).toLowerCase(),a=yn.has(i);if(!a&&r){let t=Array.isArray(r)?r[0]:r;e.removeEventListener(i,t)}(a||n)&&(Wn(e,i,n,a),a&&Mn([i]))}else if(o&&t.slice(0,5)===`prop:`||gn.has(t)||hn[a]?.[t]){if(o)t=t.slice(5);else if(er(e))return n;t===`value`&&a===`SELECT`?queueMicrotask(()=>e.value=n)||(e.value=n):(t===`value`||t===`defaultValue`)&&(a===`INPUT`||a===`TEXTAREA`)?e[t]=n??``:e[t]=n}else{let r=o&&bn[t.split(`:`)[0]];r?Hn(e,r,t,n):Vn(e,t,n)}return n}function ir(e,t,n){if(Zn!==null&&Zn.dedupEvent(e))return;let r=e[En],i;if(r){if(r===!0||r===t||!t.contains(r))return;i=r}let a=n&&(n.owners.size===1&&n.owners.has(t)?t:Rn(e.target,n)?.owner);if(n&&!a)return;e[En]=a||!0;let o=i||e.target,s=`$$${e.type}`,c=e.target,l=a||t||e.currentTarget,u=t=>Object.defineProperty(e,"target",{configurable:!0,value:t}),d=()=>{let t=o[s];if(t&&!o.disabled){let n=o[`${s}Data`];if(n===void 0?t.call(o,e):t.call(o,n,e),e.cancelBubble)return}return o.host&&typeof o.host!=`string`&&!o.host._$host&&o.contains(e.target)&&u(o.host),!0},f=()=>{for(;d()&&o!==l&&o.parentNode!==l;)o=o._$host||o.parentNode||o.host};if(Object.defineProperty(e,"currentTarget",{configurable:!0,get(){return o||l||document}}),i)i===e.target&&(o=i._$host||i.parentNode||i.host),o&&o!==l&&f();else if(e.composedPath){let t=e.composedPath();if(t.length){u(t[0]);for(let e=0;e<t.length&&(o=t[e],d());e++){if(o._$host){o=o._$host,f();break}if(o===l||o.parentNode===l)break}}else f()}else f();u(c)}function ar(e,t,n,r){if(Zn!==null&&er(e)||t===n)return;let i=typeof t,a=r!==void 0;if(i===`string`||i===`number`){let r=typeof n;r===`string`||r===`number`?e.firstChild.data=t:lr(e,n)?e.textContent=t:(ur(e,n),e.insertBefore(document.createTextNode(t),e.firstChild))}else if(t===void 0)dr(e,n,r);else if(t.nodeType)Array.isArray(n)?dr(e,n,a?r:null,t):n&&n.nodeType?n.parentNode===e?e.replaceChild(t,n):e.appendChild(t):n&&e.firstChild?e.replaceChild(t,e.firstChild):e.appendChild(t),r&&(t[_n]=r);else if(Array.isArray(t)){let i=n&&Array.isArray(n);t.length===0?dr(e,n,r):i?n.length===0?cr(e,t,r):Tn(e,n,t,r):(n&&dr(e,n),cr(e,t))}}function or(e,t,n,r){if(e=Kt(e,{skipNonRendered:!0,doNotUnwrap:r}),r&&typeof e==`function`)return e;if(n&&!Array.isArray(e)&&(e=[e??``]),Array.isArray(e))for(let n=0,r=e.length;n<r;n++){let r=e[n],i=t&&t[n],a=typeof r;(a===`string`||a===`number`)&&(e[n]=i&&i.nodeType===3&&(Zt.hydrating||i.data===``+r)?i:document.createTextNode(r))}return e}function sr(e,t){if(Array.isArray(e))for(let n=0,r=e.length;n<r;n++)sr(e[n],t);else e&&e.nodeType&&e[vn]!==t&&(e[vn]=t,Object.defineProperty(e,"_$host",{get:t,configurable:!0}))}function cr(e,t,n=null){for(let r=0,i=t.length;r<i;r++){let i=t[r];e.insertBefore(i,n),n&&(i[_n]=n)}}function lr(e,t){if(t==null)return!0;if(Array.isArray(t))return t.length?e.firstChild===t[0]&&e.lastChild===t[t.length-1]:e.firstChild===null;if(t===``)return e.firstChild===null;if(t.nodeType)return e.firstChild===t&&e.lastChild===t;let n=e.firstChild;return n!==null&&n.nodeType===3&&e.lastChild===n}function ur(e,t){if(Array.isArray(t))for(let n=0;n<t.length;n++){let r=t[n];r.parentNode===e&&r.remove()}else if(t.nodeType)t.parentNode===e&&t.remove();else{let t=e.firstChild;t&&t.nodeType===3&&t.remove()}}function dr(e,t,n,r){if(n===void 0)return lr(e,t)?e.textContent=``:ur(e,t);if(t.length){let i=!1;for(let a=t.length-1;a>=0;a--){let o=t[a];if(r!==o){let t=o[_n],s=o.parentNode===e&&(!t||t===n);r&&!i&&!a?s?e.replaceChild(r,o):e.insertBefore(r,n):s&&o.remove()}else i=!0}}else r&&e.insertBefore(r,n);r&&n&&(r[_n]=n)}var fr=Symbol.for(`solid.ResponseEnvelope`),pr=class{constructor(e,t){this.response=e,this.value=t}};pr.prototype[fr]=!0;function mr(e,t,n,r={}){try{let i=kn(e,t,n,{...r,insertOptions:{schedule:!0}});return me(),i}finally{}}var hr=class extends Error{name=`RmslError`;code;constructor(e,t,n={}){super(t,`cause`in n?{cause:n.cause}:void 0),this.code=e,n.target!==void 0&&(this.target=n.target)}},gr=class extends hr{name=`NodeError`},_r=class extends hr{name=`ProgramError`},vr=class extends hr{name=`UsageError`},yr=class extends hr{name=`TargetError`;constructor(e,t,n){super(e,t,n)}},br=class extends hr{name=`PlatformError`;constructor(e,t,n){super(e,t,n)}},xr=class extends hr{name=`DriverError`;log;constructor(e,t,n){super(e,t,n),this.log=n.log}},Sr=class extends hr{name=`InternalError`};function Cr(e){return`${(/^[A-Z]{2}/.test(e)?/^[AEFHILMNORSX]/.test(e):/^[aeio]/i.test(e)||/^u/i.test(e)&&!/^u(int|vec|sampler|norm|ni|se)/i.test(e))?`an`:`a`} ${e}`}var wr=e=>e.split(/\s+/).filter(Boolean),Tr=new Set([...wr(`attribute const uniform varying break continue do for while switch case default if else in out inout
     float int void bool true false invariant discard return mat2 mat3 mat4 mat2x2 mat2x3 mat2x4 mat3x2 mat3x3 mat3x4
     mat4x2 mat4x3 mat4x4 vec2 vec3 vec4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4 uint uvec2 uvec3 uvec4 lowp mediump highp
@@ -2147,7 +2147,7 @@ ${this._constructorStack}
 Lifetime used`):new QA(`Lifetime not alive`)}},yj=class extends vj{constructor(e,t){super(e,void 0,void 0,t)}get dupable(){return!0}dup(){return this}dispose(){}},bj=class extends vj{constructor(e,t,n,r){super(e,t,n,r)}dispose(){this._alive=!1}};function xj(e,t){let n;try{e.dispose()}catch(e){n=e}if(t&&n)throw Object.assign(t,{message:`${t.message}
  Then, failed to dispose scope: ${n.message}`,disposeError:n}),t;if(t||n)throw t||n}var Sj=class e extends hj{constructor(){super(...arguments),this._disposables=new vj(new Set),this.manage=e=>(this._disposables.value.add(e),e)}static withScope(t){let n=new e,r;try{return t(n)}catch(e){throw r=e,e}finally{xj(n,r)}}static withScopeMaybeAsync(t,n){return pj(void 0,function*(r){let i=new e,a;try{return yield*r.of(n.call(t,r,i))}catch(e){throw a=e,e}finally{xj(i,a)}})}static async withScopeAsync(t){let n=new e,r;try{return await t(n)}catch(e){throw r=e,e}finally{xj(n,r)}}get alive(){return this._disposables.alive}dispose(){let e=Array.from(this._disposables.value.values()).reverse();for(let t of e)t.alive&&t.dispose();this._disposables.dispose()}};function Cj(e){let t=e?Array.from(e):[];function n(){return t.forEach(e=>e.alive?e.dispose():void 0)}function r(){return t.some(e=>e.alive)}return Object.defineProperty(t,gj,{configurable:!0,enumerable:!1,value:n}),Object.defineProperty(t,"dispose",{configurable:!0,enumerable:!1,value:n}),Object.defineProperty(t,"alive",{configurable:!0,enumerable:!1,get:r}),t}function wj(e){return!!(e&&(typeof e==`object`||typeof e==`function`)&&`alive`in e&&typeof e.alive==`boolean`&&`dispose`in e&&typeof e.dispose==`function`)}var Tj=class e extends hj{static success(e){return new Ej(e)}static fail(e,t){return new Dj(e,t)}static is(t){return t instanceof e}},Ej=class extends Tj{constructor(e){super(),this.value=e}get alive(){return!wj(this.value)||this.value.alive}dispose(){wj(this.value)&&this.value.dispose()}unwrap(){return this.value}unwrapOr(e){return this.value}},Dj=class extends Tj{constructor(e,t){super(),this.error=e,this.onUnwrap=t}get alive(){return!wj(this.error)||this.error.alive}dispose(){wj(this.error)&&this.error.dispose()}unwrap(){throw this.onUnwrap(this),this.error}unwrapOr(e){return e}},Oj=Tj,kj=class extends hj{constructor(e){super(),this.resolve=e=>{this.resolveHandle.alive&&(this.context.unwrapResult(this.context.callFunction(this.resolveHandle,this.context.undefined,e||this.context.undefined)).dispose(),this.disposeResolvers(),this.onSettled())},this.reject=e=>{this.rejectHandle.alive&&(this.context.unwrapResult(this.context.callFunction(this.rejectHandle,this.context.undefined,e||this.context.undefined)).dispose(),this.disposeResolvers(),this.onSettled())},this.dispose=()=>{this.handle.alive&&this.handle.dispose(),this.disposeResolvers()},this.context=e.context,this.owner=e.context.runtime,this.handle=e.promiseHandle,this.settled=new Promise(e=>{this.onSettled=e}),this.resolveHandle=e.resolveHandle,this.rejectHandle=e.rejectHandle}get alive(){return this.handle.alive||this.resolveHandle.alive||this.rejectHandle.alive}disposeResolvers(){this.resolveHandle.alive&&this.resolveHandle.dispose(),this.rejectHandle.alive&&this.rejectHandle.dispose()}},Aj=class{constructor(e){this.module=e}toPointerArray(e){let t=new Int32Array(e.map(e=>e.value)),n=t.length*t.BYTES_PER_ELEMENT,r=this.module._malloc(n);return new Uint8Array(this.module.HEAPU8.buffer,r,n).set(new Uint8Array(t.buffer)),new vj(r,void 0,e=>this.module._free(e))}newTypedArray(e,t){let n=new e(Array(t).fill(0)),r=n.length*n.BYTES_PER_ELEMENT,i=this.module._malloc(r),a=new e(this.module.HEAPU8.buffer,i,t);return a.set(n),new vj({typedArray:a,ptr:i},void 0,e=>this.module._free(e.ptr))}newMutablePointerArray(e){return this.newTypedArray(Int32Array,e)}newHeapCharPointer(e){let t=this.module.lengthBytesUTF8(e),n=t+1,r=this.module._malloc(n);return this.module.stringToUTF8(e,r,n),new vj({ptr:r,strlen:t},void 0,e=>this.module._free(e.ptr))}newHeapBufferPointer(e){let t=e.byteLength,n=this.module._malloc(t);return this.module.HEAPU8.set(e,n),new vj({pointer:n,numBytes:t},void 0,e=>this.module._free(e.pointer))}consumeHeapCharPointer(e){let t=this.module.UTF8ToString(e);return this.module._free(e),t}};Object.freeze({BaseObjects:!0,Date:!0,Eval:!0,StringNormalize:!0,RegExp:!0,JSON:!0,Proxy:!0,MapSet:!0,TypedArrays:!0,Promise:!0});function jj(e){if(!e)return 0;let t=0;for(let[n,r]of Object.entries(e)){if(!(n in GA))throw new ij(n);r&&(t|=GA[n])}return t}function Mj(e){if(typeof e==`number`)return e;if(e===void 0)return 0;let{type:t,strict:n,strip:r,compileOnly:i,backtraceBarrier:a}=e,o=0;return t===`global`&&(o|=WA.JS_EVAL_TYPE_GLOBAL),t===`module`&&(o|=WA.JS_EVAL_TYPE_MODULE),n&&(o|=WA.JS_EVAL_FLAG_STRICT),r&&(o|=WA.JS_EVAL_FLAG_STRIP),i&&(o|=WA.JS_EVAL_FLAG_COMPILE_ONLY),a&&(o|=WA.JS_EVAL_FLAG_BACKTRACE_BARRIER),o}function Nj(e){if(typeof e==`number`)return e;if(e===void 0)return 0;let{strings:t,symbols:n,quickjsPrivate:r,onlyEnumerable:i,numbers:a,numbersAsStrings:o}=e,s=0;return t&&(s|=qA.JS_GPN_STRING_MASK),n&&(s|=qA.JS_GPN_SYMBOL_MASK),r&&(s|=qA.JS_GPN_PRIVATE_MASK),i&&(s|=qA.JS_GPN_ENUM_ONLY),a&&(s|=qA.QTS_GPN_NUMBER_MASK),o&&(s|=qA.QTS_STANDARD_COMPLIANT_NUMBER),s}function Pj(...e){let t=[];for(let n of e)n!==void 0&&(t=t.concat(n));return t}var Fj=class extends hj{constructor(e,t){super(),this.handle=e,this.context=t,this._isDone=!1,this.owner=t.runtime}[Symbol.iterator](){return this}next(e){if(!this.alive||this._isDone)return{done:!0,value:void 0};let t=this._next??=this.context.getProp(this.handle,`next`);return this.callIteratorMethod(t,e)}return(e){if(!this.alive)return{done:!0,value:void 0};let t=this.context.getProp(this.handle,`return`);if(t===this.context.undefined&&e===void 0)return this.dispose(),{done:!0,value:void 0};let n=this.callIteratorMethod(t,e);return t.dispose(),this.dispose(),n}throw(e){if(!this.alive)return{done:!0,value:void 0};let t=e instanceof vj?e:this.context.newError(e),n=this.context.getProp(this.handle,`throw`),r=this.callIteratorMethod(n,e);return t.alive&&t.dispose(),n.dispose(),this.dispose(),r}get alive(){return this.handle.alive}dispose(){this._isDone=!0,this.handle.dispose(),this._next?.dispose()}callIteratorMethod(e,t){let n=t?this.context.callFunction(e,this.handle,t):this.context.callFunction(e,this.handle);if(n.error)return this.dispose(),{value:n};let r=this.context.getProp(n.value,`done`).consume(e=>this.context.dump(e)),i=this.context.getProp(n.value,`value`);return n.value.dispose(),r&&this.dispose(),{value:Oj.success(i),done:r}}},Ij=-2147483648,Lj=2147483647,Rj=0;function zj(e){return e>>8}var Bj=class{constructor(){this.nextId=Ij,this.freelist=[],this.groups=new Map}put(e){let t=this.allocateId(),n=zj(t),r=this.groups.get(n);return r||(r=new Map,this.groups.set(n,r)),r.set(t,e),t}get(e){if(e===Rj)throw new cj(`no host reference id defined`);let t=zj(e),n=this.groups.get(t);if(!n)throw new cj(`host reference id ${e} is not defined`);let r=n.get(e);if(!r)throw new cj(`host reference id ${e} is not defined`);return r}delete(e){if(e===Rj)throw new cj(`no host reference id defined`);let t=zj(e),n=this.groups.get(t);if(!n)throw new cj(`host reference id ${e} is not defined`);n.delete(e),n.size===0&&this.groups.delete(t),this.freelist.push(e)}allocateId(){if(this.freelist.length>0)return this.freelist.shift();if(this.nextId===Rj&&this.nextId++,this.nextId>Lj)throw new sj(`HostRefMap: too many host refs created without disposing. Max simultaneous host refs: ${Lj-Ij}`);return this.nextId++}},Vj=class extends hj{constructor(e,t,n){if(n===Rj)throw new cj(`cannot create HostRef with undefined id`);super(),this.runtime=e,this.handle=t,this.id=n}get alive(){return this.handle.alive}dispose(){this.handle.dispose()}get value(){return this.runtime.hostRefs.get(this.id)}},Hj=class extends Aj{constructor(e){super(e.module),this.scope=new Sj,this.copyJSValue=e=>this.ffi.QTS_DupValuePointer(this.ctx.value,e),this.freeJSValue=e=>{this.ffi.QTS_FreeValuePointer(this.ctx.value,e)},e.ownedLifetimes?.forEach(e=>this.scope.manage(e)),this.owner=e.owner,this.module=e.module,this.ffi=e.ffi,this.rt=e.rt,this.ctx=this.scope.manage(e.ctx)}get alive(){return this.scope.alive}dispose(){return this.scope.dispose()}[Symbol.dispose](){return this.dispose()}manage(e){return this.scope.manage(e)}consumeJSCharPointer(e){let t=this.module.UTF8ToString(e);return this.ffi.QTS_FreeCString(this.ctx.value,e),t}heapValueHandle(e,t){let n=t?e=>{t(),this.freeJSValue(e)}:this.freeJSValue;return new vj(e,this.copyJSValue,n,this.owner)}staticHeapValueHandle(e){return this.manage(this.heapValueHandle(e)),new yj(e,this.owner)}},Uj=class extends hj{constructor(e){super(),this._undefined=void 0,this._null=void 0,this._false=void 0,this._true=void 0,this._global=void 0,this._BigInt=void 0,this._Symbol=void 0,this._SymbolIterator=void 0,this._SymbolAsyncIterator=void 0,this.cToHostCallbacks={callFunction:(e,t,n,r,i)=>{if(e!==this.ctx.value)throw Error(`QuickJSContext instance received C -> JS call with mismatched ctx`);let a=this.getFunction(i);return Sj.withScopeMaybeAsync(this,function*(e,i){let o=i.manage(new bj(t,this.memory.copyJSValue,this.memory.freeJSValue,this.runtime)),s=Array(n);for(let e=0;e<n;e++){let t=this.ffi.QTS_ArgvGetJSValueConstPointer(r,e);s[e]=i.manage(new bj(t,this.memory.copyJSValue,this.memory.freeJSValue,this.runtime))}try{let t=yield*e(a.apply(o,s));if(t){if(`error`in t&&t.error)throw this.runtime.debugLog(`throw error`,t.error),t.error;let e=i.manage(t instanceof vj?t:t.value);return this.ffi.QTS_DupValuePointer(this.ctx.value,e.value)}return 0}catch(e){return this.errorToHandle(e).consume(e=>this.ffi.QTS_Throw(this.ctx.value,e.value))}})}},this.runtime=e.runtime,this.module=e.module,this.ffi=e.ffi,this.rt=e.rt,this.ctx=e.ctx,this.memory=new Hj({...e,owner:this.runtime}),e.callbacks.setContextCallbacks(this.ctx.value,this.cToHostCallbacks),this.dump=this.dump.bind(this),this.getString=this.getString.bind(this),this.getNumber=this.getNumber.bind(this),this.resolvePromise=this.resolvePromise.bind(this),this.uint32Out=this.memory.manage(this.memory.newTypedArray(Uint32Array,1))}get alive(){return this.memory.alive}dispose(){this.memory.dispose()}get undefined(){if(this._undefined)return this._undefined;let e=this.ffi.QTS_GetUndefined();return this._undefined=new yj(e)}get null(){if(this._null)return this._null;let e=this.ffi.QTS_GetNull();return this._null=new yj(e)}get true(){if(this._true)return this._true;let e=this.ffi.QTS_GetTrue();return this._true=new yj(e)}get false(){if(this._false)return this._false;let e=this.ffi.QTS_GetFalse();return this._false=new yj(e)}get global(){if(this._global)return this._global;let e=this.ffi.QTS_GetGlobalObject(this.ctx.value);return this._global=this.memory.staticHeapValueHandle(e),this._global}newNumber(e){return this.memory.heapValueHandle(this.ffi.QTS_NewFloat64(this.ctx.value,e))}newString(e){let t=this.memory.newHeapCharPointer(e).consume(e=>this.ffi.QTS_NewString(this.ctx.value,e.value.ptr));return this.memory.heapValueHandle(t)}newUniqueSymbol(e){let t=(typeof e==`symbol`?e.description:e)??``,n=this.memory.newHeapCharPointer(t).consume(e=>this.ffi.QTS_NewSymbol(this.ctx.value,e.value.ptr,0));return this.memory.heapValueHandle(n)}newSymbolFor(e){let t=(typeof e==`symbol`?e.description:e)??``,n=this.memory.newHeapCharPointer(t).consume(e=>this.ffi.QTS_NewSymbol(this.ctx.value,e.value.ptr,1));return this.memory.heapValueHandle(n)}getWellKnownSymbol(e){return this._Symbol??=this.memory.manage(this.getProp(this.global,`Symbol`)),this.getProp(this._Symbol,e)}newBigInt(e){if(!this._BigInt){let e=this.getProp(this.global,`BigInt`);this.memory.manage(e),this._BigInt=new yj(e.value,this.runtime)}let t=this._BigInt,n=String(e);return this.newString(n).consume(e=>this.unwrapResult(this.callFunction(t,this.undefined,e)))}newObject(e){e&&this.runtime.assertOwned(e);let t=e?this.ffi.QTS_NewObjectProto(this.ctx.value,e.value):this.ffi.QTS_NewObject(this.ctx.value);return this.memory.heapValueHandle(t)}newArray(){let e=this.ffi.QTS_NewArray(this.ctx.value);return this.memory.heapValueHandle(e)}newArrayBuffer(e){let t=new Uint8Array(e),n=this.memory.newHeapBufferPointer(t),r=this.ffi.QTS_NewArrayBuffer(this.ctx.value,n.value.pointer,t.length);return this.memory.heapValueHandle(r)}newPromise(e){let t=Sj.withScope(e=>{let t=e.manage(this.memory.newMutablePointerArray(2)),n=this.ffi.QTS_NewPromiseCapability(this.ctx.value,t.value.ptr),r=this.memory.heapValueHandle(n),[i,a]=Array.from(t.value.typedArray).map(e=>this.memory.heapValueHandle(e));return new kj({context:this,promiseHandle:r,resolveHandle:i,rejectHandle:a})});return e&&typeof e==`function`&&(e=new Promise(e)),e&&Promise.resolve(e).then(t.resolve,e=>e instanceof vj?t.reject(e):this.newError(e).consume(t.reject)),t}newFunction(e,t){let n=typeof e==`function`?e:t;if(!n)throw TypeError(`Expected a function`);return this.newFunctionWithOptions({name:typeof e==`string`?e:void 0,length:n.length,isConstructor:!1,fn:n})}newConstructorFunction(e,t){let n=typeof e==`function`?e:t;if(!n)throw TypeError(`Expected a function`);return this.newFunctionWithOptions({name:typeof e==`string`?e:void 0,length:n.length,isConstructor:!0,fn:n})}newFunctionWithOptions(e){let{name:t,length:n,isConstructor:r,fn:i}=e,a=this.runtime.hostRefs.put(i);try{return this.memory.heapValueHandle(this.ffi.QTS_NewFunction(this.ctx.value,t??``,n,r,a))}catch(e){throw this.runtime.hostRefs.delete(a),e}}newError(e){let t=this.memory.heapValueHandle(this.ffi.QTS_NewError(this.ctx.value));return e&&typeof e==`object`?(e.name!==void 0&&this.newString(e.name).consume(e=>this.setProp(t,`name`,e)),e.message!==void 0&&this.newString(e.message).consume(e=>this.setProp(t,`message`,e))):typeof e==`string`?this.newString(e).consume(e=>this.setProp(t,`message`,e)):e!==void 0&&this.newString(String(e)).consume(e=>this.setProp(t,`message`,e)),t}newHostRef(e){let t=this.runtime.hostRefs.put(e);try{let e=this.memory.heapValueHandle(this.ffi.QTS_NewHostRef(this.ctx.value,t));return new Vj(this.runtime,e,t)}catch(e){throw this.runtime.hostRefs.delete(t),e}}toHostRef(e){let t=this.ffi.QTS_GetHostRefId(e.value);if(t!==0)return this.runtime.hostRefs.get(t),new Vj(this.runtime,e.dup(),t)}unwrapHostRef(e){let t=this.ffi.QTS_GetHostRefId(e.value);if(t===0)throw new cj(`handle is not a HostRef`);return this.runtime.hostRefs.get(t)}typeof(e){return this.runtime.assertOwned(e),this.memory.consumeHeapCharPointer(this.ffi.QTS_Typeof(this.ctx.value,e.value))}getNumber(e){return this.runtime.assertOwned(e),this.ffi.QTS_GetFloat64(this.ctx.value,e.value)}getString(e){return this.runtime.assertOwned(e),this.memory.consumeJSCharPointer(this.ffi.QTS_GetString(this.ctx.value,e.value))}getSymbol(e){this.runtime.assertOwned(e);let t=this.memory.consumeJSCharPointer(this.ffi.QTS_GetSymbolDescriptionOrKey(this.ctx.value,e.value));return this.ffi.QTS_IsGlobalSymbol(this.ctx.value,e.value)?Symbol.for(t):Symbol(t)}getBigInt(e){this.runtime.assertOwned(e);let t=this.getString(e);return BigInt(t)}getArrayBuffer(e){this.runtime.assertOwned(e);let t=this.ffi.QTS_GetArrayBufferLength(this.ctx.value,e.value),n=this.ffi.QTS_GetArrayBuffer(this.ctx.value,e.value);if(!n)throw Error(`Couldn't allocate memory to get ArrayBuffer`);return new vj(this.module.HEAPU8.subarray(n,n+t),void 0,()=>this.module._free(n))}getPromiseState(e){this.runtime.assertOwned(e);let t=this.ffi.QTS_PromiseState(this.ctx.value,e.value);if(t<0)return{type:`fulfilled`,value:e,notAPromise:!0};if(t===KA.Pending)return{type:`pending`,get error(){return new aj(`Cannot unwrap a pending promise`)}};let n=this.ffi.QTS_PromiseResult(this.ctx.value,e.value),r=this.memory.heapValueHandle(n);if(t===KA.Fulfilled)return{type:`fulfilled`,value:r};if(t===KA.Rejected)return{type:`rejected`,error:r};throw r.dispose(),Error(`Unknown JSPromiseStateEnum: ${t}`)}resolvePromise(e){this.runtime.assertOwned(e);let t=Sj.withScope(t=>{let n=t.manage(this.getProp(this.global,`Promise`)),r=t.manage(this.getProp(n,`resolve`));return this.callFunction(r,n,e)});return t.error?Promise.resolve(t):new Promise(e=>{Sj.withScope(n=>{let r=n.manage(this.newFunction(`resolve`,t=>{e(this.success(t&&t.dup()))})),i=n.manage(this.newFunction(`reject`,t=>{e(this.fail(t&&t.dup()))})),a=n.manage(t.value),o=n.manage(this.getProp(a,`then`));this.callFunction(o,a,r,i).unwrap().dispose()})})}isEqual(e,t,n=JA.IsStrictlyEqual){if(e===t)return!0;this.runtime.assertOwned(e),this.runtime.assertOwned(t);let r=this.ffi.QTS_IsEqual(this.ctx.value,e.value,t.value,n);if(r===-1)throw new $A(`WASM variant does not expose equality`);return!!r}eq(e,t){return this.isEqual(e,t,JA.IsStrictlyEqual)}sameValue(e,t){return this.isEqual(e,t,JA.IsSameValue)}sameValueZero(e,t){return this.isEqual(e,t,JA.IsSameValueZero)}getProp(e,t){this.runtime.assertOwned(e);let n;return n=typeof t==`number`&&t>=0?this.ffi.QTS_GetPropNumber(this.ctx.value,e.value,t):this.borrowPropertyKey(t).consume(t=>this.ffi.QTS_GetProp(this.ctx.value,e.value,t.value)),this.memory.heapValueHandle(n)}getLength(e){if(this.runtime.assertOwned(e),!(this.ffi.QTS_GetLength(this.ctx.value,this.uint32Out.value.ptr,e.value)<0))return this.uint32Out.value.typedArray[0]}getOwnPropertyNames(e,t={strings:!0,numbersAsStrings:!0}){this.runtime.assertOwned(e),e.value;let n=Nj(t);if(n===0)throw new oj(`No options set, will return an empty array`);return Sj.withScope(t=>{let r=t.manage(this.memory.newMutablePointerArray(1)),i=this.ffi.QTS_GetOwnPropertyNames(this.ctx.value,r.value.ptr,this.uint32Out.value.ptr,e.value,n);if(i)return this.fail(this.memory.heapValueHandle(i));let a=this.uint32Out.value.typedArray[0],o=r.value.typedArray[0],s=new Uint32Array(this.module.HEAP8.buffer,o,a),c=Array.from(s).map(e=>this.memory.heapValueHandle(e));return this.ffi.QTS_FreeVoidPointer(this.ctx.value,o),this.success(Cj(c))})}getIterator(e){let t=this._SymbolIterator??=this.memory.manage(this.getWellKnownSymbol(`iterator`));return Sj.withScope(n=>{let r=n.manage(this.getProp(e,t)),i=this.callFunction(r,e);return i.error?i:this.success(new Fj(i.value,this))})}setProp(e,t,n){this.runtime.assertOwned(e),this.borrowPropertyKey(t).consume(t=>this.ffi.QTS_SetProp(this.ctx.value,e.value,t.value,n.value))}defineProp(e,t,n){this.runtime.assertOwned(e),Sj.withScope(r=>{let i=r.manage(this.borrowPropertyKey(t)),a=n.value||this.undefined,o=!!n.configurable,s=!!n.enumerable,c=!!n.value,l=n.get?r.manage(this.newFunction(n.get.name,n.get)):this.undefined,u=n.set?r.manage(this.newFunction(n.set.name,n.set)):this.undefined;this.ffi.QTS_DefineProp(this.ctx.value,e.value,i.value,a.value,l.value,u.value,o,s,c)})}callFunction(e,t,...n){this.runtime.assertOwned(e);let r,i=n[0];r=i===void 0||Array.isArray(i)?i??[]:n;let a=this.memory.toPointerArray(r).consume(n=>this.ffi.QTS_Call(this.ctx.value,e.value,t.value,r.length,n.value)),o=this.ffi.QTS_ResolveException(this.ctx.value,a);return o?(this.ffi.QTS_FreeValuePointer(this.ctx.value,a),this.fail(this.memory.heapValueHandle(o))):this.success(this.memory.heapValueHandle(a))}callMethod(e,t,n=[]){return this.getProp(e,t).consume(t=>this.callFunction(t,e,n))}evalCode(e,t=`eval.js`,n){let r=+(n===void 0),i=Mj(n),a=this.memory.newHeapCharPointer(e).consume(e=>this.ffi.QTS_Eval(this.ctx.value,e.value.ptr,e.value.strlen,t,r,i)),o=this.ffi.QTS_ResolveException(this.ctx.value,a);return o?(this.ffi.QTS_FreeValuePointer(this.ctx.value,a),this.fail(this.memory.heapValueHandle(o))):this.success(this.memory.heapValueHandle(a))}throw(e){return this.errorToHandle(e).consume(e=>this.ffi.QTS_Throw(this.ctx.value,e.value))}borrowPropertyKey(e){return typeof e==`number`?this.newNumber(e):typeof e==`string`?this.newString(e):new yj(e.value,this.runtime)}getMemory(e){if(e===this.rt.value)return this.memory;throw Error(`Private API. Cannot get memory from a different runtime`)}dump(e){this.runtime.assertOwned(e);let t=this.typeof(e);if(t===`string`)return this.getString(e);if(t===`number`)return this.getNumber(e);if(t===`bigint`)return this.getBigInt(e);if(t===`undefined`)return;if(t===`symbol`)return this.getSymbol(e);let n=this.getPromiseState(e);if(n.type===`fulfilled`&&!n.notAPromise)return e.dispose(),{type:n.type,value:n.value.consume(this.dump)};if(n.type===`pending`)return e.dispose(),{type:n.type};if(n.type===`rejected`)return e.dispose(),{type:n.type,error:n.error.consume(this.dump)};let r=this.memory.consumeJSCharPointer(this.ffi.QTS_Dump(this.ctx.value,e.value));try{return JSON.parse(r)}catch{return r}}unwrapResult(e){if(e.error){let t=`context`in e.error?e.error.context:this,n=e.error.consume(e=>this.dump(e));if(n&&typeof n==`object`&&typeof n.message==`string`){let{message:e,name:r,stack:i,...a}=n,o=new XA(n,t);typeof r==`string`&&(o.name=n.name),o.message=e;let s=o.stack;throw typeof i==`string`&&(o.stack=`${r}: ${e}
 ${n.stack}Host: ${s}`),Object.assign(o,a),o}throw new XA(n)}return e.value}[Symbol.for(`nodejs.util.inspect.custom`)](){return this.alive?`${this.constructor.name} { ctx: ${this.ctx.value} rt: ${this.rt.value} }`:`${this.constructor.name} { disposed }`}getFunction(e){let t=this.runtime.hostRefs.get(e);if(typeof t!=`function`)throw Error(`Host reference ${e} is not a function`);return t}errorToHandle(e){return e instanceof vj?e:this.newError(e)}encodeBinaryJSON(e){let t=this.ffi.QTS_bjson_encode(this.ctx.value,e.value);return this.memory.heapValueHandle(t)}decodeBinaryJSON(e){let t=this.ffi.QTS_bjson_decode(this.ctx.value,e.value);return this.memory.heapValueHandle(t)}success(e){return Oj.success(e)}fail(e){return Oj.fail(e,e=>this.unwrapResult(e))}},Wj=class extends hj{constructor(e){super(),this.scope=new Sj,this.contextMap=new Map,this.hostRefs=new Bj,this._debugMode=!1,this.cToHostCallbacks={freeHostRef:(e,t)=>{if(e!==this.rt.value)throw Error(`Runtime pointer mismatch`);this.hostRefs.delete(t)},shouldInterrupt:e=>{if(e!==this.rt.value)throw Error(`QuickJSContext instance received C -> JS interrupt with mismatched rt`);let t=this.interruptHandler;if(!t)throw Error(`QuickJSContext had no interrupt handler`);return+!!t(this)},loadModuleSource:fj(this,function*(e,t,n,r){let i=this.moduleLoader;if(!i)throw Error(`Runtime has no module loader`);if(t!==this.rt.value)throw Error(`Runtime pointer mismatch`);let a=this.contextMap.get(n)??this.newContext({contextPointer:n});try{let t=yield*e(i(r,a));if(typeof t==`object`&&`error`in t&&t.error)throw this.debugLog(`cToHostLoadModule: loader returned error`,t.error),t.error;let n=typeof t==`string`?t:`value`in t?t.value:t;return this.memory.newHeapCharPointer(n).value.ptr}catch(e){return this.debugLog(`cToHostLoadModule: caught error`,e),a.throw(e),0}}),normalizeModule:fj(this,function*(e,t,n,r,i){let a=this.moduleNormalizer;if(!a)throw Error(`Runtime has no module normalizer`);if(t!==this.rt.value)throw Error(`Runtime pointer mismatch`);let o=this.contextMap.get(n)??this.newContext({contextPointer:n});try{let t=yield*e(a(r,i,o));if(typeof t==`object`&&`error`in t&&t.error)throw this.debugLog(`cToHostNormalizeModule: normalizer returned error`,t.error),t.error;let n=typeof t==`string`?t:t.value;return o.getMemory(this.rt.value).newHeapCharPointer(n).value.ptr}catch(e){return this.debugLog(`normalizeModule: caught error`,e),o.throw(e),0}})},e.ownedLifetimes?.forEach(e=>this.scope.manage(e)),this.module=e.module,this.memory=new Aj(this.module),this.ffi=e.ffi,this.rt=e.rt,this.callbacks=e.callbacks,this.scope.manage(this.rt),this.callbacks.setRuntimeCallbacks(this.rt.value,this.cToHostCallbacks),this.executePendingJobs=this.executePendingJobs.bind(this)}get alive(){return this.scope.alive}dispose(){return this.scope.dispose()}newContext(e={}){let t=jj(e.intrinsics),n=new vj(e.contextPointer||this.ffi.QTS_NewContext(this.rt.value,t),void 0,e=>{this.contextMap.delete(e),this.callbacks.deleteContext(e),this.ffi.QTS_FreeContext(e)}),r=new Uj({module:this.module,ctx:n,ffi:this.ffi,rt:this.rt,ownedLifetimes:e.ownedLifetimes,runtime:this,callbacks:this.callbacks});return this.contextMap.set(n.value,r),r}setModuleLoader(e,t){this.moduleLoader=e,this.moduleNormalizer=t,this.ffi.QTS_RuntimeEnableModuleLoader(this.rt.value,+!!this.moduleNormalizer)}removeModuleLoader(){this.moduleLoader=void 0,this.ffi.QTS_RuntimeDisableModuleLoader(this.rt.value)}hasPendingJob(){return!!this.ffi.QTS_IsJobPending(this.rt.value)}setInterruptHandler(e){let t=this.interruptHandler;this.interruptHandler=e,t||this.ffi.QTS_RuntimeEnableInterruptHandler(this.rt.value)}removeInterruptHandler(){this.interruptHandler&&=(this.ffi.QTS_RuntimeDisableInterruptHandler(this.rt.value),void 0)}executePendingJobs(e=-1){let t=this.memory.newMutablePointerArray(1),n=this.ffi.QTS_ExecutePendingJob(this.rt.value,e??-1,t.value.ptr),r=t.value.typedArray[0];if(t.dispose(),r===0)return this.ffi.QTS_FreeValuePointerRuntime(this.rt.value,n),Oj.success(0);let i=this.contextMap.get(r)??this.newContext({contextPointer:r}),a=i.getMemory(this.rt.value).heapValueHandle(n);if(i.typeof(a)===`number`){let e=i.getNumber(a);return a.dispose(),Oj.success(e)}{let e=Object.assign(a,{context:i});return Oj.fail(e,e=>i.unwrapResult(e))}}setMemoryLimit(e){if(e<0&&e!==-1)throw Error(`Cannot set memory limit to negative number. To unset, pass -1`);this.ffi.QTS_RuntimeSetMemoryLimit(this.rt.value,e)}computeMemoryUsage(){let e=this.getSystemContext().getMemory(this.rt.value);return e.heapValueHandle(this.ffi.QTS_RuntimeComputeMemoryUsage(this.rt.value,e.ctx.value))}dumpMemoryUsage(){return this.memory.consumeHeapCharPointer(this.ffi.QTS_RuntimeDumpMemoryUsage(this.rt.value))}setMaxStackSize(e){if(e<0)throw Error(`Cannot set memory limit to negative number. To unset, pass 0.`);this.ffi.QTS_RuntimeSetMaxStackSize(this.rt.value,e)}assertOwned(e){if(e.owner&&e.owner.rt!==this.rt)throw new ZA(`Handle is not owned by this runtime: ${e.owner.rt.value} != ${this.rt.value}`)}setDebugMode(e){this._debugMode=e,this.ffi.DEBUG&&this.rt.alive&&this.ffi.QTS_SetDebugLogEnabled(this.rt.value,+!!e)}isDebugMode(){return this._debugMode}debugLog(...e){this._debugMode&&console.log(`quickjs-emscripten:`,...e)}[Symbol.for(`nodejs.util.inspect.custom`)](){return this.alive?`${this.constructor.name} { rt: ${this.rt.value} }`:`${this.constructor.name} { disposed }`}getSystemContext(){return this.context||=this.scope.manage(this.newContext()),this.context}},Gj=class{constructor(e){this.freeHostRef=e.freeHostRef,this.callFunction=e.callFunction,this.shouldInterrupt=e.shouldInterrupt,this.loadModuleSource=e.loadModuleSource,this.normalizeModule=e.normalizeModule}},Kj=class{constructor(e){this.contextCallbacks=new Map,this.runtimeCallbacks=new Map,this.suspendedCount=0,this.cToHostCallbacks=new Gj({freeHostRef:(e,t,n)=>{let r=this.runtimeCallbacks.get(t);if(!r)throw Error(`QuickJSRuntime(rt = ${t}) not found when trying to free HostRef(id = ${n})`);r.freeHostRef(t,n)},callFunction:(e,t,n,r,i,a)=>this.handleAsyncify(e,()=>{try{let e=this.contextCallbacks.get(t);if(!e)throw Error(`QuickJSContext(ctx = ${t}) not found for C function call "${a}"`);return e.callFunction(t,n,r,i,a)}catch(e){return console.error(`[C to host error: returning null]`,e),0}}),shouldInterrupt:(e,t)=>this.handleAsyncify(e,()=>{try{let e=this.runtimeCallbacks.get(t);if(!e)throw Error(`QuickJSRuntime(rt = ${t}) not found for C interrupt`);return e.shouldInterrupt(t)}catch(e){return console.error(`[C to host interrupt: returning error]`,e),1}}),loadModuleSource:(e,t,n,r)=>this.handleAsyncify(e,()=>{try{let e=this.runtimeCallbacks.get(t);if(!e)throw Error(`QuickJSRuntime(rt = ${t}) not found for C module loader`);let i=e.loadModuleSource;if(!i)throw Error(`QuickJSRuntime(rt = ${t}) does not support module loading`);return i(t,n,r)}catch(e){return console.error(`[C to host module loader error: returning null]`,e),0}}),normalizeModule:(e,t,n,r,i)=>this.handleAsyncify(e,()=>{try{let e=this.runtimeCallbacks.get(t);if(!e)throw Error(`QuickJSRuntime(rt = ${t}) not found for C module loader`);let a=e.normalizeModule;if(!a)throw Error(`QuickJSRuntime(rt = ${t}) does not support module loading`);return a(t,n,r,i)}catch(e){return console.error(`[C to host module loader error: returning null]`,e),0}})}),this.module=e,this.module.callbacks=this.cToHostCallbacks}setRuntimeCallbacks(e,t){this.runtimeCallbacks.set(e,t)}deleteRuntime(e){this.runtimeCallbacks.delete(e)}setContextCallbacks(e,t){this.contextCallbacks.set(e,t)}deleteContext(e){this.contextCallbacks.delete(e)}handleAsyncify(e,t){if(e)return e.handleSleep(e=>{try{let n=t();if(!(n instanceof Promise)){e(n);return}if(this.suspended)throw new ej(`Already suspended at: ${this.suspended.stack}
-Attempted to suspend at:`);this.suspended=new tj(`(${this.suspendedCount++})`),this.suspended,n.then(t=>{this.suspended=void 0,e(t)},e=>{console.error(`QuickJS: cannot handle error in suspended function`,e),this.suspended=void 0})}catch(e){throw this.suspended=void 0,e}});let n=t();if(n instanceof Promise)throw Error(`Promise return value not supported in non-asyncify context.`);return n}};function qj(e,t){t.interruptHandler&&e.setInterruptHandler(t.interruptHandler),t.maxStackSizeBytes!==void 0&&e.setMaxStackSize(t.maxStackSizeBytes),t.memoryLimitBytes!==void 0&&e.setMemoryLimit(t.memoryLimitBytes)}function Jj(e,t){t.moduleLoader&&e.setModuleLoader(t.moduleLoader),t.shouldInterrupt&&e.setInterruptHandler(t.shouldInterrupt),t.memoryLimitBytes!==void 0&&e.setMemoryLimit(t.memoryLimitBytes),t.maxStackSizeBytes!==void 0&&e.setMaxStackSize(t.maxStackSizeBytes)}var Yj=class{constructor(e,t){this.module=e,this.ffi=t,this.callbacks=new Kj(e)}newRuntime(e={}){let t=new vj(this.ffi.QTS_NewRuntime(),void 0,e=>{this.ffi.QTS_FreeRuntime(e),this.callbacks.deleteRuntime(e)}),n=new Wj({module:this.module,callbacks:this.callbacks,ffi:this.ffi,rt:t});return qj(n,e),e.moduleLoader&&n.setModuleLoader(e.moduleLoader),n}newContext(e={}){let t=this.newRuntime(),n=t.newContext({...e,ownedLifetimes:Pj(t,e.ownedLifetimes)});return t.context=n,n}evalCode(e,t={}){return Sj.withScope(n=>{let r=n.manage(this.newContext());Jj(r.runtime,t);let i=r.evalCode(e,`eval.js`);if(t.memoryLimitBytes!==void 0&&r.runtime.setMemoryLimit(-1),i.error)throw r.dump(n.manage(i.error));return r.dump(n.manage(i.value))})}getWasmMemory(){let e=this.module.quickjsEmscriptenInit?.(()=>{})?.getWasmMemory?.();if(!e)throw Error(`Variant does not support getting WebAssembly.Memory`);return e}getFFI(){return this.ffi}};async function Xj(e){let t=Zj(await e),[n,r,{QuickJSWASMModule:i}]=await Promise.all([t.importModuleLoader().then(Zj),t.importFFI(),mn(()=>import(`./module-ES6BEMUI-q0fnooUj.js`).then(Zj),[],import.meta.url)]),a=await n();return a.type=`sync`,new i(a,new r(a))}function Zj(e){return e&&`default`in e&&e.default?e.default&&`default`in e.default&&e.default.default?e.default.default:e.default:e}function Qj(e,t){return{...e,async importModuleLoader(){let n=Zj(await e.importModuleLoader());return async function(){let e=t.emscriptenModule?{...t.emscriptenModule}:{},r=t.log??((...e)=>([...e],void 0)),i=(e,t)=>(r(...e,t),t),a=e=>typeof e==`function`?e():e;(t.wasmLocation||t.wasmSourceMapLocation||t.locateFile)&&(e.locateFile=(e,n)=>{let r={fileName:e,relativeTo:n};if(e.endsWith(`.wasm`)&&t.wasmLocation!==void 0)return i([`locateFile .wasm: provide wasmLocation`,r],t.wasmLocation);if(e.endsWith(`.map`)){if(t.wasmSourceMapLocation!==void 0)return i([`locateFile .map: provide wasmSourceMapLocation`,r],t.wasmSourceMapLocation);if(t.wasmLocation&&!t.locateFile)return i([`locateFile .map: infer from wasmLocation`,r],t.wasmLocation+`.map`)}return t.locateFile?i([`locateFile: use provided fn`,r],t.locateFile(e,n)):i([`locateFile: unhandled, passthrough`,r],e)}),t.wasmBinary&&(e.wasmBinary=await a(t.wasmBinary)),t.wasmMemory&&(e.wasmMemory=await a(t.wasmMemory));let o=t.wasmModule,s;o&&(e.instantiateWasm=async(e,t)=>{s??=Promise.resolve(a(o));let n=await s;if(!n)throw new rj(`options.wasmModule returned ${String(n)}`);let r=await WebAssembly.instantiate(n,e);return t(r),r.exports}),e.monitorRunDependencies=e=>{r(`monitorRunDependencies:`,e)},e.quickjsEmscriptenInit=()=>$j(r);let c=n(e),l=e.quickjsEmscriptenInit?.(r);if(o&&l?.receiveWasmOffsetConverter&&!l.existingWasmOffsetConverter){let e=await a(t.wasmBinary)??new ArrayBuffer(0);s??=Promise.resolve(a(o));let n=await s;if(!n)throw new rj(`options.wasmModule returned ${String(n)}`);l.receiveWasmOffsetConverter(e,n)}if(l?.receiveSourceMapJSON){let e=await a(t.wasmSourceMapData);typeof e==`string`?l.receiveSourceMapJSON(JSON.parse(e)):e?l.receiveSourceMapJSON(e):l.receiveSourceMapJSON({version:3,names:[],sources:[],mappings:``})}return c}}}}function $j(e){let t=`mock called, emscripten module may not be initialized yet`;return{mock:!0,removeRunDependency(n){e(`${t}: removeRunDependency called:`,n)},receiveSourceMapJSON(n){e(`${t}: receiveSourceMapJSON called:`,n)},WasmOffsetConverter:void 0,receiveWasmOffsetConverter(n,r){e(`${t}: receiveWasmOffsetConverter called:`,n,r)}}}var eM=class extends Error{kind;constructor(e,t){super(t),this.name=`ScriptExecutionError`,this.kind=e}},tM,nM=()=>typeof process<`u`&&process.versions?.node!==void 0,rM=()=>nM()?(async()=>{let{createRequire:t}=await mn(async()=>{let{createRequire:t}=await Promise.resolve().then(()=>e(DA(),1));return{createRequire:t}},void 0,import.meta.url),{dirname:n,join:r}=await mn(async()=>{let{dirname:t,join:n}=await Promise.resolve().then(()=>e(DA(),1));return{dirname:t,join:n}},void 0,import.meta.url),{pathToFileURL:i}=await mn(async()=>{let{pathToFileURL:t}=await Promise.resolve().then(()=>e(DA(),1));return{pathToFileURL:t}},void 0,import.meta.url),a=n(t(import.meta.url).resolve(`@jitl/quickjs-wasmfile-release-sync/package.json`));return Xj({type:`sync`,importFFI:()=>mn(()=>import(i(r(a,`dist`,`ffi.mjs`)).href).then(e=>e.QuickJSFFI),[],import.meta.url),importModuleLoader:()=>mn(()=>import(i(r(a,`dist`,`emscripten-module.mjs`)).href).then(e=>e.default),[],import.meta.url)})})():(async()=>{let{default:e}=await mn(async()=>{let{default:e}=await import(`./emscripten-module-DNbiYtL7.js`);return{default:e}},[],import.meta.url),{default:t}=await mn(async()=>{let{default:e}=await import(`./dist-DXxJ-xi3.js`);return{default:e}},[],import.meta.url);return Xj(Qj(t,{wasmLocation:e}))})(),iM=e=>{let t=e|0;return()=>{t=t+1831565813|0;let e=Math.imul(t^t>>>15,1|t);return e=e+Math.imul(e^e>>>7,61|e)^e,((e^e>>>14)>>>0)/4294967296}},aM=(e,t)=>{let n=e.typeof(t);if(n!==`object`&&n!==`string`)return`threw a ${n}`;let r=e.dump(t);return typeof r==`string`||typeof r==`object`&&r?r:`threw nothing recognisable`},oM=e=>{if(typeof e!=`string`&&e.name===`InternalError`){if(e.message===`interrupted`)return`interrupt`;if(e.message===`out of memory`)return`memory`;if(e.message===`stack overflow`)return`stack`}return`exception`},sM=e=>{if(typeof e==`string`)return e;let t=e.message;return t===void 0?`no message`:`${e.name??`Error`}: ${t}`},cM=async e=>{tM??=rM();let t=(await tM).newRuntime();t.setMemoryLimit(e.memoryLimitBytes??16777216),t.setMaxStackSize(e.stackLimitBytes??131072);let n=1/0;t.setInterruptHandler(()=>Date.now()>n);let r=t.newContext(),i=iM(e.seed),a=e.stepBudgetMs??250;fM(r,i,e.now);let o=[],s=r.newObject();lM(r,s,`dispatch`,t=>t.length===2?e.onDispatch(r.getString(t[0]),r.getString(t[1])):`dispatch takes a tag and a payload`),lM(r,s,`query`,t=>{if(t.length!==2)return`query takes a name and arguments`;let n=r.getString(t[0]);return CA.includes(n)?e.onQuery(n,r.getString(t[1])):JSON.stringify({error:`no query called ${n}`})}),lM(r,s,`onTick`,e=>{let[t]=e;t!==void 0&&r.typeof(t)===`function`&&o.push({handle:t.dup(),ordinal:o.length})}),lM(r,s,`now`,()=>e.now()),lM(r,s,`random`,()=>i());function c(e){try{let t=r.evalCode(HA(e),`place.js`);if(!uM(t))throw dM(r,t.error);try{let e=r.callFunction(t.value,r.undefined,s);if(!uM(e))throw dM(r,e.error);try{return r.dump(e.value)}finally{e.value.dispose()}}finally{t.value.dispose()}}catch(e){throw e instanceof eM?e:new eM(`exception`,e instanceof Error?e.message:String(e))}}let l=e=>{n=Date.now()+a;try{return e()}finally{n=1/0}},u=()=>{for(let e of o)e.handle.dispose();o=[]};return{load(e){u(),l(()=>c(e))},evaluate(e){return l(()=>c(e))},step(e,t){if(o.length===0)return;let n=r.newString(e),i=r.newString(t);try{l(()=>{for(let e of o){let t=r.callFunction(e.handle,r.undefined,n,i);if(!uM(t))throw dM(r,t.error);t.value.dispose()}})}finally{n.dispose(),i.dispose()}},get handlerCount(){return o.length},dispose(){u(),s.dispose(),r.dispose(),t.dispose()}}},lM=(e,t,n,r)=>{let i=e.newFunction(n,(...t)=>{let n=r(t);return n===void 0?e.undefined:typeof n==`number`?e.newNumber(n):e.newString(n)});e.setProp(t,n,i),i.dispose()},uM=e=>`value`in e,dM=(e,t)=>{let n=aM(e,t);return t.dispose(),new eM(oM(n),sM(n))},fM=(e,t,n)=>{let r=e.getProp(e.global,`Math`),i=e.newFunction(`random`,()=>e.newNumber(t()));e.setProp(r,`random`,i),i.dispose(),r.dispose();let a=e.getProp(e.global,`Date`),o=e.newFunction(`now`,()=>e.newNumber(n()));e.setProp(a,`now`,o),o.dispose(),a.dispose()},pM=class extends Error{kind;constructor(e,t){super(t),this.name=`ScriptExecutionError`,this.kind=e}},mM=0,hM=1,gM=3,_M=4,vM=5,yM=6,bM=7,xM=1,SM=2,CM=0,wM,TM=()=>typeof process<`u`&&process.versions?.node!==void 0,EM=()=>TM()?(async()=>{let{join:t}=await mn(async()=>{let{join:t}=await Promise.resolve().then(()=>e(DA(),1));return{join:t}},void 0,import.meta.url),{readFile:n}=await mn(async()=>{let{readFile:t}=await Promise.resolve().then(()=>e(DA(),1));return{readFile:t}},void 0,import.meta.url),{fileURLToPath:r,pathToFileURL:i}=await mn(async()=>{let{fileURLToPath:t,pathToFileURL:n}=await Promise.resolve().then(()=>e(DA(),1));return{fileURLToPath:t,pathToFileURL:n}},void 0,import.meta.url),a=t(r(import.meta.url),`..`,`..`),o=new Uint8Array(await n(t(a,`dist`,`luau.wasm`))),s=i(t(a,`dist`,`luau.mjs`)).href,c=(await mn(async()=>{let{default:e}=await import(s);return{default:e}},[],import.meta.url)).default,l=new Map;return{mod:await c({luauHosts:l,wasmBinary:o}),hosts:l}})():(async()=>{let{default:e}=await mn(async()=>{let{default:e}=await import(`./luau-B_BNst3e.js`);return{default:e}},[],import.meta.url),t=new Uint8Array(await(await fetch(e)).arrayBuffer()),n=(await mn(async()=>{let{default:e}=await import(`./luau-DnpPA-aL.js`);return{default:e}},__vite__mapDeps([2,1]),import.meta.url)).default,r=new Map;return{mod:await n({luauHosts:r,wasmBinary:t}),hosts:r}})(),DM=class e{loaded;id;disposed;constructor(e,t,n=!1){this.loaded=e,this.id=t,this.disposed=n}static async create(t){wM??=EM();let n=await wM,r=n.mod._state_new(t.memoryLimitBytes??16777216,t.seed|0);if(r===0)throw Error(`luau-runtime: state_new failed (see README: caps below the VM's startup cost abort rather than report)`);return n.hosts.set(r,t.host),new e(n,r)}static async version(){wM??=EM();let{mod:e}=await wM,t=e._version(),n=AM(e,t);return e._free(t),n}static closeError(){return wM??=EM(),wM.then(({mod:e})=>{let t=e._close_error(),n=AM(e,t);return e._free(t),n})}compile(e){this.checkLive();let t=new TextEncoder().encode(e),n=this.mod._malloc(t.length),r=this.mod._malloc(8);try{this.mod.HEAPU8.set(t,n),this.throwIfFailed(this.mod._compile(this.id,n,t.length,r,r+4));let e=kM(this.mod,r),i=kM(this.mod,r+4);return this.mod.HEAPU8.slice(e,e+i)}finally{this.mod._free(n),this.mod._free(r)}}load(e){this.checkLive();let t=this.mod._malloc(e.length);try{this.mod.HEAPU8.set(e,t),this.throwIfFailed(this.mod._load(this.id,t,e.length))}finally{this.mod._free(t)}}setDeadline(e){this.checkLive(),this.mod._set_deadline(this.id,e)}call(){this.checkLive(),this.throwIfFailed(this.mod._call(this.id))}step(e,t){this.checkLive();let n=this.write(e),r=this.write(t);try{this.throwIfFailed(this.mod._step(this.id,n.ptr,n.len,r.ptr,r.len))}finally{this.free(n),this.free(r)}}evalText(e,t=!1){this.checkLive();let n=this.evalRaw(e,t,xM);if(n!==mM)throw new pM(OM(n),this.takeError());let r=this.takeTop();return this.mod._top_type(this.id)===CM?void 0:r}eval(e,t=!1){this.checkLive(),this.throwIfFailed(this.evalRaw(e,t,0))}evalThread(e,t=!1){return this.checkLive(),this.throwIfFailed(this.evalRaw(e,t,SM)),this.mod._thread_count(this.id)}resume(e,t){this.checkLive();let n=t===void 0?null:this.write(t);try{let t=this.mod._resume(this.id,e,n?.ptr??0,n?.len??0,+!!n);return t===bM||t===mM?{status:t===bM?`yielded`:`finished`,value:this.takeTop()}:{status:`error`,kind:OM(t),message:this.takeError()}}finally{n&&this.free(n)}}threadStatus(e){return this.checkLive(),this.mod._thread_status(this.id,e)}get handlerCount(){return this.checkLive(),this.mod._handler_count(this.id)}memUsed(){return this.checkLive(),this.mod._mem_used(this.id)}dispose(){this.disposed||(this.disposed=!0,this.mod._state_close(this.id),this.loaded.hosts.delete(this.id))}get mod(){return this.loaded.mod}evalRaw(e,t,n){let r=this.write(e);try{return this.mod._eval(this.id,r.ptr,r.len,+!!t,n)}finally{this.free(r)}}write(e){let t=new TextEncoder().encode(e),n=this.mod._malloc(t.length);return this.mod.HEAPU8.set(t,n),{ptr:n,len:t.length}}free(e){this.mod._free(e.ptr)}takeTop(){let e=this.mod._top_string(this.id),t=AM(this.mod,e);return this.mod._free(e),t}takeError(){let e=this.mod._last_error(this.id),t=AM(this.mod,e);return this.mod._free(e),t}throwIfFailed(e){if(e!==mM)throw new pM(OM(e),this.takeError())}checkLive(){if(this.disposed)throw Error(`luau-runtime: state is disposed`)}},OM=e=>{switch(e){case gM:return`interrupt`;case _M:return`memory`;case vM:return`stack`;case hM:return`compile`;case yM:return`fatal`;default:return`exception`}},kM=(e,t)=>e.HEAPU8[t]|e.HEAPU8[t+1]<<8|e.HEAPU8[t+2]<<16|e.HEAPU8[t+3]<<24,AM=(e,t)=>{if(t===0)return``;let n=e.HEAPU8.indexOf(0,t);return new TextDecoder().decode(e.HEAPU8.subarray(t,n))},jM=async e=>{let t=e.stepBudgetMs??250,n=iM(e.seed),r=await DM.create({seed:e.seed,memoryLimitBytes:e.memoryLimitBytes,host:{dispatch:(t,n)=>e.onDispatch(t,n),query:(t,n)=>e.onQuery(t,n),now:()=>e.now(),random:()=>n()}}),i=e=>{r.setDeadline(t);try{return e()}finally{r.setDeadline(0)}},a=(e,t)=>{try{return t?i(e):e()}catch(e){throw e instanceof pM?new eM(e.kind,e.message):e}},o=!1,s=!1;return{load(e){if(s)throw Error(`luau-interpreter: this interpreter is disposed`);if(o)throw Error(`luau-interpreter: load() may be called once per interpreter; construct a new one with createLuauInterpreter. The frozen glue surface has no handler-drop export, so a re-load cannot clear the previous place's handlers the way the QuickJS twin does — see this file's header.`);o=!0;let t=a(()=>r.compile(e),!1);a(()=>{r.load(t),r.call()},!0)},evaluate(e){return a(()=>r.evalText(e,!0),!0)},step(e,t){s||a(()=>r.step(e,t),!0)},get handlerCount(){return s?0:r.handlerCount},dispose(){s||(s=!0,r.dispose(),r=void 0)}}},MM=`-- place-api.luau — the guest library, handwritten over \`engine\` the way \`guest/place-api.ts\`
+Attempted to suspend at:`);this.suspended=new tj(`(${this.suspendedCount++})`),this.suspended,n.then(t=>{this.suspended=void 0,e(t)},e=>{console.error(`QuickJS: cannot handle error in suspended function`,e),this.suspended=void 0})}catch(e){throw this.suspended=void 0,e}});let n=t();if(n instanceof Promise)throw Error(`Promise return value not supported in non-asyncify context.`);return n}};function qj(e,t){t.interruptHandler&&e.setInterruptHandler(t.interruptHandler),t.maxStackSizeBytes!==void 0&&e.setMaxStackSize(t.maxStackSizeBytes),t.memoryLimitBytes!==void 0&&e.setMemoryLimit(t.memoryLimitBytes)}function Jj(e,t){t.moduleLoader&&e.setModuleLoader(t.moduleLoader),t.shouldInterrupt&&e.setInterruptHandler(t.shouldInterrupt),t.memoryLimitBytes!==void 0&&e.setMemoryLimit(t.memoryLimitBytes),t.maxStackSizeBytes!==void 0&&e.setMaxStackSize(t.maxStackSizeBytes)}var Yj=class{constructor(e,t){this.module=e,this.ffi=t,this.callbacks=new Kj(e)}newRuntime(e={}){let t=new vj(this.ffi.QTS_NewRuntime(),void 0,e=>{this.ffi.QTS_FreeRuntime(e),this.callbacks.deleteRuntime(e)}),n=new Wj({module:this.module,callbacks:this.callbacks,ffi:this.ffi,rt:t});return qj(n,e),e.moduleLoader&&n.setModuleLoader(e.moduleLoader),n}newContext(e={}){let t=this.newRuntime(),n=t.newContext({...e,ownedLifetimes:Pj(t,e.ownedLifetimes)});return t.context=n,n}evalCode(e,t={}){return Sj.withScope(n=>{let r=n.manage(this.newContext());Jj(r.runtime,t);let i=r.evalCode(e,`eval.js`);if(t.memoryLimitBytes!==void 0&&r.runtime.setMemoryLimit(-1),i.error)throw r.dump(n.manage(i.error));return r.dump(n.manage(i.value))})}getWasmMemory(){let e=this.module.quickjsEmscriptenInit?.(()=>{})?.getWasmMemory?.();if(!e)throw Error(`Variant does not support getting WebAssembly.Memory`);return e}getFFI(){return this.ffi}};async function Xj(e){let t=Zj(await e),[n,r,{QuickJSWASMModule:i}]=await Promise.all([t.importModuleLoader().then(Zj),t.importFFI(),mn(()=>import(`./module-ES6BEMUI-CGDebvL5.js`).then(Zj),[],import.meta.url)]),a=await n();return a.type=`sync`,new i(a,new r(a))}function Zj(e){return e&&`default`in e&&e.default?e.default&&`default`in e.default&&e.default.default?e.default.default:e.default:e}function Qj(e,t){return{...e,async importModuleLoader(){let n=Zj(await e.importModuleLoader());return async function(){let e=t.emscriptenModule?{...t.emscriptenModule}:{},r=t.log??((...e)=>([...e],void 0)),i=(e,t)=>(r(...e,t),t),a=e=>typeof e==`function`?e():e;(t.wasmLocation||t.wasmSourceMapLocation||t.locateFile)&&(e.locateFile=(e,n)=>{let r={fileName:e,relativeTo:n};if(e.endsWith(`.wasm`)&&t.wasmLocation!==void 0)return i([`locateFile .wasm: provide wasmLocation`,r],t.wasmLocation);if(e.endsWith(`.map`)){if(t.wasmSourceMapLocation!==void 0)return i([`locateFile .map: provide wasmSourceMapLocation`,r],t.wasmSourceMapLocation);if(t.wasmLocation&&!t.locateFile)return i([`locateFile .map: infer from wasmLocation`,r],t.wasmLocation+`.map`)}return t.locateFile?i([`locateFile: use provided fn`,r],t.locateFile(e,n)):i([`locateFile: unhandled, passthrough`,r],e)}),t.wasmBinary&&(e.wasmBinary=await a(t.wasmBinary)),t.wasmMemory&&(e.wasmMemory=await a(t.wasmMemory));let o=t.wasmModule,s;o&&(e.instantiateWasm=async(e,t)=>{s??=Promise.resolve(a(o));let n=await s;if(!n)throw new rj(`options.wasmModule returned ${String(n)}`);let r=await WebAssembly.instantiate(n,e);return t(r),r.exports}),e.monitorRunDependencies=e=>{r(`monitorRunDependencies:`,e)},e.quickjsEmscriptenInit=()=>$j(r);let c=n(e),l=e.quickjsEmscriptenInit?.(r);if(o&&l?.receiveWasmOffsetConverter&&!l.existingWasmOffsetConverter){let e=await a(t.wasmBinary)??new ArrayBuffer(0);s??=Promise.resolve(a(o));let n=await s;if(!n)throw new rj(`options.wasmModule returned ${String(n)}`);l.receiveWasmOffsetConverter(e,n)}if(l?.receiveSourceMapJSON){let e=await a(t.wasmSourceMapData);typeof e==`string`?l.receiveSourceMapJSON(JSON.parse(e)):e?l.receiveSourceMapJSON(e):l.receiveSourceMapJSON({version:3,names:[],sources:[],mappings:``})}return c}}}}function $j(e){let t=`mock called, emscripten module may not be initialized yet`;return{mock:!0,removeRunDependency(n){e(`${t}: removeRunDependency called:`,n)},receiveSourceMapJSON(n){e(`${t}: receiveSourceMapJSON called:`,n)},WasmOffsetConverter:void 0,receiveWasmOffsetConverter(n,r){e(`${t}: receiveWasmOffsetConverter called:`,n,r)}}}var eM=class extends Error{kind;constructor(e,t){super(t),this.name=`ScriptExecutionError`,this.kind=e}},tM,nM=()=>typeof process<`u`&&process.versions?.node!==void 0,rM=()=>nM()?(async()=>{let{createRequire:t}=await mn(async()=>{let{createRequire:t}=await Promise.resolve().then(()=>e(DA(),1));return{createRequire:t}},void 0,import.meta.url),{dirname:n,join:r}=await mn(async()=>{let{dirname:t,join:n}=await Promise.resolve().then(()=>e(DA(),1));return{dirname:t,join:n}},void 0,import.meta.url),{pathToFileURL:i}=await mn(async()=>{let{pathToFileURL:t}=await Promise.resolve().then(()=>e(DA(),1));return{pathToFileURL:t}},void 0,import.meta.url),a=n(t(import.meta.url).resolve(`@jitl/quickjs-wasmfile-release-sync/package.json`));return Xj({type:`sync`,importFFI:()=>mn(()=>import(i(r(a,`dist`,`ffi.mjs`)).href).then(e=>e.QuickJSFFI),[],import.meta.url),importModuleLoader:()=>mn(()=>import(i(r(a,`dist`,`emscripten-module.mjs`)).href).then(e=>e.default),[],import.meta.url)})})():(async()=>{let{default:e}=await mn(async()=>{let{default:e}=await import(`./emscripten-module-DNbiYtL7.js`);return{default:e}},[],import.meta.url),{default:t}=await mn(async()=>{let{default:e}=await import(`./dist-DFRnxuVs.js`);return{default:e}},[],import.meta.url);return Xj(Qj(t,{wasmLocation:e}))})(),iM=e=>{let t=e|0;return()=>{t=t+1831565813|0;let e=Math.imul(t^t>>>15,1|t);return e=e+Math.imul(e^e>>>7,61|e)^e,((e^e>>>14)>>>0)/4294967296}},aM=(e,t)=>{let n=e.typeof(t);if(n!==`object`&&n!==`string`)return`threw a ${n}`;let r=e.dump(t);return typeof r==`string`||typeof r==`object`&&r?r:`threw nothing recognisable`},oM=e=>{if(typeof e!=`string`&&e.name===`InternalError`){if(e.message===`interrupted`)return`interrupt`;if(e.message===`out of memory`)return`memory`;if(e.message===`stack overflow`)return`stack`}return`exception`},sM=e=>{if(typeof e==`string`)return e;let t=e.message;return t===void 0?`no message`:`${e.name??`Error`}: ${t}`},cM=async e=>{tM??=rM();let t=(await tM).newRuntime();t.setMemoryLimit(e.memoryLimitBytes??16777216),t.setMaxStackSize(e.stackLimitBytes??131072);let n=1/0;t.setInterruptHandler(()=>Date.now()>n);let r=t.newContext(),i=iM(e.seed),a=e.stepBudgetMs??250;fM(r,i,e.now);let o=[],s=r.newObject();lM(r,s,`dispatch`,t=>t.length===2?e.onDispatch(r.getString(t[0]),r.getString(t[1])):`dispatch takes a tag and a payload`),lM(r,s,`query`,t=>{if(t.length!==2)return`query takes a name and arguments`;let n=r.getString(t[0]);return CA.includes(n)?e.onQuery(n,r.getString(t[1])):JSON.stringify({error:`no query called ${n}`})}),lM(r,s,`onTick`,e=>{let[t]=e;t!==void 0&&r.typeof(t)===`function`&&o.push({handle:t.dup(),ordinal:o.length})}),lM(r,s,`now`,()=>e.now()),lM(r,s,`random`,()=>i());function c(e){try{let t=r.evalCode(HA(e),`place.js`);if(!uM(t))throw dM(r,t.error);try{let e=r.callFunction(t.value,r.undefined,s);if(!uM(e))throw dM(r,e.error);try{return r.dump(e.value)}finally{e.value.dispose()}}finally{t.value.dispose()}}catch(e){throw e instanceof eM?e:new eM(`exception`,e instanceof Error?e.message:String(e))}}let l=e=>{n=Date.now()+a;try{return e()}finally{n=1/0}},u=()=>{for(let e of o)e.handle.dispose();o=[]};return{load(e){u(),l(()=>c(e))},evaluate(e){return l(()=>c(e))},step(e,t){if(o.length===0)return;let n=r.newString(e),i=r.newString(t);try{l(()=>{for(let e of o){let t=r.callFunction(e.handle,r.undefined,n,i);if(!uM(t))throw dM(r,t.error);t.value.dispose()}})}finally{n.dispose(),i.dispose()}},get handlerCount(){return o.length},dispose(){u(),s.dispose(),r.dispose(),t.dispose()}}},lM=(e,t,n,r)=>{let i=e.newFunction(n,(...t)=>{let n=r(t);return n===void 0?e.undefined:typeof n==`number`?e.newNumber(n):e.newString(n)});e.setProp(t,n,i),i.dispose()},uM=e=>`value`in e,dM=(e,t)=>{let n=aM(e,t);return t.dispose(),new eM(oM(n),sM(n))},fM=(e,t,n)=>{let r=e.getProp(e.global,`Math`),i=e.newFunction(`random`,()=>e.newNumber(t()));e.setProp(r,`random`,i),i.dispose(),r.dispose();let a=e.getProp(e.global,`Date`),o=e.newFunction(`now`,()=>e.newNumber(n()));e.setProp(a,`now`,o),o.dispose(),a.dispose()},pM=class extends Error{kind;constructor(e,t){super(t),this.name=`ScriptExecutionError`,this.kind=e}},mM=0,hM=1,gM=3,_M=4,vM=5,yM=6,bM=7,xM=1,SM=2,CM=0,wM,TM=()=>typeof process<`u`&&process.versions?.node!==void 0,EM=()=>TM()?(async()=>{let{join:t}=await mn(async()=>{let{join:t}=await Promise.resolve().then(()=>e(DA(),1));return{join:t}},void 0,import.meta.url),{readFile:n}=await mn(async()=>{let{readFile:t}=await Promise.resolve().then(()=>e(DA(),1));return{readFile:t}},void 0,import.meta.url),{fileURLToPath:r,pathToFileURL:i}=await mn(async()=>{let{fileURLToPath:t,pathToFileURL:n}=await Promise.resolve().then(()=>e(DA(),1));return{fileURLToPath:t,pathToFileURL:n}},void 0,import.meta.url),a=t(r(import.meta.url),`..`,`..`),o=new Uint8Array(await n(t(a,`dist`,`luau.wasm`))),s=i(t(a,`dist`,`luau.mjs`)).href,c=(await mn(async()=>{let{default:e}=await import(s);return{default:e}},[],import.meta.url)).default,l=new Map;return{mod:await c({luauHosts:l,wasmBinary:o}),hosts:l}})():(async()=>{let{default:e}=await mn(async()=>{let{default:e}=await import(`./luau-B_BNst3e.js`);return{default:e}},[],import.meta.url),t=new Uint8Array(await(await fetch(e)).arrayBuffer()),n=(await mn(async()=>{let{default:e}=await import(`./luau-DUfuz-is.js`);return{default:e}},__vite__mapDeps([2,1]),import.meta.url)).default,r=new Map;return{mod:await n({luauHosts:r,wasmBinary:t}),hosts:r}})(),DM=class e{loaded;id;disposed;constructor(e,t,n=!1){this.loaded=e,this.id=t,this.disposed=n}static async create(t){wM??=EM();let n=await wM,r=n.mod._state_new(t.memoryLimitBytes??16777216,t.seed|0);if(r===0)throw Error(`luau-runtime: state_new failed (see README: caps below the VM's startup cost abort rather than report)`);return n.hosts.set(r,t.host),new e(n,r)}static async version(){wM??=EM();let{mod:e}=await wM,t=e._version(),n=AM(e,t);return e._free(t),n}static closeError(){return wM??=EM(),wM.then(({mod:e})=>{let t=e._close_error(),n=AM(e,t);return e._free(t),n})}compile(e){this.checkLive();let t=new TextEncoder().encode(e),n=this.mod._malloc(t.length),r=this.mod._malloc(8);try{this.mod.HEAPU8.set(t,n),this.throwIfFailed(this.mod._compile(this.id,n,t.length,r,r+4));let e=kM(this.mod,r),i=kM(this.mod,r+4);return this.mod.HEAPU8.slice(e,e+i)}finally{this.mod._free(n),this.mod._free(r)}}load(e){this.checkLive();let t=this.mod._malloc(e.length);try{this.mod.HEAPU8.set(e,t),this.throwIfFailed(this.mod._load(this.id,t,e.length))}finally{this.mod._free(t)}}setDeadline(e){this.checkLive(),this.mod._set_deadline(this.id,e)}call(){this.checkLive(),this.throwIfFailed(this.mod._call(this.id))}step(e,t){this.checkLive();let n=this.write(e),r=this.write(t);try{this.throwIfFailed(this.mod._step(this.id,n.ptr,n.len,r.ptr,r.len))}finally{this.free(n),this.free(r)}}evalText(e,t=!1){this.checkLive();let n=this.evalRaw(e,t,xM);if(n!==mM)throw new pM(OM(n),this.takeError());let r=this.takeTop();return this.mod._top_type(this.id)===CM?void 0:r}eval(e,t=!1){this.checkLive(),this.throwIfFailed(this.evalRaw(e,t,0))}evalThread(e,t=!1){return this.checkLive(),this.throwIfFailed(this.evalRaw(e,t,SM)),this.mod._thread_count(this.id)}resume(e,t){this.checkLive();let n=t===void 0?null:this.write(t);try{let t=this.mod._resume(this.id,e,n?.ptr??0,n?.len??0,+!!n);return t===bM||t===mM?{status:t===bM?`yielded`:`finished`,value:this.takeTop()}:{status:`error`,kind:OM(t),message:this.takeError()}}finally{n&&this.free(n)}}threadStatus(e){return this.checkLive(),this.mod._thread_status(this.id,e)}get handlerCount(){return this.checkLive(),this.mod._handler_count(this.id)}memUsed(){return this.checkLive(),this.mod._mem_used(this.id)}dispose(){this.disposed||(this.disposed=!0,this.mod._state_close(this.id),this.loaded.hosts.delete(this.id))}get mod(){return this.loaded.mod}evalRaw(e,t,n){let r=this.write(e);try{return this.mod._eval(this.id,r.ptr,r.len,+!!t,n)}finally{this.free(r)}}write(e){let t=new TextEncoder().encode(e),n=this.mod._malloc(t.length);return this.mod.HEAPU8.set(t,n),{ptr:n,len:t.length}}free(e){this.mod._free(e.ptr)}takeTop(){let e=this.mod._top_string(this.id),t=AM(this.mod,e);return this.mod._free(e),t}takeError(){let e=this.mod._last_error(this.id),t=AM(this.mod,e);return this.mod._free(e),t}throwIfFailed(e){if(e!==mM)throw new pM(OM(e),this.takeError())}checkLive(){if(this.disposed)throw Error(`luau-runtime: state is disposed`)}},OM=e=>{switch(e){case gM:return`interrupt`;case _M:return`memory`;case vM:return`stack`;case hM:return`compile`;case yM:return`fatal`;default:return`exception`}},kM=(e,t)=>e.HEAPU8[t]|e.HEAPU8[t+1]<<8|e.HEAPU8[t+2]<<16|e.HEAPU8[t+3]<<24,AM=(e,t)=>{if(t===0)return``;let n=e.HEAPU8.indexOf(0,t);return new TextDecoder().decode(e.HEAPU8.subarray(t,n))},jM=async e=>{let t=e.stepBudgetMs??250,n=iM(e.seed),r=await DM.create({seed:e.seed,memoryLimitBytes:e.memoryLimitBytes,host:{dispatch:(t,n)=>e.onDispatch(t,n),query:(t,n)=>e.onQuery(t,n),now:()=>e.now(),random:()=>n()}}),i=e=>{r.setDeadline(t);try{return e()}finally{r.setDeadline(0)}},a=(e,t)=>{try{return t?i(e):e()}catch(e){throw e instanceof pM?new eM(e.kind,e.message):e}},o=!1,s=!1;return{load(e){if(s)throw Error(`luau-interpreter: this interpreter is disposed`);if(o)throw Error(`luau-interpreter: load() may be called once per interpreter; construct a new one with createLuauInterpreter. The frozen glue surface has no handler-drop export, so a re-load cannot clear the previous place's handlers the way the QuickJS twin does — see this file's header.`);o=!0;let t=a(()=>r.compile(e),!1);a(()=>{r.load(t),r.call()},!0)},evaluate(e){return a(()=>r.evalText(e,!0),!0)},step(e,t){s||a(()=>r.step(e,t),!0)},get handlerCount(){return s?0:r.handlerCount},dispose(){s||(s=!0,r.dispose(),r=void 0)}}},MM=`-- place-api.luau — the guest library, handwritten over \`engine\` the way \`guest/place-api.ts\`
 -- is, per plan decision 3: the same bridge, the same wire, the twin *handwritten* rather
 -- than transpiled. This is the Phase 1 draft as much as the spike's fixture: a real file
 -- that reaches the host through exactly the five members, in the order the plan says.
@@ -2156,14 +2156,6 @@ Attempted to suspend at:`);this.suspended=new tj(`(${this.suspendedCount++})`),t
 -- question (b), not an accident — a JSON decoder's output has no inferable shape, so
 -- strict mode and a hand-rolled decoder fight, and the fight is the argument against
 -- requiring strictness on the load path.
---
--- ## What crosses
---
--- Every effect is \`engine.dispatch(tag, jsonText)\`; every read of the world is
--- \`engine.query(name, jsonText)\`. Nothing crosses as an object, so this file owns the
--- JSON: \`encodeJSON\` is the hand-built payload side, \`decodeJSON\` parses the events and
--- query answers the host sends. A production bundler (Phase 1) would share one copy;
--- the spike earns the right to ask for it by writing it once, here, by hand.
 
 local M = {}
 
@@ -2177,10 +2169,6 @@ local M = {}
 local encodeJSON -- forward: arrays of tables recurse
 
 local function is_array(t: table): boolean
-  -- #t counts the contiguous integer prefix; a table is an array when that prefix
-  -- covers every key. Maps with integer keys are the case the host never sends and
-  -- this library never builds, so the ambiguity is left to the places that cannot
-  -- create it.
   local n = #t
   if n == 0 then
     return next(t) == nil and true or false
@@ -2235,10 +2223,6 @@ encodeJSON = function(value): string
       return "[" .. table.concat(parts, ",") .. "]"
     end
     local parts = {}
-    -- Sorted keys: the payload bytes are part of the dispatch trace, and a map that
-    -- iterated differently between peers would be two worlds that agreed everywhere
-    -- except here. Arrays and ipairs are still what the docs will tell authors to
-    -- prefer — the same sentence the plan's decision 6 writes for the docs page.
     local keys = {}
     for k in pairs(value) do
       keys[#keys + 1] = tostring(k)
@@ -2255,9 +2239,6 @@ encodeJSON = function(value): string
   error("encodeJSON: cannot encode a " .. kind, 2)
 end
 
--- A recursive-descent reader over exactly the grammar the host sends. Position is an
--- upvalue cell rather than a parameter because every function's contract is "advance
--- or throw."
 local function decodeJSON(text: string)
   local pos = 1
 
@@ -2278,7 +2259,7 @@ local function decodeJSON(text: string)
     pos += #literal
   end
 
-  local readValue -- forward
+  local readValue
 
   local function readString(): string
     expect("\\"")
@@ -2304,8 +2285,6 @@ local function decodeJSON(text: string)
         elseif e == "f" then
           parts[#parts + 1] = "\\f"
         elseif e == "u" then
-          -- Basic plane only; astral pairs would be a way to need a UTF-8 encoder at
-          -- 2 AM, and no place event has ever carried an emoji.
           local hex = text:sub(pos + 2, pos + 5)
           parts[#parts + 1] = utf8.char(tonumber(hex, 16))
           pos += 4
@@ -2399,14 +2378,9 @@ local function decodeJSON(text: string)
   return value
 end
 
-M.decodeJSON = decodeJSON
-M.encodeJSON = encodeJSON
-
 -- The boundary ---------------------------------------------------------------
 
 local function refuse(tag: string, refusal: string)
-  -- The bridge's own convention: "" is success, anything else is the sentence, and
-  -- throwing it at the line that caused it is what ADR 0015 bought on purpose.
   error(tag .. ": " .. refusal, 2)
 end
 
@@ -2418,29 +2392,63 @@ local function dispatch(tag: string, payload: table)
 end
 
 local function query(name: string, args: table)
-  return decodeJSON(engine.query(name, encodeJSON(args)))
+  local result = nil
+  local ok = pcall(function()
+    result = decodeJSON(engine.query(name, encodeJSON(args)))
+  end)
+  if not ok then
+    return nil
+  end
+  return result
 end
 
-M.query = query
+-- Helpers -------------------------------------------------------------------
 
--- The vocabulary the port uses; every one is one \`engine.dispatch\` away. The tag
--- names match apps/spacescape's effects.ts today; Phase 1's parity test pins the list.
+local function wireColour(color)
+  if color == nil then
+    return nil
+  end
+  if type(color) == "table" and color[1] ~= nil then
+    return {
+      r = math.floor(color[1] * 255 + 0.5),
+      g = math.floor(color[2] * 255 + 0.5),
+      b = math.floor(color[3] * 255 + 0.5),
+    }
+  end
+  return color
+end
 
-M.pi = math.pi
+local function isFiniteNumber(v)
+  return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function isMedium(value)
+  if type(value) ~= "table" then
+    return false
+  end
+  local c = value
+  if not isFiniteNumber(c.pushVx) then return false end
+  if not isFiniteNumber(c.pushVz) then return false end
+  if not isFiniteNumber(c.speedScale) then return false end
+  if not isFiniteNumber(c.sink) then return false end
+  if c.pushVy ~= nil and not isFiniteNumber(c.pushVy) then return false end
+  return true
+end
+
+local function firstOrSelf(value, key)
+  if type(value) == "table" then
+    if key ~= nil and value[key] ~= nil then
+      return value[key]
+    end
+    if value[1] ~= nil then
+      return value[1]
+    end
+  end
+  return value
+end
 
 -- ## Levels
---
--- \`bundlePlaceLuau\` replaces the empty table below with one holding this place's level
--- documents, the way the TypeScript twin gets a \`const __levels\` appended by \`bundle.ts\` —
--- a value travelling with the program rather than through the bridge, because the bridge
--- carries strings and numbers and a level is already the text of a whole document.
---
--- **\`level(name)\` dispatches nothing.** The host folds the levels into the world itself,
--- before the script runs — that order is what "the script has the last word" means — and
--- what an author's call asserts is *presence*: a place that asks for a level it does not
--- carry should throw at that line, not open into a world with no building in it. The
--- returned text is there for scripts that want to read the document; the hospital just
--- asserts.
+
 local __levels = {}
 
 M.level = function(name: string): string
@@ -2451,33 +2459,139 @@ M.level = function(name: string): string
   return found
 end
 
-M.log = function(text: string)
+-- ## Geometry / shapes
+
+M.createShape = function(spec: table)
+  dispatch("shape-add", spec)
+end
+
+M.removeShape = function(placeOrSpec, id)
+  local place, theId
+  if type(placeOrSpec) == "table" then
+    place = placeOrSpec.place
+    theId = placeOrSpec.id
+  else
+    place = placeOrSpec
+    theId = id
+  end
+  dispatch("shape-remove", { place = place, id = theId })
+end
+
+M.removePlace = function(placeOrSpec)
+  local place = type(placeOrSpec) == "table" and (placeOrSpec.place or placeOrSpec[1]) or placeOrSpec
+  dispatch("place-remove", { place = place })
+end
+
+M.clearPlace = function(placeOrSpec)
+  local place = type(placeOrSpec) == "table" and (placeOrSpec.place or placeOrSpec[1]) or placeOrSpec
+  dispatch("place-clear", { place = place })
+end
+
+-- ## Items
+
+M.defineItem = function(itemOrSpec, ...)
+  local item
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+  else
+    item = itemOrSpec
+  end
+  dispatch("item-define", { item = item })
+end
+
+M.giveItem = function(itemOrSpec, count)
+  local item, c
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+    c = itemOrSpec.count
+  else
+    item = itemOrSpec
+    c = count
+  end
+  dispatch("item-give", { item = item, count = c })
+end
+
+M.takeItem = function(itemOrSpec, count)
+  local item, c
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+    c = itemOrSpec.count
+  else
+    item = itemOrSpec
+    c = count
+  end
+  dispatch("item-take", { item = item, count = c })
+end
+
+M.holdItem = function(itemOrSpec)
+  local item
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item
+  else
+    item = itemOrSpec
+  end
+  if item == nil then
+    dispatch("item-hold", {})
+  else
+    dispatch("item-hold", { item = item })
+  end
+end
+
+-- ## Talk
+
+M.log = function(textOrSpec)
+  local text
+  if type(textOrSpec) == "table" then
+    text = textOrSpec.text
+  else
+    text = textOrSpec
+  end
   dispatch("log", { text = text })
 end
 
-M.narrate = function(who: string, text: string)
-  dispatch("narrate", { who = who, text = text })
-end
-
-M.createLight = function(spec: table)
-  dispatch("light-add", spec)
-end
-
-M.removeLight = function(id: string)
-  dispatch("light-remove", { id = id })
-end
-
--- **One tag, two kinds, one id space** — \`entity-add\` with \`kind\`, exactly as the
--- TypeScript twin shapes it. Two names for one effect would be two places to differ,
--- which is the sentence \`place-api.ts\` writes about \`moveProp\`/\`moveNpc\`, arriving here
--- a stage earlier, at the vocabulary itself.
-M.createNpc = function(spec: table)
-  local payload = { kind = "npc" }
-  for key, value in pairs(spec) do
-    payload[key] = value
+M.narrate = function(whoOrSpec, text)
+  local who, t
+  if type(whoOrSpec) == "table" then
+    who = whoOrSpec.who
+    t = whoOrSpec.text
+  else
+    who = whoOrSpec
+    t = text
   end
-  dispatch("entity-add", payload)
+  dispatch("narrate", { who = who, text = t })
 end
+
+M.openDialog = function(spec: table)
+  dispatch("dialog", spec)
+end
+
+M.closeDialog = function()
+  dispatch("dialog-close", {})
+end
+
+M.endGame = function(titleOrSpec, text)
+  local title, t
+  if type(titleOrSpec) == "table" then
+    title = titleOrSpec.title
+    t = titleOrSpec.text
+  else
+    title = titleOrSpec
+    t = text
+  end
+  dispatch("ending", { title = title, text = t })
+end
+
+M.toast = function(textOrSpec)
+  local text
+  if type(textOrSpec) == "table" then
+    text = textOrSpec.text
+  else
+    text = textOrSpec
+  end
+  dispatch("toast", { text = text })
+end
+
+-- ## Figures
 
 M.createProp = function(spec: table)
   local payload = { kind = "prop" }
@@ -2487,47 +2601,436 @@ M.createProp = function(spec: table)
   dispatch("entity-add", payload)
 end
 
-M.moveEntity = function(id: string, at: { number }, yaw: number)
-  dispatch("entity-move", { id = id, at = at, yaw = yaw })
+M.createNpc = function(spec: table)
+  local payload = { kind = "npc" }
+  for key, value in pairs(spec) do
+    payload[key] = value
+  end
+  dispatch("entity-add", payload)
 end
 
-M.removeEntity = function(id: string)
+M.moveEntity = function(idOrSpec, at, yaw)
+  local id, a, y
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    a = idOrSpec.at
+    y = idOrSpec.yaw
+  else
+    id = idOrSpec
+    a = at
+    y = yaw
+  end
+  dispatch("entity-move", { id = id, at = a, yaw = y })
+end
+
+M.setEntityUseDuration = function(idOrSpec, seconds)
+  local id, s
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    s = idOrSpec.seconds
+  else
+    id = idOrSpec
+    s = seconds
+  end
+  dispatch("entity-use-duration", { id = id, seconds = s })
+end
+
+M.removeEntity = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("entity-remove", { id = id })
 end
 
-M.setEntityUseDuration = function(id: string, seconds: number)
-  dispatch("entity-use-duration", { id = id, seconds = seconds })
+-- ## Zones
+
+M.createZone = function(spec: table)
+  dispatch("zone-add", spec)
+end
+
+M.removeZone = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("zone-remove", { id = id })
+end
+
+-- ## Lights
+
+M.createLight = function(spec: table)
+  dispatch("light-add", spec)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("light-remove", { id = id })
+    end,
+  }
+end
+
+M.removeLight = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("light-remove", { id = id })
+end
+
+-- ## Sounds
+
+M.playSound = function(nameOrSpec, options)
+  local name, opts
+  if type(nameOrSpec) == "table" then
+    name = nameOrSpec.name
+    opts = nameOrSpec
+  else
+    name = nameOrSpec
+    opts = options or {}
+  end
+  local id = opts.id
+  if id == nil then id = "" end
+  local payload = {
+    name = name,
+    volume = opts.volume,
+    pitch = opts.pitch,
+    loop = opts.loop,
+  }
+  if id ~= "" then
+    payload.id = id
+  end
+  dispatch("sound", payload)
+  return {
+    id = id,
+    stop = function()
+      if id ~= "" then
+        dispatch("sound-stop", { id = id })
+      end
+    end,
+  }
+end
+
+M.stopSound = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("sound-stop", { id = id })
+end
+
+-- ## Beams and particles
+
+M.createBeam = function(spec: table)
+  local payload = {}
+  for key, value in pairs(spec) do
+    if key ~= "color" then
+      payload[key] = value
+    end
+  end
+  local colour = wireColour(spec.color)
+  if colour == nil then
+    colour = spec.colour
+  end
+  if colour ~= nil then
+    payload.colour = colour
+  end
+  dispatch("beam", payload)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("beam-remove", { id = id })
+    end,
+  }
+end
+
+M.createParticle = function(spec: table)
+  local payload = {}
+  for key, value in pairs(spec) do
+    if key ~= "color" then
+      payload[key] = value
+    end
+  end
+  local colour = wireColour(spec.color)
+  if colour == nil then
+    colour = spec.colour
+  end
+  if colour ~= nil then
+    payload.colour = colour
+  end
+  dispatch("particle", payload)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("particle-remove", { id = id })
+    end,
+  }
+end
+
+-- ## Fields (mediums)
+
+M.createMedium = function(spec: table)
+  dispatch("medium-add", spec)
+end
+
+M.removeMedium = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("medium-remove", { id = id })
+end
+
+M.getMediumAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    elseif s[1] ~= nil then
+      x, yy, zz = s[1], s[2], s[3]
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local found = query("getMediumAt", { x, yy, zz })
+  if not isMedium(found) then
+    return nil
+  end
+  return found
+end
+
+-- ## Clock
+
+M.setTime = function(secondsOrSpec)
+  local seconds
+  if type(secondsOrSpec) == "table" then
+    seconds = secondsOrSpec.seconds
+    if seconds == nil then seconds = secondsOrSpec[1] end
+  else
+    seconds = secondsOrSpec
+  end
+  dispatch("clock-set", { seconds = seconds })
+end
+
+M.setTimeSpeed = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("clock-speed", { multiplier = m })
+end
+
+-- ## Player
+
+M.movePlayer = function(xOrSpec, y, z, yaw)
+  local x, yy, zz, yw
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.at ~= nil then
+      x, yy, zz = s.at[1], s.at[2], s.at[3]
+    else
+      x, yy, zz = s.x or s[1], s.y or s[2], s.z or s[3]
+    end
+    yw = s.yaw
+  else
+    x, yy, zz, yw = xOrSpec, y, z, yaw
+  end
+  local payload = { at = { x, yy, zz } }
+  if yw ~= nil then
+    payload.yaw = yw
+  end
+  dispatch("player-place", payload)
+end
+
+M.setPlayerSpeed = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("player-speed", { multiplier = m })
+end
+
+M.setPlayerJump = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("player-jump", { multiplier = m })
+end
+
+M.setFlying = function(onOrSpec)
+  local on
+  if type(onOrSpec) == "table" then
+    on = onOrSpec.on
+    if on == nil then on = onOrSpec[1] end
+  else
+    on = onOrSpec
+  end
+  dispatch("player-fly", { on = on })
+end
+
+-- ## Camera
+
+M.lookAt = function(xOrSpec, y, z, fov)
+  local x, yy, zz, f
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.at ~= nil then
+      x, yy, zz = s.at[1], s.at[2], s.at[3]
+    else
+      x, yy, zz = s.x or s[1], s.y or s[2], s.z or s[3]
+    end
+    f = s.fov
+  else
+    x, yy, zz, f = xOrSpec, y, z, fov
+  end
+  local payload = { at = { x, yy, zz } }
+  if f ~= nil then
+    payload.fov = f
+  end
+  dispatch("camera-look", payload)
+end
+
+M.clearCamera = function()
+  dispatch("camera-clear", {})
 end
 
 M.createCamera = function(spec: table)
   dispatch("camera-add", spec)
 end
 
-M.removeCamera = function(id: string)
+M.moveCamera = function(idOrSpec, options)
+  local id, opts
+  if type(idOrSpec) == "table" then
+    opts = idOrSpec
+    id = opts.id
+  else
+    id = idOrSpec
+    opts = options or {}
+  end
+  local payload = { id = id }
+  if opts.at ~= nil then payload.at = opts.at end
+  if opts.target ~= nil then payload.target = opts.target end
+  if opts.fov ~= nil then payload.fov = opts.fov end
+  dispatch("camera-move", payload)
+end
+
+M.removeCamera = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("camera-remove", { id = id })
 end
+
+M.watchCamera = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("camera-watch", { id = id })
+end
+
+-- ## Photos
+
+M.takePhoto = function(spec: table)
+  local width = spec.width
+  if width == nil then width = 1280 end
+  local height = spec.height
+  if height == nil then height = 720 end
+  local payload = { id = spec.id, width = width, height = height }
+  if spec.camera ~= nil then
+    payload.camera = spec.camera
+  end
+  dispatch("photo-take", payload)
+  return { id = spec.id, width = width, height = height }
+end
+
+M.removePhoto = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("photo-remove", { id = id })
+end
+
+-- ## Screens
 
 M.createScreen = function(spec: table)
   dispatch("screen-add", spec)
 end
 
-M.removeScreen = function(id: string)
+M.moveScreen = function(idOrSpec, options)
+  local id, opts
+  if type(idOrSpec) == "table" then
+    opts = idOrSpec
+    id = opts.id
+  else
+    id = idOrSpec
+    opts = options or {}
+  end
+  local payload = { id = id }
+  if opts.source ~= nil then payload.source = opts.source end
+  if opts.at ~= nil then payload.at = opts.at end
+  if opts.yaw ~= nil then payload.yaw = opts.yaw end
+  if opts.width ~= nil then payload.width = opts.width end
+  if opts.height ~= nil then payload.height = opts.height end
+  dispatch("screen-move", payload)
+end
+
+M.removeScreen = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("screen-remove", { id = id })
 end
 
+-- ## HUD images
+
+M.showImage = function(spec: table)
+  dispatch("image-show", spec)
+end
+
+M.hideImage = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("image-hide", { id = id })
+end
+
+-- ## HUD meters / labels / panels
+
+M.createHudMeter = function(spec: table)
+  local value = spec.value
+  local label = spec.label
+  local show = function()
+    dispatch("hud-meter", { id = spec.id, label = label, value = value, max = spec.max })
+  end
+  show()
+  return {
+    id = spec.id,
+    setValue = function(next)
+      value = next
+      show()
+    end,
+    setLabel = function(next)
+      label = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-meter-remove", { id = spec.id })
+    end,
+  }
+end
+
+M.createHudLabel = function(spec: table)
+  local text = spec.text
+  local show = function()
+    dispatch("hud-label", { id = spec.id, text = text })
+  end
+  show()
+  return {
+    id = spec.id,
+    setText = function(next)
+      text = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-label-remove", { id = spec.id })
+    end,
+  }
+end
+
 M.createHudPanel = function(spec: table)
-  dispatch("hud-panel", spec)
-  -- The handle updates in place, same id, same shape: which is why creating one is
-  -- once-per-thing rather than once-per-frame (the TS twin says the same sentence).
-  -- The last label and value live in this closure because the payload is rebuilt whole.
-  local last = { value = spec.value }
-  local rebuild = function(label: string?, value: number?)
-    if label ~= nil then
-      spec.label = label
-    end
-    if value ~= nil then
-      last.value = value
-    end
+  local value = spec.value
+  local label = spec.label
+  local show = function()
     dispatch("hud-panel", {
       id = spec.id,
       entityId = spec.entityId,
@@ -2536,57 +3039,159 @@ M.createHudPanel = function(spec: table)
       pitch = spec.pitch,
       width = spec.width,
       height = spec.height,
-      label = spec.label,
-      value = last.value,
+      label = label,
+      value = value,
       max = spec.max,
     })
   end
+  show()
   return {
-    setValue = function(value: number)
-      rebuild(nil, value)
+    id = spec.id,
+    setValue = function(next)
+      value = next
+      show()
     end,
-    setLabel = function(label: string)
-      rebuild(label, nil)
+    setLabel = function(next)
+      label = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-panel-remove", { id = spec.id })
     end,
   }
 end
 
-M.removeHudPanel = function(id: string)
+M.removeHudPanel = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("hud-panel-remove", { id = id })
 end
 
-M.takePhoto = function(spec: table)
-  dispatch("photo-take", spec)
+-- ## Data
+
+M.saveData = function(keyOrSpec, value)
+  local key, val
+  if type(keyOrSpec) == "table" then
+    key = keyOrSpec.key
+    val = keyOrSpec.value
+  else
+    key = keyOrSpec
+    val = value
+  end
+  dispatch("data-set", { scope = "global", key = key, value = val })
 end
 
-M.removePhoto = function(id: string)
-  dispatch("photo-remove", { id = id })
+M.loadData = function(keyOrSpec)
+  local key = type(keyOrSpec) == "table" and (keyOrSpec.key or keyOrSpec[1]) or keyOrSpec
+  local value = query("getData", { key })
+  if type(value) == "string" then
+    return value
+  end
+  return nil
 end
 
-M.showImage = function(spec: table)
-  dispatch("image-show", spec)
+M.deleteData = function(keyOrSpec)
+  local key = type(keyOrSpec) == "table" and (keyOrSpec.key or keyOrSpec[1]) or keyOrSpec
+  dispatch("data-delete", { scope = "global", key = key })
 end
 
-M.hideImage = function(id: string)
-  dispatch("image-hide", { id = id })
+-- ## World queries
+
+M.getSolidAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local result = query("getSolidAt", { x, yy, zz })
+  return result == true
 end
 
-M.openDialog = function(spec: table)
-  dispatch("dialog", spec)
+M.getHeightAt = function(xOrSpec, z)
+  local x, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, zz = s.x, s.z
+    else
+      x, zz = s[1], s[2]
+    end
+  else
+    x, zz = xOrSpec, z
+  end
+  local h = query("getHeightAt", { x, zz })
+  if type(h) == "number" then
+    return h
+  end
+  return 0
 end
 
-M.randint = function(lo: number, hi: number): number
-  -- The host's seeded draw, bridged: the same generator the TypeScript places get,
-  -- so \`patientKind\` is one world for both languages, not two that happen to agree.
-  return lo + math.floor(engine.random() * (hi - lo + 1))
+M.getWaterAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local result = query("getWaterAt", { x, yy, zz })
+  return result == true
 end
 
--- ## Event kinds
---
--- The closed set from \`events.ts\`, and the reason a hand-written decoder needs it: a
--- host from a later build may send a kind this library has never heard of, and dropping
--- it is the version-skew answer — \`undefined\` in a field the docs promise is a string
--- is not.
+M.raycast = function(originOrSpec, direction, maxDistance)
+  local origin, dir, maxD
+  if type(originOrSpec) == "table" and originOrSpec.origin ~= nil then
+    origin = originOrSpec.origin
+    dir = originOrSpec.direction
+    maxD = originOrSpec.maxDistance
+  else
+    origin = originOrSpec
+    dir = direction
+    maxD = maxDistance
+  end
+  local hit = query("raycast", { origin, dir, maxD })
+  if type(hit) ~= "table" then
+    return nil
+  end
+  if type(hit.kind) ~= "string" then
+    return nil
+  end
+  if type(hit.distance) ~= "number" then
+    return nil
+  end
+  if type(hit.point) ~= "table" or type(hit.normal) ~= "table" then
+    return nil
+  end
+  return hit
+end
+
+-- ## Timers
+
+M.after = function(idOrSpec, delayMs)
+  local id, delay
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    delay = idOrSpec.afterMs
+    if delay == nil then delay = idOrSpec.delayMs end
+    if delay == nil then delay = idOrSpec.delay end
+  else
+    id = idOrSpec
+    delay = delayMs
+  end
+  dispatch("timer", { id = id, afterMs = delay })
+end
+
+-- ## Events
+
 local EVENT_KINDS = {}
 for _, kind in ipairs({
   "player-joined",
@@ -2604,18 +3209,21 @@ for _, kind in ipairs({
   EVENT_KINDS[kind] = true
 end
 
+M.EVENT_KINDS = {
+  "player-joined",
+  "player-left",
+  "player-died",
+  "zone-entered",
+  "zone-left",
+  "entity-used",
+  "item-used",
+  "npc-talk",
+  "npc-choose",
+  "timer",
+  "data-changed",
+}
+
 M.onTick = function(handler)
-  -- **The tick, parsed the way \`parseTick\` parses it in the TypeScript twin, and the
-  -- unwrapping of \`payload\` is the part that was missing once.** The wire nests a
-  -- fact's own fields under \`payload\` — that is what \`events.ts\` validates, and nesting
-  -- is what keeps a payload field from colliding with \`kind\` and \`at\` — but the shape a
-  -- script is written against is the flat one: \`event.entityId\`, not
-  -- \`event.payload.entityId\`. A library that forgets to unwrap hands every script a
-  -- silently-nil field, which is how "take the patient's photo" stopped working without
-  -- a single refusal saying anything.
-  --
-  -- A malformed clock or list becomes an empty tick: the alternative is a script that
-  -- cannot start, reported as a parse error in a file the author cannot see.
   engine.onTick(function(clockJson: string, eventsJson: string)
     local now = tonumber(clockJson)
     if now == nil then
@@ -2653,7 +3261,119 @@ M.onTick = function(handler)
   end)
 end
 
-M.PlaceError = "PlaceError" -- marker for the docs; the throws above carry the sentence
+-- ## Small maths
+
+M.clamp = function(value, low, high)
+  if value < low then return low end
+  if value > high then return high end
+  return value
+end
+
+M.lerp = function(a, b, t)
+  return a + (b - a) * t
+end
+
+M.random = function()
+  return engine.random()
+end
+
+M.randint = function(lo: number, hi: number): number
+  return lo + math.floor(engine.random() * (hi - lo + 1))
+end
+
+M.randFloat = function(low, high)
+  return low + engine.random() * (high - low)
+end
+
+M.choice = function(items)
+  if type(items) ~= "table" or #items == 0 then
+    return nil
+  end
+  return items[M.randint(1, #items)]
+end
+
+-- ## Vector3
+
+local Vector3 = {}
+Vector3.__index = Vector3
+
+function Vector3.new(x, y, z)
+  local v = { x = x or 0, y = y or 0, z = z or 0 }
+  v.length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+  return setmetatable(v, Vector3)
+end
+
+function Vector3.zero()
+  return Vector3.new(0, 0, 0)
+end
+
+function Vector3.one()
+  return Vector3.new(1, 1, 1)
+end
+
+function Vector3.fromArray(values)
+  return Vector3.new(values[1], values[2], values[3])
+end
+
+function Vector3:add(other)
+  return Vector3.new(self.x + other.x, self.y + other.y, self.z + other.z)
+end
+
+function Vector3:subtract(other)
+  return Vector3.new(self.x - other.x, self.y - other.y, self.z - other.z)
+end
+
+function Vector3:scale(factor)
+  return Vector3.new(self.x * factor, self.y * factor, self.z * factor)
+end
+
+function Vector3:dot(other)
+  return self.x * other.x + self.y * other.y + self.z * other.z
+end
+
+function Vector3:cross(other)
+  return Vector3.new(
+    self.y * other.z - self.z * other.y,
+    self.z * other.x - self.x * other.z,
+    self.x * other.y - self.y * other.x
+  )
+end
+
+function Vector3:unit()
+  local len = self.length
+  if len == 0 then
+    return Vector3.zero()
+  end
+  return self:scale(1 / len)
+end
+
+function Vector3:lerp(other, t)
+  return Vector3.new(
+    M.lerp(self.x, other.x, t),
+    M.lerp(self.y, other.y, t),
+    M.lerp(self.z, other.z, t)
+  )
+end
+
+function Vector3:toArray()
+  return { self.x, self.y, self.z }
+end
+
+function Vector3:equals(other)
+  return self.x == other.x and self.y == other.y and self.z == other.z
+end
+
+setmetatable(Vector3, {
+  __call = function(_, x, y, z)
+    return Vector3.new(x, y, z)
+  end,
+})
+
+M.Vector3 = Vector3
+
+-- ## PlaceError marker
+
+M.PlaceError = "PlaceError"
 
 return M
 `,NM=`local __levels = {}`,PM=/require\(\s*(["'])([^"']*)\1\s*\)/g,FM=(e,t)=>{if(t.length>1e5)throw new NA(e,`source is ${t.length} characters, over the ${wp}-character limit`)},IM=(e,t,n)=>{if(t===`spacescape`||t===`voxelscape`)return wA;if(t===`engine-host`)throw new NA(e,`imports "${EA}", which is not available to a place`);if(t.includes(`://`))throw new NA(e,`imports "${t}" — a place may not reach outside itself`);if(t.startsWith(`/`))throw new NA(e,`imports "${t}" — an absolute path is not inside a place`);if(t.includes(`..`))throw new NA(e,`imports "${t}" — a place's files are a flat namespace`);let r=t.replace(/^\.\//,``).replace(/\.luau$/,``);if(r===``)throw new NA(e,`imports "${t}", which names nothing`);if(r.includes(`/`))throw new NA(e,`imports "${t}" — a place's files are a flat namespace, so a name has no directory`);for(let e of[`${r}.luau`,r])if(e in n)return e;throw new NA(e,`imports "${t}", which is not one of this place's files`)},LM=e=>{let t=new Set(Object.keys(e)),n={[wA]:wA,[TA]:wA};for(let r of Object.keys(e).sort()){let e=r.replace(/\.luau$/,``),i=[`${e}.luau`,e].find(e=>t.has(e));if(i)for(let t of new Set([r,`./${r}`,e,`./${e}`]))n[t]=i}return n},RM=(e,t,n,r)=>{let i=[];return{luau:t.replace(PM,(t,a,o)=>{let s=IM(e,o,n);return s===`spacescape`?`require("${wA}")`:(i.push(s),`require("${r.get(s)}")`)}),imports:i}},zM=e=>{let t=`"`;for(let n of e)switch(n){case`\\`:t+=`\\\\`;break;case`"`:t+=`\\"`;break;case`
@@ -2667,14 +3387,6 @@ return M
 -- question (b), not an accident — a JSON decoder's output has no inferable shape, so
 -- strict mode and a hand-rolled decoder fight, and the fight is the argument against
 -- requiring strictness on the load path.
---
--- ## What crosses
---
--- Every effect is \`engine.dispatch(tag, jsonText)\`; every read of the world is
--- \`engine.query(name, jsonText)\`. Nothing crosses as an object, so this file owns the
--- JSON: \`encodeJSON\` is the hand-built payload side, \`decodeJSON\` parses the events and
--- query answers the host sends. A production bundler (Phase 1) would share one copy;
--- the spike earns the right to ask for it by writing it once, here, by hand.
 
 local M = {}
 
@@ -2688,10 +3400,6 @@ local M = {}
 local encodeJSON -- forward: arrays of tables recurse
 
 local function is_array(t: table): boolean
-  -- #t counts the contiguous integer prefix; a table is an array when that prefix
-  -- covers every key. Maps with integer keys are the case the host never sends and
-  -- this library never builds, so the ambiguity is left to the places that cannot
-  -- create it.
   local n = #t
   if n == 0 then
     return next(t) == nil and true or false
@@ -2746,10 +3454,6 @@ encodeJSON = function(value): string
       return "[" .. table.concat(parts, ",") .. "]"
     end
     local parts = {}
-    -- Sorted keys: the payload bytes are part of the dispatch trace, and a map that
-    -- iterated differently between peers would be two worlds that agreed everywhere
-    -- except here. Arrays and ipairs are still what the docs will tell authors to
-    -- prefer — the same sentence the plan's decision 6 writes for the docs page.
     local keys = {}
     for k in pairs(value) do
       keys[#keys + 1] = tostring(k)
@@ -2766,9 +3470,6 @@ encodeJSON = function(value): string
   error("encodeJSON: cannot encode a " .. kind, 2)
 end
 
--- A recursive-descent reader over exactly the grammar the host sends. Position is an
--- upvalue cell rather than a parameter because every function's contract is "advance
--- or throw."
 local function decodeJSON(text: string)
   local pos = 1
 
@@ -2789,7 +3490,7 @@ local function decodeJSON(text: string)
     pos += #literal
   end
 
-  local readValue -- forward
+  local readValue
 
   local function readString(): string
     expect("\\"")
@@ -2815,8 +3516,6 @@ local function decodeJSON(text: string)
         elseif e == "f" then
           parts[#parts + 1] = "\\f"
         elseif e == "u" then
-          -- Basic plane only; astral pairs would be a way to need a UTF-8 encoder at
-          -- 2 AM, and no place event has ever carried an emoji.
           local hex = text:sub(pos + 2, pos + 5)
           parts[#parts + 1] = utf8.char(tonumber(hex, 16))
           pos += 4
@@ -2910,14 +3609,9 @@ local function decodeJSON(text: string)
   return value
 end
 
-M.decodeJSON = decodeJSON
-M.encodeJSON = encodeJSON
-
 -- The boundary ---------------------------------------------------------------
 
 local function refuse(tag: string, refusal: string)
-  -- The bridge's own convention: "" is success, anything else is the sentence, and
-  -- throwing it at the line that caused it is what ADR 0015 bought on purpose.
   error(tag .. ": " .. refusal, 2)
 end
 
@@ -2929,29 +3623,63 @@ local function dispatch(tag: string, payload: table)
 end
 
 local function query(name: string, args: table)
-  return decodeJSON(engine.query(name, encodeJSON(args)))
+  local result = nil
+  local ok = pcall(function()
+    result = decodeJSON(engine.query(name, encodeJSON(args)))
+  end)
+  if not ok then
+    return nil
+  end
+  return result
 end
 
-M.query = query
+-- Helpers -------------------------------------------------------------------
 
--- The vocabulary the port uses; every one is one \`engine.dispatch\` away. The tag
--- names match apps/spacescape's effects.ts today; Phase 1's parity test pins the list.
+local function wireColour(color)
+  if color == nil then
+    return nil
+  end
+  if type(color) == "table" and color[1] ~= nil then
+    return {
+      r = math.floor(color[1] * 255 + 0.5),
+      g = math.floor(color[2] * 255 + 0.5),
+      b = math.floor(color[3] * 255 + 0.5),
+    }
+  end
+  return color
+end
 
-M.pi = math.pi
+local function isFiniteNumber(v)
+  return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function isMedium(value)
+  if type(value) ~= "table" then
+    return false
+  end
+  local c = value
+  if not isFiniteNumber(c.pushVx) then return false end
+  if not isFiniteNumber(c.pushVz) then return false end
+  if not isFiniteNumber(c.speedScale) then return false end
+  if not isFiniteNumber(c.sink) then return false end
+  if c.pushVy ~= nil and not isFiniteNumber(c.pushVy) then return false end
+  return true
+end
+
+local function firstOrSelf(value, key)
+  if type(value) == "table" then
+    if key ~= nil and value[key] ~= nil then
+      return value[key]
+    end
+    if value[1] ~= nil then
+      return value[1]
+    end
+  end
+  return value
+end
 
 -- ## Levels
---
--- \`bundlePlaceLuau\` replaces the empty table below with one holding this place's level
--- documents, the way the TypeScript twin gets a \`const __levels\` appended by \`bundle.ts\` —
--- a value travelling with the program rather than through the bridge, because the bridge
--- carries strings and numbers and a level is already the text of a whole document.
---
--- **\`level(name)\` dispatches nothing.** The host folds the levels into the world itself,
--- before the script runs — that order is what "the script has the last word" means — and
--- what an author's call asserts is *presence*: a place that asks for a level it does not
--- carry should throw at that line, not open into a world with no building in it. The
--- returned text is there for scripts that want to read the document; the hospital just
--- asserts.
+
 local __levels = {}
 
 M.level = function(name: string): string
@@ -2962,33 +3690,139 @@ M.level = function(name: string): string
   return found
 end
 
-M.log = function(text: string)
+-- ## Geometry / shapes
+
+M.createShape = function(spec: table)
+  dispatch("shape-add", spec)
+end
+
+M.removeShape = function(placeOrSpec, id)
+  local place, theId
+  if type(placeOrSpec) == "table" then
+    place = placeOrSpec.place
+    theId = placeOrSpec.id
+  else
+    place = placeOrSpec
+    theId = id
+  end
+  dispatch("shape-remove", { place = place, id = theId })
+end
+
+M.removePlace = function(placeOrSpec)
+  local place = type(placeOrSpec) == "table" and (placeOrSpec.place or placeOrSpec[1]) or placeOrSpec
+  dispatch("place-remove", { place = place })
+end
+
+M.clearPlace = function(placeOrSpec)
+  local place = type(placeOrSpec) == "table" and (placeOrSpec.place or placeOrSpec[1]) or placeOrSpec
+  dispatch("place-clear", { place = place })
+end
+
+-- ## Items
+
+M.defineItem = function(itemOrSpec, ...)
+  local item
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+  else
+    item = itemOrSpec
+  end
+  dispatch("item-define", { item = item })
+end
+
+M.giveItem = function(itemOrSpec, count)
+  local item, c
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+    c = itemOrSpec.count
+  else
+    item = itemOrSpec
+    c = count
+  end
+  dispatch("item-give", { item = item, count = c })
+end
+
+M.takeItem = function(itemOrSpec, count)
+  local item, c
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item or itemOrSpec[1]
+    c = itemOrSpec.count
+  else
+    item = itemOrSpec
+    c = count
+  end
+  dispatch("item-take", { item = item, count = c })
+end
+
+M.holdItem = function(itemOrSpec)
+  local item
+  if type(itemOrSpec) == "table" then
+    item = itemOrSpec.item
+  else
+    item = itemOrSpec
+  end
+  if item == nil then
+    dispatch("item-hold", {})
+  else
+    dispatch("item-hold", { item = item })
+  end
+end
+
+-- ## Talk
+
+M.log = function(textOrSpec)
+  local text
+  if type(textOrSpec) == "table" then
+    text = textOrSpec.text
+  else
+    text = textOrSpec
+  end
   dispatch("log", { text = text })
 end
 
-M.narrate = function(who: string, text: string)
-  dispatch("narrate", { who = who, text = text })
-end
-
-M.createLight = function(spec: table)
-  dispatch("light-add", spec)
-end
-
-M.removeLight = function(id: string)
-  dispatch("light-remove", { id = id })
-end
-
--- **One tag, two kinds, one id space** — \`entity-add\` with \`kind\`, exactly as the
--- TypeScript twin shapes it. Two names for one effect would be two places to differ,
--- which is the sentence \`place-api.ts\` writes about \`moveProp\`/\`moveNpc\`, arriving here
--- a stage earlier, at the vocabulary itself.
-M.createNpc = function(spec: table)
-  local payload = { kind = "npc" }
-  for key, value in pairs(spec) do
-    payload[key] = value
+M.narrate = function(whoOrSpec, text)
+  local who, t
+  if type(whoOrSpec) == "table" then
+    who = whoOrSpec.who
+    t = whoOrSpec.text
+  else
+    who = whoOrSpec
+    t = text
   end
-  dispatch("entity-add", payload)
+  dispatch("narrate", { who = who, text = t })
 end
+
+M.openDialog = function(spec: table)
+  dispatch("dialog", spec)
+end
+
+M.closeDialog = function()
+  dispatch("dialog-close", {})
+end
+
+M.endGame = function(titleOrSpec, text)
+  local title, t
+  if type(titleOrSpec) == "table" then
+    title = titleOrSpec.title
+    t = titleOrSpec.text
+  else
+    title = titleOrSpec
+    t = text
+  end
+  dispatch("ending", { title = title, text = t })
+end
+
+M.toast = function(textOrSpec)
+  local text
+  if type(textOrSpec) == "table" then
+    text = textOrSpec.text
+  else
+    text = textOrSpec
+  end
+  dispatch("toast", { text = text })
+end
+
+-- ## Figures
 
 M.createProp = function(spec: table)
   local payload = { kind = "prop" }
@@ -2998,47 +3832,436 @@ M.createProp = function(spec: table)
   dispatch("entity-add", payload)
 end
 
-M.moveEntity = function(id: string, at: { number }, yaw: number)
-  dispatch("entity-move", { id = id, at = at, yaw = yaw })
+M.createNpc = function(spec: table)
+  local payload = { kind = "npc" }
+  for key, value in pairs(spec) do
+    payload[key] = value
+  end
+  dispatch("entity-add", payload)
 end
 
-M.removeEntity = function(id: string)
+M.moveEntity = function(idOrSpec, at, yaw)
+  local id, a, y
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    a = idOrSpec.at
+    y = idOrSpec.yaw
+  else
+    id = idOrSpec
+    a = at
+    y = yaw
+  end
+  dispatch("entity-move", { id = id, at = a, yaw = y })
+end
+
+M.setEntityUseDuration = function(idOrSpec, seconds)
+  local id, s
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    s = idOrSpec.seconds
+  else
+    id = idOrSpec
+    s = seconds
+  end
+  dispatch("entity-use-duration", { id = id, seconds = s })
+end
+
+M.removeEntity = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("entity-remove", { id = id })
 end
 
-M.setEntityUseDuration = function(id: string, seconds: number)
-  dispatch("entity-use-duration", { id = id, seconds = seconds })
+-- ## Zones
+
+M.createZone = function(spec: table)
+  dispatch("zone-add", spec)
+end
+
+M.removeZone = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("zone-remove", { id = id })
+end
+
+-- ## Lights
+
+M.createLight = function(spec: table)
+  dispatch("light-add", spec)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("light-remove", { id = id })
+    end,
+  }
+end
+
+M.removeLight = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("light-remove", { id = id })
+end
+
+-- ## Sounds
+
+M.playSound = function(nameOrSpec, options)
+  local name, opts
+  if type(nameOrSpec) == "table" then
+    name = nameOrSpec.name
+    opts = nameOrSpec
+  else
+    name = nameOrSpec
+    opts = options or {}
+  end
+  local id = opts.id
+  if id == nil then id = "" end
+  local payload = {
+    name = name,
+    volume = opts.volume,
+    pitch = opts.pitch,
+    loop = opts.loop,
+  }
+  if id ~= "" then
+    payload.id = id
+  end
+  dispatch("sound", payload)
+  return {
+    id = id,
+    stop = function()
+      if id ~= "" then
+        dispatch("sound-stop", { id = id })
+      end
+    end,
+  }
+end
+
+M.stopSound = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("sound-stop", { id = id })
+end
+
+-- ## Beams and particles
+
+M.createBeam = function(spec: table)
+  local payload = {}
+  for key, value in pairs(spec) do
+    if key ~= "color" then
+      payload[key] = value
+    end
+  end
+  local colour = wireColour(spec.color)
+  if colour == nil then
+    colour = spec.colour
+  end
+  if colour ~= nil then
+    payload.colour = colour
+  end
+  dispatch("beam", payload)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("beam-remove", { id = id })
+    end,
+  }
+end
+
+M.createParticle = function(spec: table)
+  local payload = {}
+  for key, value in pairs(spec) do
+    if key ~= "color" then
+      payload[key] = value
+    end
+  end
+  local colour = wireColour(spec.color)
+  if colour == nil then
+    colour = spec.colour
+  end
+  if colour ~= nil then
+    payload.colour = colour
+  end
+  dispatch("particle", payload)
+  local id = spec.id
+  return {
+    id = id,
+    remove = function()
+      dispatch("particle-remove", { id = id })
+    end,
+  }
+end
+
+-- ## Fields (mediums)
+
+M.createMedium = function(spec: table)
+  dispatch("medium-add", spec)
+end
+
+M.removeMedium = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("medium-remove", { id = id })
+end
+
+M.getMediumAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    elseif s[1] ~= nil then
+      x, yy, zz = s[1], s[2], s[3]
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local found = query("getMediumAt", { x, yy, zz })
+  if not isMedium(found) then
+    return nil
+  end
+  return found
+end
+
+-- ## Clock
+
+M.setTime = function(secondsOrSpec)
+  local seconds
+  if type(secondsOrSpec) == "table" then
+    seconds = secondsOrSpec.seconds
+    if seconds == nil then seconds = secondsOrSpec[1] end
+  else
+    seconds = secondsOrSpec
+  end
+  dispatch("clock-set", { seconds = seconds })
+end
+
+M.setTimeSpeed = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("clock-speed", { multiplier = m })
+end
+
+-- ## Player
+
+M.movePlayer = function(xOrSpec, y, z, yaw)
+  local x, yy, zz, yw
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.at ~= nil then
+      x, yy, zz = s.at[1], s.at[2], s.at[3]
+    else
+      x, yy, zz = s.x or s[1], s.y or s[2], s.z or s[3]
+    end
+    yw = s.yaw
+  else
+    x, yy, zz, yw = xOrSpec, y, z, yaw
+  end
+  local payload = { at = { x, yy, zz } }
+  if yw ~= nil then
+    payload.yaw = yw
+  end
+  dispatch("player-place", payload)
+end
+
+M.setPlayerSpeed = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("player-speed", { multiplier = m })
+end
+
+M.setPlayerJump = function(multiplierOrSpec)
+  local m
+  if type(multiplierOrSpec) == "table" then
+    m = multiplierOrSpec.multiplier
+    if m == nil then m = multiplierOrSpec[1] end
+  else
+    m = multiplierOrSpec
+  end
+  dispatch("player-jump", { multiplier = m })
+end
+
+M.setFlying = function(onOrSpec)
+  local on
+  if type(onOrSpec) == "table" then
+    on = onOrSpec.on
+    if on == nil then on = onOrSpec[1] end
+  else
+    on = onOrSpec
+  end
+  dispatch("player-fly", { on = on })
+end
+
+-- ## Camera
+
+M.lookAt = function(xOrSpec, y, z, fov)
+  local x, yy, zz, f
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.at ~= nil then
+      x, yy, zz = s.at[1], s.at[2], s.at[3]
+    else
+      x, yy, zz = s.x or s[1], s.y or s[2], s.z or s[3]
+    end
+    f = s.fov
+  else
+    x, yy, zz, f = xOrSpec, y, z, fov
+  end
+  local payload = { at = { x, yy, zz } }
+  if f ~= nil then
+    payload.fov = f
+  end
+  dispatch("camera-look", payload)
+end
+
+M.clearCamera = function()
+  dispatch("camera-clear", {})
 end
 
 M.createCamera = function(spec: table)
   dispatch("camera-add", spec)
 end
 
-M.removeCamera = function(id: string)
+M.moveCamera = function(idOrSpec, options)
+  local id, opts
+  if type(idOrSpec) == "table" then
+    opts = idOrSpec
+    id = opts.id
+  else
+    id = idOrSpec
+    opts = options or {}
+  end
+  local payload = { id = id }
+  if opts.at ~= nil then payload.at = opts.at end
+  if opts.target ~= nil then payload.target = opts.target end
+  if opts.fov ~= nil then payload.fov = opts.fov end
+  dispatch("camera-move", payload)
+end
+
+M.removeCamera = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("camera-remove", { id = id })
 end
+
+M.watchCamera = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("camera-watch", { id = id })
+end
+
+-- ## Photos
+
+M.takePhoto = function(spec: table)
+  local width = spec.width
+  if width == nil then width = 1280 end
+  local height = spec.height
+  if height == nil then height = 720 end
+  local payload = { id = spec.id, width = width, height = height }
+  if spec.camera ~= nil then
+    payload.camera = spec.camera
+  end
+  dispatch("photo-take", payload)
+  return { id = spec.id, width = width, height = height }
+end
+
+M.removePhoto = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("photo-remove", { id = id })
+end
+
+-- ## Screens
 
 M.createScreen = function(spec: table)
   dispatch("screen-add", spec)
 end
 
-M.removeScreen = function(id: string)
+M.moveScreen = function(idOrSpec, options)
+  local id, opts
+  if type(idOrSpec) == "table" then
+    opts = idOrSpec
+    id = opts.id
+  else
+    id = idOrSpec
+    opts = options or {}
+  end
+  local payload = { id = id }
+  if opts.source ~= nil then payload.source = opts.source end
+  if opts.at ~= nil then payload.at = opts.at end
+  if opts.yaw ~= nil then payload.yaw = opts.yaw end
+  if opts.width ~= nil then payload.width = opts.width end
+  if opts.height ~= nil then payload.height = opts.height end
+  dispatch("screen-move", payload)
+end
+
+M.removeScreen = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("screen-remove", { id = id })
 end
 
+-- ## HUD images
+
+M.showImage = function(spec: table)
+  dispatch("image-show", spec)
+end
+
+M.hideImage = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
+  dispatch("image-hide", { id = id })
+end
+
+-- ## HUD meters / labels / panels
+
+M.createHudMeter = function(spec: table)
+  local value = spec.value
+  local label = spec.label
+  local show = function()
+    dispatch("hud-meter", { id = spec.id, label = label, value = value, max = spec.max })
+  end
+  show()
+  return {
+    id = spec.id,
+    setValue = function(next)
+      value = next
+      show()
+    end,
+    setLabel = function(next)
+      label = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-meter-remove", { id = spec.id })
+    end,
+  }
+end
+
+M.createHudLabel = function(spec: table)
+  local text = spec.text
+  local show = function()
+    dispatch("hud-label", { id = spec.id, text = text })
+  end
+  show()
+  return {
+    id = spec.id,
+    setText = function(next)
+      text = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-label-remove", { id = spec.id })
+    end,
+  }
+end
+
 M.createHudPanel = function(spec: table)
-  dispatch("hud-panel", spec)
-  -- The handle updates in place, same id, same shape: which is why creating one is
-  -- once-per-thing rather than once-per-frame (the TS twin says the same sentence).
-  -- The last label and value live in this closure because the payload is rebuilt whole.
-  local last = { value = spec.value }
-  local rebuild = function(label: string?, value: number?)
-    if label ~= nil then
-      spec.label = label
-    end
-    if value ~= nil then
-      last.value = value
-    end
+  local value = spec.value
+  local label = spec.label
+  local show = function()
     dispatch("hud-panel", {
       id = spec.id,
       entityId = spec.entityId,
@@ -3047,57 +4270,159 @@ M.createHudPanel = function(spec: table)
       pitch = spec.pitch,
       width = spec.width,
       height = spec.height,
-      label = spec.label,
-      value = last.value,
+      label = label,
+      value = value,
       max = spec.max,
     })
   end
+  show()
   return {
-    setValue = function(value: number)
-      rebuild(nil, value)
+    id = spec.id,
+    setValue = function(next)
+      value = next
+      show()
     end,
-    setLabel = function(label: string)
-      rebuild(label, nil)
+    setLabel = function(next)
+      label = next
+      show()
+    end,
+    remove = function()
+      dispatch("hud-panel-remove", { id = spec.id })
     end,
   }
 end
 
-M.removeHudPanel = function(id: string)
+M.removeHudPanel = function(idOrSpec)
+  local id = type(idOrSpec) == "table" and (idOrSpec.id or idOrSpec[1]) or idOrSpec
   dispatch("hud-panel-remove", { id = id })
 end
 
-M.takePhoto = function(spec: table)
-  dispatch("photo-take", spec)
+-- ## Data
+
+M.saveData = function(keyOrSpec, value)
+  local key, val
+  if type(keyOrSpec) == "table" then
+    key = keyOrSpec.key
+    val = keyOrSpec.value
+  else
+    key = keyOrSpec
+    val = value
+  end
+  dispatch("data-set", { scope = "global", key = key, value = val })
 end
 
-M.removePhoto = function(id: string)
-  dispatch("photo-remove", { id = id })
+M.loadData = function(keyOrSpec)
+  local key = type(keyOrSpec) == "table" and (keyOrSpec.key or keyOrSpec[1]) or keyOrSpec
+  local value = query("getData", { key })
+  if type(value) == "string" then
+    return value
+  end
+  return nil
 end
 
-M.showImage = function(spec: table)
-  dispatch("image-show", spec)
+M.deleteData = function(keyOrSpec)
+  local key = type(keyOrSpec) == "table" and (keyOrSpec.key or keyOrSpec[1]) or keyOrSpec
+  dispatch("data-delete", { scope = "global", key = key })
 end
 
-M.hideImage = function(id: string)
-  dispatch("image-hide", { id = id })
+-- ## World queries
+
+M.getSolidAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local result = query("getSolidAt", { x, yy, zz })
+  return result == true
 end
 
-M.openDialog = function(spec: table)
-  dispatch("dialog", spec)
+M.getHeightAt = function(xOrSpec, z)
+  local x, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, zz = s.x, s.z
+    else
+      x, zz = s[1], s[2]
+    end
+  else
+    x, zz = xOrSpec, z
+  end
+  local h = query("getHeightAt", { x, zz })
+  if type(h) == "number" then
+    return h
+  end
+  return 0
 end
 
-M.randint = function(lo: number, hi: number): number
-  -- The host's seeded draw, bridged: the same generator the TypeScript places get,
-  -- so \`patientKind\` is one world for both languages, not two that happen to agree.
-  return lo + math.floor(engine.random() * (hi - lo + 1))
+M.getWaterAt = function(xOrSpec, y, z)
+  local x, yy, zz
+  if type(xOrSpec) == "table" then
+    local s = xOrSpec
+    if s.x ~= nil then
+      x, yy, zz = s.x, s.y, s.z
+    else
+      x, yy, zz = s[1], s[2], s[3]
+    end
+  else
+    x, yy, zz = xOrSpec, y, z
+  end
+  local result = query("getWaterAt", { x, yy, zz })
+  return result == true
 end
 
--- ## Event kinds
---
--- The closed set from \`events.ts\`, and the reason a hand-written decoder needs it: a
--- host from a later build may send a kind this library has never heard of, and dropping
--- it is the version-skew answer — \`undefined\` in a field the docs promise is a string
--- is not.
+M.raycast = function(originOrSpec, direction, maxDistance)
+  local origin, dir, maxD
+  if type(originOrSpec) == "table" and originOrSpec.origin ~= nil then
+    origin = originOrSpec.origin
+    dir = originOrSpec.direction
+    maxD = originOrSpec.maxDistance
+  else
+    origin = originOrSpec
+    dir = direction
+    maxD = maxDistance
+  end
+  local hit = query("raycast", { origin, dir, maxD })
+  if type(hit) ~= "table" then
+    return nil
+  end
+  if type(hit.kind) ~= "string" then
+    return nil
+  end
+  if type(hit.distance) ~= "number" then
+    return nil
+  end
+  if type(hit.point) ~= "table" or type(hit.normal) ~= "table" then
+    return nil
+  end
+  return hit
+end
+
+-- ## Timers
+
+M.after = function(idOrSpec, delayMs)
+  local id, delay
+  if type(idOrSpec) == "table" then
+    id = idOrSpec.id
+    delay = idOrSpec.afterMs
+    if delay == nil then delay = idOrSpec.delayMs end
+    if delay == nil then delay = idOrSpec.delay end
+  else
+    id = idOrSpec
+    delay = delayMs
+  end
+  dispatch("timer", { id = id, afterMs = delay })
+end
+
+-- ## Events
+
 local EVENT_KINDS = {}
 for _, kind in ipairs({
   "player-joined",
@@ -3115,18 +4440,21 @@ for _, kind in ipairs({
   EVENT_KINDS[kind] = true
 end
 
+M.EVENT_KINDS = {
+  "player-joined",
+  "player-left",
+  "player-died",
+  "zone-entered",
+  "zone-left",
+  "entity-used",
+  "item-used",
+  "npc-talk",
+  "npc-choose",
+  "timer",
+  "data-changed",
+}
+
 M.onTick = function(handler)
-  -- **The tick, parsed the way \`parseTick\` parses it in the TypeScript twin, and the
-  -- unwrapping of \`payload\` is the part that was missing once.** The wire nests a
-  -- fact's own fields under \`payload\` — that is what \`events.ts\` validates, and nesting
-  -- is what keeps a payload field from colliding with \`kind\` and \`at\` — but the shape a
-  -- script is written against is the flat one: \`event.entityId\`, not
-  -- \`event.payload.entityId\`. A library that forgets to unwrap hands every script a
-  -- silently-nil field, which is how "take the patient's photo" stopped working without
-  -- a single refusal saying anything.
-  --
-  -- A malformed clock or list becomes an empty tick: the alternative is a script that
-  -- cannot start, reported as a parse error in a file the author cannot see.
   engine.onTick(function(clockJson: string, eventsJson: string)
     local now = tonumber(clockJson)
     if now == nil then
@@ -3164,7 +4492,119 @@ M.onTick = function(handler)
   end)
 end
 
-M.PlaceError = "PlaceError" -- marker for the docs; the throws above carry the sentence
+-- ## Small maths
+
+M.clamp = function(value, low, high)
+  if value < low then return low end
+  if value > high then return high end
+  return value
+end
+
+M.lerp = function(a, b, t)
+  return a + (b - a) * t
+end
+
+M.random = function()
+  return engine.random()
+end
+
+M.randint = function(lo: number, hi: number): number
+  return lo + math.floor(engine.random() * (hi - lo + 1))
+end
+
+M.randFloat = function(low, high)
+  return low + engine.random() * (high - low)
+end
+
+M.choice = function(items)
+  if type(items) ~= "table" or #items == 0 then
+    return nil
+  end
+  return items[M.randint(1, #items)]
+end
+
+-- ## Vector3
+
+local Vector3 = {}
+Vector3.__index = Vector3
+
+function Vector3.new(x, y, z)
+  local v = { x = x or 0, y = y or 0, z = z or 0 }
+  v.length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+  return setmetatable(v, Vector3)
+end
+
+function Vector3.zero()
+  return Vector3.new(0, 0, 0)
+end
+
+function Vector3.one()
+  return Vector3.new(1, 1, 1)
+end
+
+function Vector3.fromArray(values)
+  return Vector3.new(values[1], values[2], values[3])
+end
+
+function Vector3:add(other)
+  return Vector3.new(self.x + other.x, self.y + other.y, self.z + other.z)
+end
+
+function Vector3:subtract(other)
+  return Vector3.new(self.x - other.x, self.y - other.y, self.z - other.z)
+end
+
+function Vector3:scale(factor)
+  return Vector3.new(self.x * factor, self.y * factor, self.z * factor)
+end
+
+function Vector3:dot(other)
+  return self.x * other.x + self.y * other.y + self.z * other.z
+end
+
+function Vector3:cross(other)
+  return Vector3.new(
+    self.y * other.z - self.z * other.y,
+    self.z * other.x - self.x * other.z,
+    self.x * other.y - self.y * other.x
+  )
+end
+
+function Vector3:unit()
+  local len = self.length
+  if len == 0 then
+    return Vector3.zero()
+  end
+  return self:scale(1 / len)
+end
+
+function Vector3:lerp(other, t)
+  return Vector3.new(
+    M.lerp(self.x, other.x, t),
+    M.lerp(self.y, other.y, t),
+    M.lerp(self.z, other.z, t)
+  )
+end
+
+function Vector3:toArray()
+  return { self.x, self.y, self.z }
+end
+
+function Vector3:equals(other)
+  return self.x == other.x and self.y == other.y and self.z == other.z
+end
+
+setmetatable(Vector3, {
+  __call = function(_, x, y, z)
+    return Vector3.new(x, y, z)
+  end,
+})
+
+M.Vector3 = Vector3
+
+-- ## PlaceError marker
+
+M.PlaceError = "PlaceError"
 
 return M
 `)throw new NA(`guest/place-api.luau`,`is missing its levels sentinel; the bundler cannot inject documents it has nowhere to put`);return t},HM=(e,t,n={})=>{if(!(t in e))throw new NA(t,`is not one of this place's files`);if(Object.keys(e).length===0)throw new NA(t,`has no files`);let r=Object.keys(e).sort(),i=new Map;r.forEach((e,t)=>i.set(e,String(t)));let a=new Map;a.set(wA,VM(n));let o=[t];for(;o.length>0;){let t=o.pop();if(a.has(t))continue;FM(t,e[t]);let{luau:n,imports:r}=RM(t,e[t],e,i);a.set(t,n);for(let e of r)o.push(e)}return UM(a,i,i.get(t))},UM=(e,t,n)=>{let r=[...e.keys()].sort((e,t)=>e===`spacescape`?-1:t===`spacescape`?1:e.localeCompare(t)),i=[];for(let n of r){let r=n===`spacescape`?wA:t.get(n);i.push(`__modules[${zM(r)}] = function()\n${e.get(n)}\nend`)}return`return function(engine)
@@ -6808,7 +8248,7 @@ onTick((info) => {
 `);t.push(`  folder     ${i.name} (restored)`)}return await gz(i,t)?(await vz(i,t),t.push(`  .git       ${await _z(i)}`),t.push(`  result     done`),t.push(yz()),t.join(`
 `)):(t.push(`  result     no read/write permission`),t.push(yz()),t.join(`
 `))},xz=`spacescape-folder`,Sz=`folders`,Cz=`last`,wz,Tz=null,Ez=!1,Dz=e=>e instanceof Error?`${e.name}: ${e.message}`:String(e),Oz=async e=>{try{return await e.getDirectoryHandle(`.git`),!0}catch{}try{return await e.getFileHandle(`.git`),!0}catch{return!1}},kz=e=>e instanceof DOMException&&e.name===`NotFoundError`,Az=()=>typeof indexedDB>`u`?Promise.resolve(null):(wz===void 0&&(wz=new Promise(e=>{let t=indexedDB.open(xz,1);t.onupgradeneeded=()=>{let e=t.result;e.objectStoreNames.contains(Sz)||e.createObjectStore(Sz)},t.onsuccess=()=>e(t.result),t.onerror=()=>e(null),t.onblocked=()=>e(null)})),wz),jz=()=>Tz,Mz=async e=>{Tz=e,Ez=!0;let t=await Az();return t!==null&&new Promise(n=>{try{let r=t.transaction(Sz,`readwrite`);r.objectStore(Sz).put(e,Cz),r.oncomplete=()=>n(!0),r.onerror=()=>n(!1),r.onabort=()=>n(!1)}catch{n(!1)}})},Nz=async()=>{if(Ez)return Tz;let e=await Az();if(e===null)return Ez=!0,null;let t=await new Promise(t=>{try{let n=e.transaction(Sz,`readonly`).objectStore(Sz).get(Cz);n.onsuccess=()=>t(n.result??null),n.onerror=()=>t(null)}catch{t(null)}});return Ez||=(Tz=t,!0),Tz},Pz=async()=>{Tz=null,Ez=!0;let e=await Az();e!==null&&await new Promise(t=>{try{let n=e.transaction(Sz,`readwrite`);n.objectStore(Sz).delete(Cz),n.oncomplete=()=>t(),n.onerror=()=>t(),n.onabort=()=>t()}catch{t()}})},Fz=()=>typeof window.showDirectoryPicker==`function`,Iz=async e=>{let t=window.showDirectoryPicker;if(typeof t!=`function`)throw Error(`this browser does not expose a folder picker`);try{return await t({id:`spacescape-place`,mode:e})}catch(e){if(e instanceof DOMException&&e.name===`AbortError`)return null;throw e}},Lz=async(e,t)=>{if(typeof e.queryPermission!=`function`)return;let n=await e.queryPermission({mode:t});if(n!==`granted`){if(n===`denied`)throw Error(`permission to ${t} "${e.name}" was denied`);if(typeof e.requestPermission!=`function`)throw Error(`"${e.name}" needs permission to be ${t}`);try{n=await e.requestPermission({mode:t})}catch(n){throw Error(`permission to ${t} "${e.name}" was not granted: ${Dz(n)}`)}if(n!==`granted`)throw Error(`permission to ${t} "${e.name}" was not granted`)}},gee=async(e,t)=>Lz(e,t),Rz=e=>{if(!pP(e))throw Error(`"${e}" is not a path this can read or write`);let t=e.split(`/`),n=t.pop();if(n===void 0)throw Error(`"${e}" is not a file name`);return{directories:t,file:n}},zz=async(e,t,n)=>{let{directories:r,file:i}=Rz(t),a=e;for(let e of r)a=await a.getDirectoryHandle(e,n?{create:!0}:void 0);return{directory:a,file:i}},Bz=async(e,t)=>{let{directory:n,file:r}=await zz(e,t,!1);return(await(await n.getFileHandle(r)).getFile()).text()},Vz=async(e,t)=>{let{directory:n,file:r}=await zz(e,t,!1),i=await n.getFileHandle(r);return new Uint8Array(await(await i.getFile()).arrayBuffer())},Hz=async(e,t,n)=>{let{directory:r,file:i}=await zz(e,t,!0),a=await(await r.getFileHandle(i,{create:!0})).createWritable();try{await a.write(n)}finally{await a.close()}},Uz=async(e,t,n)=>{let{directory:r,file:i}=await zz(e,t,!0),a=await(await r.getFileHandle(i,{create:!0})).createWritable();try{await a.write(n)}finally{await a.close()}},Wz=async(e,t)=>{try{let{directory:n,file:r}=await zz(e,t,!1);return await n.removeEntry(r),!0}catch(e){if(kz(e))return!1;throw e}},Gz=async e=>{let t;try{t=await Bz(e,eP)}catch(e){if(kz(e))return null;throw e}let n;try{n=JSON.parse(t)}catch{throw Error(`"${eP}" in "${e.name}" is not JSON`)}if(!oP(n))throw Error(`"${eP}" in "${e.name}" is not a place this can open`);return n},Kz=async(e,t)=>{if(!ER(t))throw Error(`this project is not one a place can be written from — its manifest and its files disagree`);let n=[...t.manifest.scripts,...t.manifest.models??[],...t.manifest.levels??[],...t.manifest.sounds??[]];if(n.includes(`manifest.json`))throw Error(`"${eP}" is the place's manifest, not a file it can carry`);for(let e of n)if(!pP(e))throw Error(`the manifest names "${e}", which is not a path this can write`);await Lz(e,`readwrite`);let r=await Gz(e);if(r!==null&&r.name!==t.manifest.name)throw Error(`"${e.name}" already holds "${r.name}", not "${t.manifest.name}" — choose an empty folder or the place's own folder`);let i=r===null?[]:[...r.scripts,...r.models??[],...r.levels??[],...r.sounds??[]],a=0;for(let[n,r]of Object.entries(t.scripts))await Hz(e,n,r),a+=1;for(let[n,r]of Object.entries(t.models))await Uz(e,n,r),a+=1;for(let[n,r]of Object.entries(t.levels))await Hz(e,n,r),a+=1;for(let[n,r]of Object.entries(t.sounds??{}))await Uz(e,n,r),a+=1;let o={...t.manifest,scripts:Object.keys(t.scripts),...Object.keys(t.models).length>0?{models:Object.keys(t.models)}:{},...Object.keys(t.levels).length>0?{levels:Object.keys(t.levels)}:{},...Object.keys(t.sounds??{}).length>0?{sounds:Object.keys(t.sounds??{})}:{}};await Hz(e,eP,`${JSON.stringify(o,null,2)}\n`),a+=1;let s=0;for(let t of i)n.includes(t)||await Wz(e,t)&&(s+=1);return{written:a,deleted:s}},qz=async e=>{await Lz(e,`read`);let t=await Gz(e);if(t===null)throw Error(`no "${eP}" at the root of "${e.name}"`);let n={},r=0;for(let i of t.scripts){let t;try{t=await Bz(e,i)}catch(e){throw kz(e)?Error(`the manifest names "${i}", which the folder does not hold`):e}if(r+=t.length,r>1e6)throw Error(`the place's source is over the ${Tp} character limit`);n[i]=t}let i={};for(let n of t.models??[]){let t;try{t=await Vz(e,n)}catch(e){throw kz(e)?Error(`the manifest names "${n}", which the folder does not hold`):e}if(t.byteLength>4194304)throw Error(`"${n}" is over the ${nP} byte limit on one attachment`);i[n]=t}let a={};for(let n of t.levels??[]){let t;try{t=await Bz(e,n)}catch(e){throw kz(e)?Error(`the manifest names "${n}", which the folder does not hold`):e}if(t.length>1048576)throw Error(`"${n}" is over the ${aP} character limit on one level`);a[n]=t}let o={},s=0;for(let n of t.sounds??[]){let t;try{t=await Vz(e,n)}catch(e){throw kz(e)?Error(`the manifest names "${n}", which the folder does not hold`):e}if(t.byteLength>10485760)throw Error(`"${n}" is over the ${rP} byte limit on one sound`);if(s+=t.byteLength,s>33554432)throw Error(`the place's sounds are over the ${iP} byte total limit`);o[n]=t}let c={manifest:t,scripts:n,models:i,levels:a,...Object.keys(o).length>0?{sounds:o}:{}};if(!ER(c))throw Error(`"${e.name}" holds a manifest and files that disagree — no place can be read from it`);return c},Jz=`spacescape`,Yz=1,Xz=`Store`,Zz,Qz=()=>typeof indexedDB<`u`,$z=()=>Qz()?(Zz===void 0&&(Zz=new Promise(e=>{let t=indexedDB.open(Jz,Yz);t.onupgradeneeded=e=>{let t=e.target.result;t.objectStoreNames.contains(Xz)||t.createObjectStore(Xz)},t.onsuccess=t=>e(t.target.result),t.onerror=()=>e(null),t.onblocked=()=>e(null)})),Zz):Promise.resolve(null),eB=async e=>{let t=await $z();if(t!==null)return await new Promise(n=>{let r=t.transaction(Xz,`readonly`).objectStore(Xz).get(e);r.onsuccess=()=>n(r.result),r.onerror=()=>n(void 0)})},tB=async(e,t)=>{let n=await $z();n!==null&&await new Promise(r=>{let i=n.transaction(Xz,`readwrite`).objectStore(Xz).put(t,e);i.onsuccess=()=>r(),i.onerror=()=>r()})},nB=jn(`<div class=place-browser-row><div class=place-browser-info><span class=place-browser-name></span><span class=place-browser-meta> · <!></span></div><button type=button class=place-browser-play>load`),rB=jn(`<button type=button class=place-browser-mine>mine`),iB=jn(`<p class=place-browser-error>`),aB=jn(`<p class=place-browser-help>searching…`),oB=jn(`<p class=place-browser-summary><span> <!> place<!>, from <!> account<!></span><button type=button class=place-browser-refresh>refresh`),sB=jn(`<button type=button class=place-browser-more>show <!> more`),cB=jn(`<p class=place-browser-help>`),lB=jn(`<div class=place-browser-overlay><div class=place-browser-panel><div class=place-browser-header><span class=place-browser-title>published places</span><button type=button class=place-browser-close aria-label=close>×</button></div><div class=place-browser-search><input class=place-browser-field type=text placeholder="account handle or id…"><button type=button class=place-browser-search-btn>search</button></div><div class=place-browser-body><!><!><!><!><!>`),uB=25,dB=null,fB=e=>{let[t,n]=rn(e.place.repo);on(()=>e.place.repo,t=>{e.resolveHandle(t).then(n)});let r=()=>{let t=e.place.record.scripts.length;return`${t} script${t===1?``:`s`}`};var i=nB(),a=i.firstChild,o=a.firstChild,s=o.nextSibling,c=s.firstChild,l=c.nextSibling,u=a.nextSibling;return Qn(o,()=>e.place.record.name),Qn(s,t,c),Qn(s,r,l),u.$$click=()=>e.onPlay(e.place),Cn(()=>`Load ${e.place.record.name}`,e=>{Vn(u,`aria-label`,e)}),i},pB=e=>{let[t,n]=rn(``),[r,i]=rn([]),[a,o]=rn(!1),[s,c]=rn(!1),[l,u]=rn(null),[d,f]=rn(!1),[p,m]=rn(!1),[h,g]=rn(uB),_=nn(()=>r().slice(0,h())),v=nn(()=>new Set(r().map(e=>e.repo)).size);on(r,()=>{g(uB)}),on(()=>e.open,e=>{e&&y()}),on(()=>e.open?e.input:null,e=>e===null?void 0:e.suspendPointerLock());let y=async()=>{f(!0),c(!0),u(null);try{let t=dB??await e.library.listAll();dB??=t,m(t.capped),i([...t.places]),o(!0)}catch(e){u(e instanceof Error?e.message:String(e))}finally{c(!1)}},b=async()=>{let n=t().trim();if(n===``){u(`name an account by handle or id to list their places`);return}c(!0),f(!1),i([]),o(!1),u(null);try{i(await e.library.list(n)),o(!0)}catch(e){u(e instanceof Error?e.message:String(e))}finally{c(!1)}},x=new AbortController;return Nt(()=>x.abort()),window.addEventListener(`keydown`,t=>{t.key===`Escape`&&e.open&&(t.preventDefault(),e.onClose())},{signal:x.signal}),H(ln,{get when(){return e.open},get children(){var i=lB(),o=i.firstChild.firstChild,c=o.firstChild.nextSibling,u=o.nextSibling,f=u.firstChild,m=f.nextSibling,x=u.nextSibling,S=x.firstChild,C=S.nextSibling,w=C.nextSibling,T=w.nextSibling,E=T.nextSibling;return i.$$pointerdown=t=>{t.target===t.currentTarget&&e.onClose()},Wn(c,`click`,e.onClose,!0),f.$$keydown=e=>{e.key===`Enter`&&(e.preventDefault(),b())},f.$$input=e=>n(e.currentTarget.value),m.$$click=()=>void b(),Qn(u,H(ln,{get when(){return e.accountDid!==null},get children(){var t=rB();return t.$$click=()=>{n(e.accountDid??``),b()},t}}),null),Qn(x,H(ln,{get when(){return l()!==null},get children(){var e=iB();return Qn(e,l),e}}),S),Qn(x,H(ln,{get when(){return s()},get children(){return aB()}}),C),Qn(x,H(ln,{get when(){return wn(()=>!(!d()||s()))()?r().length>0:d()&&!s()},get children(){var e=oB(),t=e.firstChild,n=t.firstChild,i=n.nextSibling,a=i.nextSibling.nextSibling,o=a.nextSibling.nextSibling,s=o.nextSibling.nextSibling,c=t.nextSibling;return Qn(t,()=>p()?`the first`:`all`,n),Qn(t,()=>r().length,i),Qn(t,()=>r().length===1?``:`s`,a),Qn(t,v,o),Qn(t,()=>v()===1?``:`s`,s),c.$$click=()=>{dB=null,y()},e}}),w),Qn(x,H(ln,{get when(){return wn(()=>!(s()||!a()))()?r().length>0:!s()&&a()},get children(){return[H(cn,{get each(){return _()},children:t=>H(fB,{place:t,get resolveHandle(){return e.resolveHandle},onPlay:t=>{e.onClose(),e.onPlay(t)}})}),H(ln,{get when(){return r().length>h()},get children(){var e=sB(),t=e.firstChild.nextSibling;return t.nextSibling,e.$$click=()=>g(h()+uB),Qn(e,()=>Math.min(uB,r().length-h()),t),e}})]}}),T),Qn(x,H(ln,{get when(){return wn(()=>!(s()||!a()))()?r().length===0:!s()&&a()},get children(){var e=cB();return Qn(e,()=>d()?`nothing is published yet`:`no places published under that account`),e}}),E),Cn(()=>t(),e=>{f.value=e??``}),i}})};Mn([`click`,`pointerdown`,`input`,`keydown`]);var mB={sources:[`src/places/guest/place-api.ts`,`src/places/events.ts`,`src/places/limits.ts`],functions:[{name:`after`,signature:`(id: string, delayMs: number): void`,doc:'Schedules a `timer` event. **The delay and the id are separate parameters, id first**, so a script can build a name from something it already has. Timers fire in sorted id order, so the order a script\'s timers arrive in is the order they were *named* in rather than the order they were set — which is what makes two peers agree about which of two that came due together came first. **Setting an id that is already pending does nothing.** Not "resets it", not "queues a second": nothing. That is what makes the obvious pattern work — ```ts let fired = false; onTick((info) => { if (info.events.some((e) => e.kind === "timer")) { fired = true; openTheDoor(); } if (!fired) after("door", 3000); // arms once, and fires once }); ``` — and it is the opposite of what a "reset the deadline" reading would suggest. A place that wants a repeating timer re-arms it when the event arrives, by which point the id is free.',params:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`delayMs`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`choice`,signature:`<T>(items: readonly T[]): T | undefined`,doc:`One of the entries, or undefined for an empty array. From the seeded generator.`,params:[{name:`items`,type:`readonly T[]`,optional:!1,doc:``}],returns:`T | undefined`},{name:`clamp`,signature:`(value: number, low: number, high: number): number`,doc:"Holds `value` between `low` and `high`.",params:[{name:`value`,type:`number`,optional:!1,doc:``},{name:`low`,type:`number`,optional:!1,doc:``},{name:`high`,type:`number`,optional:!1,doc:``}],returns:`number`},{name:`clearCamera`,signature:`(): void`,doc:`Gives the camera back to the player.`,params:[],returns:`void`},{name:`clearPlace`,signature:`(place: string): void`,doc:`Empties a place but leaves the place itself, so its name stays valid.`,params:[{name:`place`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`closeDialog`,signature:`(): void`,doc:"Closes the dialog, and does nothing when there is none. **Which is the point.** A place that closes on the way out of a conversation should not have to know whether one was open, and a `dialog-close` with no dialog behind it is the same answer as one with.",params:[],returns:`void`},{name:`createBeam`,signature:`(options: CreateBeamOptions): BeamHandle`,doc:`Draws a line between world points or entities. The returned handle removes it.`,params:[{name:`options`,type:`CreateBeamOptions`,optional:!1,doc:``}],returns:`BeamHandle`},{name:`createCamera`,signature:`(options: CreateCameraOptions): void`,doc:`Places a virtual camera. Nothing looks through it until something watches it or shows it.`,params:[{name:`options`,type:`CreateCameraOptions`,optional:!1,doc:``}],returns:`void`},{name:`createHudLabel`,signature:`(options: CreateHudLabelOptions): HudLabelHandle`,doc:`Creates a line of text on the HUD; update it with setText and remove it when finished.`,params:[{name:`options`,type:`CreateHudLabelOptions`,optional:!1,doc:``}],returns:`HudLabelHandle`},{name:`createHudMeter`,signature:`(options: CreateHudMeterOptions): HudMeterHandle`,doc:`Creates a labelled bar on the HUD; update it with setValue and remove it when finished.`,params:[{name:`options`,type:`CreateHudMeterOptions`,optional:!1,doc:``}],returns:`HudMeterHandle`},{name:`createHudPanel`,signature:`(options: CreateHudPanelOptions): HudPanelHandle`,doc:`Creates a world-space text-and-progress panel; optionally attach it to an entity.`,params:[{name:`options`,type:`CreateHudPanelOptions`,optional:!1,doc:``}],returns:`HudPanelHandle`},{name:`createLight`,signature:`(options: CreateLightOptions): LightHandle`,doc:`Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.`,params:[{name:`options`,type:`CreateLightOptions`,optional:!1,doc:``}],returns:`LightHandle`},{name:`createMedium`,signature:`(options: CreateMediumOptions): void`,doc:`Creates a medium: a box the player is pushed, slowed or sunk by. Replaces any medium with the same id.`,params:[{name:`options`,type:`CreateMediumOptions`,optional:!1,doc:``}],returns:`void`},{name:`createNpc`,signature:`(options: CreateNpcOptions): void`,doc:`Stands a character in the world, from one of the place's attached models.`,params:[{name:`options`,type:`CreateNpcOptions`,optional:!1,doc:``}],returns:`void`},{name:`createParticle`,signature:`(options: CreateParticleOptions): ParticleHandle`,doc:`Runs a particle emitter at a point or over an entity. The returned handle stops it.`,params:[{name:`options`,type:`CreateParticleOptions`,optional:!1,doc:``}],returns:`ParticleHandle`},{name:`createProp`,signature:`(options: CreatePropOptions): void`,doc:`Stands a prop in the world, from one of the place's attached models.`,params:[{name:`options`,type:`CreatePropOptions`,optional:!1,doc:``}],returns:`void`},{name:`createScreen`,signature:`(options: CreateScreenOptions): void`,doc:`Puts a screen in the world.`,params:[{name:`options`,type:`CreateScreenOptions`,optional:!1,doc:``}],returns:`void`},{name:`createShape`,signature:`(options: CreateShapeOptions): void`,doc:"Adds one operation to a place. **Returns nothing.** A handle would be a second identity for a thing the script already has a name for, and the id *is* the handle — which is what `removeShape` takes. An object identity across the boundary is exactly what ADR 0015 forbids, so a handle here could only be a number, and a number the script chose is a name.",params:[{name:`options`,type:`CreateShapeOptions`,optional:!1,doc:``}],returns:`void`},{name:`createZone`,signature:`(options: CreateZoneOptions): void`,doc:`Creates a zone: a box the place is told the player entered and left. Replaces any zone with the same id.`,params:[{name:`options`,type:`CreateZoneOptions`,optional:!1,doc:``}],returns:`void`},{name:`defineItem`,signature:`(item: string): void`,doc:'Declares an item, so the place can hand it out. **A declaration and not a definition, because there is nothing to define.** An item in this engine is a name and a count; it has no sprite and no slot, because there is no inventory panel to put either in. The sibling engine gives every item a `stackable` flag and an empty sprite, and neither means anything there either — so this takes a name and nothing else, and a field that nothing can act on reads as a feature and is not one. **It exists for the refusal it makes possible.** `giveItem` refuses a name this has not declared, and in the shop this was built for the difference between "the player has a cola" and "the player has a cloa" is the entire puzzle. One declaration per item is a cheap price for a misspelling being an error at the line it was written. Declaring the same item again changes nothing and is not an error, so a place that declares from a loop reloading it is not a failure.',params:[{name:`item`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`deleteData`,signature:`(key: string): void`,doc:"Forgets a stored value, so a later `loadData` finds nothing.",params:[{name:`key`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`endGame`,signature:`(options: { readonly title: string; readonly text: string; }): void`,doc:"Ends the game, with a title and a card, and offers to play again. **There is no way to take it back**, and there is deliberately no `unend`: an ending is a statement about the run that just finished, and a place that could undo one would be a place whose end could be undone, which is the one thing an ending is for. The card's only way on is to start again, which reloads the place from the beginning rather than undoing the run.",params:[{name:`options`,type:`{ readonly title: string; readonly text: string; }`,optional:!1,doc:``}],returns:`void`},{name:`getHeightAt`,signature:`(x: number, z: number): number`,doc:`The terrain's surface height at a column.`,params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],returns:`number`},{name:`getMediumAt`,signature:`(x: number, y: number, z: number): Medium | undefined`,doc:'What a scripted field at a point does to whoever is inside it, or `undefined` where none sits. **A query about a place rather than about the player.** "Am I standing on my belt" is a question about a box and a position, and asking it that way means the answer does not change when there is more than one player. There is one today (`MAX_PLAYERS`), so the two would agree; they would not after.',params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],returns:`Medium | undefined`},{name:`getSolidAt`,signature:`(x: number, y: number, z: number): boolean`,doc:`Whether a point is inside material. Water is not material.`,params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],returns:`boolean`},{name:`getWaterAt`,signature:`(x: number, y: number, z: number): boolean`,doc:`Whether a point is underwater.`,params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],returns:`boolean`},{name:`giveItem`,signature:`(item: string, count?: number | undefined): void`,doc:`Puts items in what the player is carrying. **The item must have been declared**, which is what makes a typo a typo.`,params:[{name:`item`,type:`string`,optional:!1,doc:``},{name:`count`,type:`number | undefined`,optional:!0,doc:``}],returns:`void`},{name:`hideImage`,signature:`(id: string): void`,doc:`Takes a HUD image away. A no-op when there was none.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`holdItem`,signature:`(item?: string | undefined): void`,doc:'Puts an item in the player\'s hands, or empties them. **Omitting the item is how a place says "put that down", and there is no other way.** Every name in this API is a non-empty string, so an empty string is not available as a second way to say nothing and the absence is the only one. **What a hand changes is the interaction, not the world.** A crosshair on a character is a conversation with empty hands and a use with anything in them; a crosshair on nothing does nothing at all with empty hands. So the whole of what holding a thing does is to change which of those happens, and a place that never reads `item` can hold things all day without consequence.',params:[{name:`item`,type:`string | undefined`,optional:!0,doc:``}],returns:`void`},{name:`lerp`,signature:`(a: number, b: number, t: number): number`,doc:"The value `t` of the way from `a` to `b`, for interpolating a number.",params:[{name:`a`,type:`number`,optional:!1,doc:``},{name:`b`,type:`number`,optional:!1,doc:``},{name:`t`,type:`number`,optional:!1,doc:``}],returns:`number`},{name:`level`,signature:`(name: string): string`,doc:"The level document this place carries under `name`, as the JSON text it was written as. **A string, and not a parsed object.** The bridge carries strings (ADR 0015), so anything structured has to cross as text and be parsed on the far side; returning a parsed object here would mean the boundary rules for exactly one call. A script that wants the level's items parses this once, and one place is not going to parse the same level in a loop. **Compiled in rather than asked for.** The levels are baked into this module by `bundle.ts` when the place is bundled, so this is a lookup in a table that is already there — not a query, and not a new member on the bridge. A place carrying no level under this name throws, naming the level, the way `createProp` throws on a model the place does not hold.",params:[{name:`name`,type:`string`,optional:!1,doc:``}],returns:`string`},{name:`loadData`,signature:`(key: string): string | undefined`,doc:`Reads a stored value, or undefined when there is none.`,params:[{name:`key`,type:`string`,optional:!1,doc:``}],returns:`string | undefined`},{name:`log`,signature:`(text: string): void`,doc:`Prints a line to the console's scrollback, which is where a place's own account of itself is read.`,params:[{name:`text`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`lookAt`,signature:`(x: number, y: number, z: number, fov?: number | undefined): void`,doc:"Points the camera at a world position until `clearCamera` is called, optionally with a field of view.",params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``},{name:`fov`,type:`number | undefined`,optional:!0,doc:``}],returns:`void`},{name:`moveCamera`,signature:`(id: string, options: { at?: Vec3Like | undefined; target?: Vec3Like | undefined; fov?: number | undefined; }): void`,doc:`Moves a virtual camera, or changes its lens. **Every field is optional and an absent one is unchanged**, so panning is one field rather than the whole definition repeated. Moving the camera the player is watching moves their view.`,params:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`options`,type:`{ at?: Vec3Like; target?: Vec3Like; fov?: number; }`,optional:!1,doc:``}],returns:`void`},{name:`moveEntity`,signature:`(id: string, at: Vec3Like, yaw?: number | undefined): void`,doc:"Moves whatever is standing under `id`, and optionally turns it. **One function for both kinds, because there is one id space.** `moveProp` and `moveNpc` would be the same function twice, and the pair would be a place for them to differ by accident. **`yaw` is omitted rather than defaulted to zero**, so a character walking across a room keeps the way it was facing. A move that turned everything to north would be a move that silently did something.",params:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`at`,type:`Vec3Like`,optional:!1,doc:``},{name:`yaw`,type:`number | undefined`,optional:!0,doc:``}],returns:`void`},{name:`movePlayer`,signature:`(x: number, y: number, z: number, yaw?: number | undefined): void`,doc:`Places the player at a world position, optionally facing a heading. For a spawn point, a teleport or a trapdoor.`,params:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``},{name:`yaw`,type:`number | undefined`,optional:!0,doc:``}],returns:`void`},{name:`moveScreen`,signature:`(id: string, options: { readonly source?: ImageSource | undefined; readonly at?: Vec3Like | undefined; readonly yaw?: number | undefined; readonly width?: number | undefined; readonly height?: number | undefined; }): void`,doc:`Moves, resizes or re-aims a screen, or changes what it shows.`,params:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`options`,type:`{ readonly source?: ImageSource; readonly at?: Vec3Like; readonly yaw?: number; readonly width?: number; readonly height?: number; }`,optional:!1,doc:``}],returns:`void`},{name:`narrate`,signature:`(who: string, text: string): void`,doc:`Says a line, with a name to attribute it to. **A name and not just text**, because a line with no speaker is a line nobody acts on: "Dad: go to bed. Now." and the same words said by a vending machine are different scenes, and the name is the whole of the difference. **It replaces the last one rather than queueing**, because two lines at once is a conversation nobody is having.`,params:[{name:`who`,type:`string`,optional:!1,doc:``},{name:`text`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`onTick`,signature:`(handler: (info: TickInfo) => void): void`,doc:`Registers a function to run on every step. Called during load, before the first step, so a place builds itself from its handlers rather than from something that has to ask to be run. **The handler receives an object, not positional arguments**, because the event list grows and a script written against two positional arguments would break silently when a third appeared. It is also the only place in the library where a structured value exists, and it is built *inside* the interpreter from two strings — so the object a script sees never crossed the boundary.`,params:[{name:`handler`,type:`(info: TickInfo) => void`,optional:!1,doc:``}],returns:`void`},{name:`openDialog`,signature:`(options: { readonly entityId: string; readonly prompt: string; readonly options: readonly string[]; }): void`,doc:"As the player a question with answers to click. **Opening a second dialog replaces the first.** A place that opened one on top of another would leave the player looking at one and unable to reach the other, and the only way out would be whichever one the place happened to remember to close. **The pointer lock is released while it is up**, which is this function's most consequential side effect and the reason it exists rather than a panel the place draws itself: a locked pointer swallows every click aimed anywhere but the crosshair, so a dialog nobody can click is a dialog that does not exist (ADR 0010). **The answer arrives as `npc-choose` with an index counting from zero**, and a place that wants to know which option was picked matches on it.",params:[{name:`options`,type:`{ readonly entityId: string; readonly prompt: string; readonly options: readonly string[]; }`,optional:!1,doc:``}],returns:`void`},{name:`playSound`,signature:`(name: string, options?: PlaySoundOptions): SoundHandle`,doc:`Plays a sound file named in the place manifest. The name is its manifest path.`,params:[{name:`name`,type:`string`,optional:!1,doc:``},{name:`options`,type:`PlaySoundOptions`,optional:!1,doc:``}],returns:`SoundHandle`},{name:`randFloat`,signature:`(low: number, high: number): number`,doc:"A number in `[low, high)`, from the seeded generator.",params:[{name:`low`,type:`number`,optional:!1,doc:``},{name:`high`,type:`number`,optional:!1,doc:``}],returns:`number`},{name:`randint`,signature:`(low: number, high: number): number`,doc:"A whole number in `[low, high]`, from the seeded generator.",params:[{name:`low`,type:`number`,optional:!1,doc:``},{name:`high`,type:`number`,optional:!1,doc:``}],returns:`number`},{name:`random`,signature:`(): number`,doc:`A number from the seeded generator, so two peers drawing the same place agree.`,params:[],returns:`number`},{name:`raycast`,signature:`(origin: Vec3Like, direction: Vec3Like, maxDistance: number): RayHit | undefined`,doc:`Casts a ray against the world and reports what it hit. **Traces the same field the picker does** (ADR 0009), which is why this is a query and not a grid walk: there is no voxel DDA here, and no step cap, because a surface is found by the sign of a distance function.`,params:[{name:`origin`,type:`Vec3Like`,optional:!1,doc:``},{name:`direction`,type:`Vec3Like`,optional:!1,doc:``},{name:`maxDistance`,type:`number`,optional:!1,doc:``}],returns:`RayHit | undefined`},{name:`removeCamera`,signature:`(id: string): void`,doc:`Removes a virtual camera, and anything that was showing it.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeEntity`,signature:`(id: string): void`,doc:"Takes whatever is standing under `id` out of the world. **Removing something that is not there does nothing and is not an error**, which is what a script that cleans up defensively needs.",params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeLight`,signature:`(id: string): void`,doc:`Takes a light away. Doing nothing when there is none.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeMedium`,signature:`(id: string): void`,doc:`Takes a medium away. Doing nothing when there is none.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removePhoto`,signature:`(id: string): void`,doc:`Forgets a photo, freeing its pixels and removing anything that was showing it.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removePlace`,signature:`(place: string): void`,doc:`Removes a whole place, its shapes with it. Nothing it added is in the undo history.`,params:[{name:`place`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeScreen`,signature:`(id: string): void`,doc:`Removes a screen by id.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeShape`,signature:`(place: string, id: string): void`,doc:"Takes one shape out of a place by the id `createShape` was given.",params:[{name:`place`,type:`string`,optional:!1,doc:``},{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`removeZone`,signature:`(id: string): void`,doc:`Takes a zone away. Doing nothing when there is none, so a place need not remember what it made.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`saveData`,signature:`(key: string, value: string): void`,doc:"Writes a value the place can read on a later visit. Global rather than per-player: v1 has no accounts and one local player, and `scope` is an enum precisely so that adding accounts is a data change rather than a format change.",params:[{name:`key`,type:`string`,optional:!1,doc:``},{name:`value`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`setEntityUseDuration`,signature:`(id: string, seconds: number): void`,doc:`Sets the hold time before using this entity completes. A duration of zero keeps use instant.`,params:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`seconds`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`setFlying`,signature:`(on: boolean): void`,doc:`Lets the player fly, or stops them doing so. The one movement verb a place owns outright.`,params:[{name:`on`,type:`boolean`,optional:!1,doc:``}],returns:`void`},{name:`setPlayerJump`,signature:`(multiplier: number): void`,doc:`Scales how high the player jumps, as a multiplier on their ordinary jump.`,params:[{name:`multiplier`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`setPlayerSpeed`,signature:`(multiplier: number): void`,doc:`Scales how fast the player moves, as a multiplier on their ordinary speed.`,params:[{name:`multiplier`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`setTime`,signature:`(seconds: number): void`,doc:`Jumps the clock to a mark in its cycle. The cycle is 1,200 seconds.`,params:[{name:`seconds`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`setTimeSpeed`,signature:`(multiplier: number): void`,doc:`Scales how fast the cycle runs. Zero stops time.`,params:[{name:`multiplier`,type:`number`,optional:!1,doc:``}],returns:`void`},{name:`showImage`,signature:`(options: { readonly id: string; readonly source: ImageSource; readonly corner?: HudCorner | undefined; readonly width: number; readonly height: number; }): void`,doc:"Shows a camera or a photo in a corner of this player's screen. **A HUD image is not in the world**, so nothing else can see it and nothing can walk in front of it. It is the shape of a thing a place tells *one person*, the same way a `toast` is.",params:[{name:`options`,type:`{ readonly id: string; readonly source: ImageSource; readonly corner?: HudCorner; readonly width: number; readonly height: number; }`,optional:!1,doc:``}],returns:`void`},{name:`stopSound`,signature:`(id: string): void`,doc:`Stops a named sound playback.`,params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`takeItem`,signature:`(item: string, count?: number | undefined): void`,doc:"Takes items out of what the player is carrying, and never fails. **Takes whatever is there, up to `count`.** A player who has already drunk the milk has none, and that is an ordinary state rather than a failure — so this does not throw, and a script that wanted to know how much it got keeps its own count in `saveData`. **A held item that runs out is dropped**, which is the reason the held slot lives inside the inventory: a hand holding something the count says is gone is a hand the crosshair reads as occupied.",params:[{name:`item`,type:`string`,optional:!1,doc:``},{name:`count`,type:`number | undefined`,optional:!0,doc:``}],returns:`void`},{name:`takePhoto`,signature:`(options: { readonly id: string; readonly camera?: string | undefined; readonly width?: number | undefined; readonly height?: number | undefined; }): Photo`,doc:"Renders one frame and keeps it. **Returns before the pixels exist**, so a script can show the photo immediately and watch it fill in. There is no callback and no event: a photo is a thing that becomes true a frame or two after you ask for it, exactly as a `toast` appears on the next frame. **The picture is of the world, not of the screen.** It comes from a fresh pass through the scene, so it never contains the crosshair, a dialog or the HUD, and the same call gives the same picture whatever the player had open. Omit `camera` for the player's own view.",params:[{name:`options`,type:`{ readonly id: string; readonly camera?: string; readonly width?: number; readonly height?: number; }`,optional:!1,doc:``}],returns:`Photo`},{name:`toast`,signature:`(text: string): void`,doc:`Shows a line briefly over the world, for something the player should see rather than the console.`,params:[{name:`text`,type:`string`,optional:!1,doc:``}],returns:`void`},{name:`watchCamera`,signature:`(id: string): void`,doc:"Takes the player's view over and puts it at a camera, until `clearCamera`. **This player only.** A place watched by two peers is two views of one world from the same place, which is what every other effect does too.",params:[{name:`id`,type:`string`,optional:!1,doc:``}],returns:`void`}],values:[{name:`EVENT_KINDS`,type:`readonly ["player-joined", "player-left", "player-died", "zone-entered", "zone-left", "entity-used", "item-used", "npc-talk", "npc-choose", "timer", "data-changed"]`,doc:"The kinds, so a place author can write a `switch` that the compiler will check."}],types:[{name:`BeamHandle`,doc:`Handle for a beam created by a place script.`,members:[],union:[],alternatives:[],type:``},{name:`Combine`,doc:`How a shape changes the field.`,members:[],union:[`Add`,`Subtract`,`Paint`],alternatives:[],type:``},{name:`CreateBeamOptions`,doc:`Options for drawing a beam between points or entities.`,members:[],union:[],alternatives:[],type:``},{name:`CreateCameraOptions`,doc:"A viewpoint the place owns, rather than one the player is inside. **`at` and `target` rather than position and rotation**, because a security camera is aimed at something — a door, a till, a corridor — and a heading in radians is a number the person placing it has to work out from a map. The two points are also what a `screen` shows without a second definition.",members:[{name:`id`,type:`string`,optional:!1,doc:`A name the caller chose. Two peers running the same script must agree on it.`},{name:`at`,type:`Vec3Like`,optional:!1,doc:`Where the camera is.`},{name:`target`,type:`Vec3Like`,optional:!1,doc:`The point it looks at.`},{name:`fov`,type:`number`,optional:!0,doc:`The vertical field of view in degrees, 1 to 179. **Omitted means the player's own field of view**, which is what makes a camera view feel like the same world seen from elsewhere rather than a different lens.`}],union:[],alternatives:[],type:``},{name:`CreateEntityOptions`,doc:"Stands something in the world, and it is **one** operation for a prop or a character. **`createProp` and `createNpc` rather than one function with a `kind`, because the difference between them is not expressible as a field and the script is the one place it can be held to.** A character has to be given a name, because the crosshair will offer to talk to it and the dialog will have to say what it is talking to; a prop has no name and offering one would be a name nothing uses. `entity-add` is one tag underneath because the wire carries one id space and one crosshair event — but the two functions are how the difference gets enforced rather than documented.",members:[{name:`id`,type:`string`,optional:!1,doc:`What the script calls it, which is the only handle there is. **Never generated**, for the reason a shape's id is never generated: every peer runs every place and derives the same figures rather than receiving them, so an id this peer invented would be a different id on every peer.`},{name:`model`,type:`string`,optional:!1,doc:"One of the place's attached models, by the name in its manifest. **Not a path and not a file.** A `.sdfmod` has no id of its own (ADR 0033), so the name it is asked for by is the name the manifest gave it, and a name the place does not attach is refused by name."},{name:`at`,type:`Vec3Like`,optional:!1,doc:`Where it is. This is the model's own origin, not its base and not its middle.`},{name:`yaw`,type:`number`,optional:!0,doc:`A turn about up, in radians. Omitted means no turn.`},{name:`scale`,type:`number`,optional:!0,doc:`Uniform, about its own origin. **Not a resize.** A figure's shape is baked into its model, so this is for a place that wants a small copy of a thing rather than for one redrawing its own art.`},{name:`meshResolution`,type:`number`,optional:!0,doc:"The voxel size to mesh this model at, in world units. **A quality override rather than a size.** The model has its own default derived from its own dimensions; a model authored in `sdf-modeller` is small in this world's units and can need a finer grid than that default to keep its thin parts. Omitted means the model decides."}],union:[],alternatives:[],type:``},{name:`CreateHudLabelOptions`,doc:`Options for a shared screen-space HUD label.`,members:[],union:[],alternatives:[],type:``},{name:`CreateHudMeterOptions`,doc:`Options for a shared screen-space meter.`,members:[],union:[],alternatives:[],type:``},{name:`CreateHudPanelOptions`,doc:`Options for placing a text and progress panel freely or relative to an entity.`,members:[],union:[],alternatives:[],type:``},{name:`CreateLightOptions`,doc:"What `createLight` takes: an id, where it is, its colour, how far it reaches, and how bright it is where it stops.",members:[{name:`id`,type:`string`,optional:!1,doc:`Its name, and how it is referred to when removed. Never generated.`},{name:`at`,type:`Vec3Like`,optional:!1,doc:`Where it is, in world units.`},{name:`colour`,type:`{ readonly r: number; readonly g: number; readonly b: number; }`,optional:!1,doc:`Its colour, each channel 0 to 255 — as everywhere else in this library.`},{name:`radius`,type:`number`,optional:!1,doc:"How far it reaches, in world units. **The same number says how bright it is**, which is what makes it worth stating plainly: the falloff is scaled so that `intensity` is the brightness *at the edge of this radius*. A light of radius 100 at intensity 1 is as bright at 100 units as one of radius 20 is at 20. Neither is bright in the middle — a lamp is hottest at its own centre — and the choice is made so a place author tunes one number instead of reconciling brightness against whatever distance the light happens to land on."},{name:`intensity`,type:`number`,optional:!1,doc:"How bright, up to 10. **Read alongside `radius`, not instead of it**: `1` is a bright light, and what it looks like from somewhere depends on how far away that somewhere is."}],union:[],alternatives:[],type:``},{name:`CreateMediumOptions`,doc:"What `createMedium` takes: an id, the box it fills, and how it pushes, slows or sinks whatever is inside it.",members:[{name:`id`,type:`string`,optional:!1,doc:`Its name, and how it is referred to when removed. Never generated.`},{name:`box`,type:`readonly [Vec3Like, Vec3Like]`,optional:!1,doc:`Two opposite corners, in any order — the field sorts them.`},{name:`pushVx`,type:`number`,optional:!1,doc:`Sideways pull, in world units per second. **Zero on one axis makes it a one-way belt.**`},{name:`pushVz`,type:`number`,optional:!1,doc:`Forward pull, in world units per second.`},{name:`pushVy`,type:`number`,optional:!0,doc:`Upward pull, positive is up. **Left out, the field does not touch falling at all** — which is what makes one conveyor definition also a floor, rather than also being an updraft.`},{name:`speedScale`,type:`number`,optional:!1,doc:"What walking speed becomes while inside. **0 is quicksand**: the player moves at a fraction of their own speed, or not at all, and `sink` decides how fast they go down."},{name:`sink`,type:`number`,optional:!0,doc:"The fastest this field lets a player fall, in world units per second. Left out or zero, they fall at their own gravity — so a slow belt is `speedScale` alone and quicksand is this too."}],union:[],alternatives:[],type:``},{name:`CreateNpcOptions`,doc:`Stands a character in the world. **A name is required and not optional**, which is the one thing that distinguishes a character from a prop in this vocabulary. Everything else — the id, the model, the place, the turn, the size — is identical, and the host enforces the same rule again on the way in.`,members:[{name:`name`,type:`string`,optional:!1,doc:`What to call it, in the narration and the dialog.`}],union:[],alternatives:[],type:``},{name:`CreateParticleOptions`,doc:`Options for starting a particle emitter.`,members:[],union:[],alternatives:[],type:``},{name:`CreatePropOptions`,doc:`A prop, which is anything the player uses rather than talks to.`,members:[{name:`solid`,type:`boolean`,optional:!0,doc:`Whether the player walks into it. **True unless a script says otherwise**, because the common case is furniture: a fridge, a counter, a bed. The exception worth naming is a pickup, which a player should be able to walk through, and which therefore has to say so.`}],union:[],alternatives:[],type:``},{name:`CreateScreenOptions`,doc:`Puts a screen in the world showing a camera or a photo. **The resolution is not yours to choose.** It follows the screen's size on screen, so a monitor across a room renders small and the one in front of you renders sharp, and a place cannot ask for a four-kilopixel feed it has nowhere to put. **Only the screens nearest the player are redrawn in a frame.** The rest keep their last picture rather than going black, which is what a room full of monitors should look like.`,members:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`source`,type:`ImageSource`,optional:!1,doc:``},{name:`at`,type:`Vec3Like`,optional:!1,doc:``},{name:`yaw`,type:`number`,optional:!1,doc:`A turn about up, in radians. The picture faces this way.`},{name:`width`,type:`number`,optional:!1,doc:`How wide, in world units.`},{name:`height`,type:`number`,optional:!1,doc:`How tall, in world units.`}],union:[],alternatives:[],type:``},{name:`CreateShapeOptions`,doc:"What `createShape` takes: which place and id the operation belongs to, where it sits, what it is, and how it joins the fold.",members:[{name:`place`,type:`string`,optional:!1,doc:`Which place it belongs to. Created if it does not exist.`},{name:`id`,type:`string`,optional:!1,doc:`Its name within that place. **Never optional and never generated.** Two peers run the same script and derive the same operations rather than receiving them (ADR 0016), so an id this peer invented would be a different id on every peer and every shape would appear once per peer.`},{name:`at`,type:`Vec3Like`,optional:!1,doc:`Where it is.`},{name:`shape`,type:`PlaceShape`,optional:!1,doc:``},{name:`combine`,type:`Combine`,optional:!1,doc:``},{name:`softness`,type:`number`,optional:!0,doc:`How far the edge blends. Above 0.25 the stored box is smaller than the shape's reach.`},{name:`orientation`,type:`readonly [number, number, number, number]`,optional:!0,doc:`A unit quaternion.`},{name:`colour`,type:`{ readonly r: number; readonly g: number; readonly b: number; }`,optional:!0,doc:`A colour, 0 to 255 per channel.`},{name:`material`,type:`string`,optional:!0,doc:"The procedural material, by name — one of `MATERIAL_NAMES`. **A string, and the field table is what makes it safe.** The id that goes on the wire is an index into that list, so the name is checked against it before anything is built and an unknown one is refused whole rather than becoming an operation that draws the wrong pattern."}],union:[],alternatives:[],type:``},{name:`CreateZoneOptions`,doc:`A box that reports the player entering and leaving it. Zones are how a place built out of shapes reacts to anything: a door that opens, a lift that starts, a line that says you have arrived. There is no entity system in v1, so this is the whole of a place's reactivity.`,members:[{name:`id`,type:`string`,optional:!1,doc:`Its name. Never generated, for the same reason a shape's id is not.`},{name:`label`,type:`string`,optional:!0,doc:``},{name:`box`,type:`readonly [Vec3Like, Vec3Like]`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`HudCorner`,doc:`The corners a HUD image may sit in.`,members:[],union:[`top-left`,`top-right`,`bottom-left`,`bottom-right`],alternatives:[],type:``},{name:`HudLabelHandle`,doc:`Handle for updating or removing a HUD label.`,members:[],union:[],alternatives:[],type:``},{name:`HudMeterHandle`,doc:`Handle for updating or removing a HUD meter.`,members:[],union:[],alternatives:[],type:``},{name:`HudPanelHandle`,doc:`A world-space HUD panel; updates its label or progress and removes it.`,members:[],union:[],alternatives:[],type:``},{name:`ImageSource`,doc:'What a screen or a HUD image shows. **A camera is live and a photo is still**, and the difference is the source rather than a flag. `{ camera: "hallway" }` is redrawn while it is near enough to be seen; `{ photo: "shot" }` is the picture that was taken.',members:[],union:[],alternatives:[],type:`{ readonly camera: string; } | { readonly photo: string; }`},{name:`LightHandle`,doc:`Handle for a light created by a place script.`,members:[],union:[],alternatives:[],type:``},{name:`Medium`,doc:`What a field does to a player inside it. The same five numbers the physics reads.`,members:[{name:`pushVx`,type:`number`,optional:!1,doc:`Sideways pull, in world units per second.`},{name:`pushVz`,type:`number`,optional:!1,doc:``},{name:`pushVy`,type:`number | null`,optional:!1,doc:"Upward pull, positive is up. `null` when the field does not touch falling."},{name:`speedScale`,type:`number`,optional:!1,doc:`What walking speed becomes.`},{name:`sink`,type:`number`,optional:!1,doc:`The fastest this field lets a player fall. Zero does not hold them down.`}],union:[],alternatives:[],type:``},{name:`ParticleHandle`,doc:`Handle for a particle emitter created by a place script.`,members:[],union:[],alternatives:[],type:``},{name:`ParticleKind`,doc:`The portable particle kinds supported by both engines.`,members:[],union:[],alternatives:[],type:`"spark" | "flame" | "smoke" | "dust"`},{name:`Photo`,doc:`A picture this machine has taken. **An id and a size, and deliberately nothing else.** The pixels never cross the sandbox: a script can show a photo, put it on a screen, or offer it for saving, and cannot read it, hash it, or send it anywhere. That is the whole of the guarantee, and it is why a photo is not a string of bytes or a data URL.`,members:[{name:`id`,type:`string`,optional:!1,doc:``},{name:`width`,type:`number`,optional:!1,doc:``},{name:`height`,type:`number`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`PlaceError`,doc:"Thrown when the host refuses an effect. A place is code, and code that is told nothing about its own failures fails somewhere else. A script that adds a two-thousand-and-first shape gets a `PlaceError` naming the limit at the line that caused it, rather than a world with a bridge missing from it.",members:[],union:[],alternatives:[],type:``},{name:`PlaceEvent`,doc:"A fact the host delivered, as the guest sees it. **A union over `kind`, not one type with an index signature.** The first version had `[field: string]: unknown`, which meant `event.zoneId` compiled and was `unknown` — so a place author had to cast every field of every event, and the type checker could not tell them that `event.timerId` does not exist on a `zone-entered`. The host's own payload types are the ones to reuse, since they are what the wire format is validated against.",members:[],union:[],alternatives:[],type:`PlaceEventUnion`},{name:`PlaceShape`,doc:"One SDF primitive a place may add, named by its `type` and sized by the primitive's own parameters.",members:[],union:[],alternatives:[],type:`{ readonly [K in ShapeType]: { readonly type: K; } & { readonly [P in ParametersOf<K> as P["name"]]: P["arity"] extends 3 ? PlaceVec3 : P["arity"] extends "variable" ? readonly PlaceVec2[] : number; }; }[ShapeType]`},{name:`PlaceVec2`,doc:"One vertex of a polygon's outline, as a script writes it: two numbers on the XZ plane. **The same shape as `packages/sdf`'s `OutlinePoint`, spelled twice on purpose.** The guest library is types a script sees, and it is checked by the demos against exactly that; re-exporting the engine's own type would make a change to an internal file a change to a published API, which is the opposite of what `/packages` is supposed to be for (ADR 0024). The duplication is three lines and it is what keeps the boundary a boundary.",members:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`PlaceVec3`,doc:"A shape's own dimensions, as an object. **Which is not the same as `Vec3Like`, and the asymmetry is a trap worth naming.** A position crosses the boundary as an array, so `at` is `[x, y, z]`. A shape's dimensions are part of the CSG type (`OperationShape` in `@big-mesh-studios/sdf`) where they are objects, and the host copies them straight through rather than converting — so `len` is `{ x, y, z }`. The first version of this file typed both as arrays, and the demos under `demo/` — which are type-checked, which is the whole point of ADR 0018 — refused every box they wrote. It would have reached a place author as a compile error with nothing saying which of the two was wrong.",members:[{name:`x`,type:`number`,optional:!1,doc:``},{name:`y`,type:`number`,optional:!1,doc:``},{name:`z`,type:`number`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`PlaySoundOptions`,doc:`Options for playing a sound attached to this place.`,members:[],union:[],alternatives:[],type:``},{name:`RayHit`,doc:`What a ray found, or undefined for nothing.`,members:[{name:`kind`,type:`"shape" | "terrain" | "water"`,optional:!1,doc:``},{name:`point`,type:`Vec3Like`,optional:!1,doc:``},{name:`normal`,type:`Vec3Like`,optional:!1,doc:`Which way the surface faced, as a unit vector.`},{name:`distance`,type:`number`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`SoundHandle`,doc:`Handle for a sound playback.`,members:[],union:[],alternatives:[],type:``},{name:`TickInfo`,doc:`What a tick is given: the shared clock, and whatever arrived.`,members:[{name:`now`,type:`number`,optional:!1,doc:``},{name:`events`,type:`readonly PlaceEventUnion[]`,optional:!1,doc:``}],union:[],alternatives:[],type:``},{name:`Vec3Like`,doc:`A position, as three plain numbers — an array, because that is what JSON makes of it.`,members:[],union:[],alternatives:[],type:`readonly [number, number, number]`},{name:`Vector3`,doc:"A three-component vector, for a place that is mostly arithmetic on positions. **Guest-side only and never crosses the boundary**: every function that takes a position takes a `Vec3Like`, which a `Vector3` converts into with `toArray`. A vector object sent to the host would be object identity crossing (ADR 0015), and would have to be re-validated there — the same numbers, checked twice.",members:[],union:[],alternatives:[],type:``}],events:[{kind:`player-joined`,doc:`A peer arrived in this place.`,fields:[{name:`player`,type:`string`,optional:!1,doc:``}]},{kind:`player-left`,doc:`A peer left.`,fields:[{name:`player`,type:`string`,optional:!1,doc:``}]},{kind:`player-died`,doc:`A player died, for whatever reason a place or the world decided.`,fields:[{name:`player`,type:`string`,optional:!1,doc:``},{name:`cause`,type:`string`,optional:!1,doc:``}]},{kind:`zone-entered`,doc:`The player entered a zone this place placed.`,fields:[{name:`zoneId`,type:`string`,optional:!1,doc:``}]},{kind:`zone-left`,doc:`…and left it.`,fields:[{name:`zoneId`,type:`string`,optional:!1,doc:``}]},{kind:`entity-used`,doc:`The player pressed use on a figure, carrying whatever they were holding. **The held item rides on the event rather than the host having to know what is held**, so a place's conditional vocabulary — *put a soda in the machine, not a sandwich* — is the script's and not the host's. **Empty hands is an absent \`item\`**, which is the rule every other name in this vocabulary already follows: a name is a non-empty string, and a second way to say "nothing" would be a second answer for the same state.`,fields:[{name:`entityId`,type:`string`,optional:!1,doc:``},{name:`item`,type:`string`,optional:!0,doc:"What the player was holding, and absent when they were holding nothing. **On the event rather than asked for**, so a place's conditional vocabulary — a soda goes in the machine, a sandwich does not — is written here and nowhere else. Empty hands is an absent `item`, which is what every other name in this API does."}]},{kind:`item-used`,doc:`The player used the thing in their hands on nothing in particular.`,fields:[{name:`item`,type:`string`,optional:!1,doc:``}]},{kind:`npc-talk`,doc:`The player spoke to something.`,fields:[{name:`entityId`,type:`string`,optional:!1,doc:``}]},{kind:`npc-choose`,doc:`…and chose an option from what it said.`,fields:[{name:`entityId`,type:`string`,optional:!1,doc:``},{name:`option`,type:`number`,optional:!1,doc:``}]},{kind:`timer`,doc:`A timer a place set came due.`,fields:[{name:`timerId`,type:`string`,optional:!1,doc:``}]},{kind:`data-changed`,doc:`A stored value changed, locally or on another peer.`,fields:[{name:`scope`,type:`string`,optional:!1,doc:``},{name:`player`,type:`string`,optional:!1,doc:``},{name:`key`,type:`string`,optional:!1,doc:``},{name:`deleted`,type:`boolean`,optional:!1,doc:``},{name:`value`,type:`string`,optional:!0,doc:``}]}],eventCommon:[{name:`kind`,type:`K`,optional:!1,doc:``},{name:`producer`,type:`string`,optional:!1,doc:'Who caused it. `"local"` for a peer acting on itself.'}],limits:[{name:`MAX_CAMERA_FOV`,value:`179`,doc:`How wide a virtual camera's field of view may be, in degrees. **A hundred and seventy-nine, one short of a half turn**, because a camera at exactly 180° has no forward direction to build its basis from and is the one value where a lens stops being a lens. A place wanting a fisheye gets the widest lens that still has a centre.`},{name:`MAX_CAMERAS`,value:`32`,doc:"How many virtual cameras may exist at once. **Thirty-two, an eighth of `MAX_LIGHTS`.** A camera is a position, a target and a field of view: it costs nothing until something looks through it, which is why the cap is so far below the light one. The number that actually costs is `MAX_LIVE_FEEDS` in `render/feeds.ts` — how many of these are *drawn* — and the gap between the two is deliberate, for the reason `MAX_LIGHTS` and `MAX_DRAWN_LIGHTS` have one: a place that declares a camera per room should not have to reason about how many fit in a frame."},{name:`MAX_CAUSE_LENGTH`,value:`64`,doc:`The longest a cause of death may be, for the same reason: it is peer-supplied and ends up in a log and in an event payload.`},{name:`MAX_CHANNEL`,value:`255`,doc:`A colour channel's ceiling, and the only place 255 is written down.`},{name:`MAX_CLOCK_MULTIPLIER`,value:`100`,doc:"The largest a clock multiplier may be. Separate from `MAX_MOVEMENT_MULTIPLIER` because they are different quantities with different reasons to be bounded, and sharing one bound between them would mean raising the speed of a sprint also raises how fast a day passes. A hundred times is a day in twelve seconds, which is as fast as a cycle is usefully watchable; beyond that a script is not animating a sky, it is trying to skip it."},{name:`MAX_COORDINATE`,value:`10000000`,doc:"How far from the origin a place's geometry may reach, in world units. **Ten million, and the reason is the chunk window rather than the world.** The window is ten chunks of 160 units (`GAME_WINDOW`), so geometry beyond a few thousand units is never meshed — but it is still folded, because the operation's box is tested per sample and a box a long way out is cheap. The real reason to bound it is that a coordinate is used in arithmetic, and at `1e9` a distance stops being representable in the float the field carries. Ten million is four orders of magnitude beyond anything reachable and comfortably inside the range where `x - y` is still exact to the millimetre."},{name:`MAX_DATA_KEY`,value:`64`,doc:`The longest a data key may be.`},{name:`MAX_DATA_KEYS`,value:`256`,doc:`The most key/value pairs a place may hold, across every scope.`},{name:`MAX_DATA_STRING`,value:`512`,doc:`The longest a data value's string form may be.`},{name:`MAX_DIALOG_OPTIONS`,value:`8`,doc:`The most options one dialog may offer. **Eight, and it is a layout bound rather than a semantic one.** Options are a vertical list in the middle of the screen, and eight is what fits above the crosshair without the panel reaching the corners of a phone. A dialog with more than eight answers is a menu, and a menu is not what this is.`},{name:`MAX_DIALOG_PROMPT`,value:`500`,doc:"The most words one dialog's question may be. **Five hundred, and the same reasoning as `MAX_NARRATION`**: a question is spoken aloud by the character and answered by clicking, so it has to be short enough to finish."},{name:`MAX_ENDING_TEXT`,value:`1000`,doc:`The most words an ending's text may be. **A thousand, and it is the one long-form bound here**, because an ending is the last thing a place says and it is allowed to take a moment: it is what the player reads after thirteen endings' worth of play, and a card that flashes past is a card nobody read.`},{name:`MAX_ENDING_TITLE`,value:`80`,doc:"The most words an ending's title may be. **Eighty, and a title is a title.** The sibling engine's thirteen endings are named in a word or two — `Sleep`, `Shoplifting`, `Not so mint ice cream` — and the bound is generous enough for the longest of them several times over."},{name:`MAX_ENTITIES`,value:`256`,doc:"The most entities — figures, of either kind — one place may have standing in the world. **Two hundred and fifty-six, and it is a memory bound rather than a frame one.** A figure is a `Mesh` over a geometry it shares with every other instance of its model, so a place at this limit draws a few hundred draw calls and holds a few hundred transforms — the shapes, the colours and the buffers behind them are paid for once per *model*, not once per entity (ADR 0047). What a place cannot have is more entities than it has models to give them distinct shapes, and a model is bounded by `MAX_PLACE_MODELS` (64). **The same number as `MAX_ZONES` and for the same kind of reason**: both are a place's standing population rather than a per-frame cost, and both are checked against the number of things a person could actually see at once."},{name:`MAX_EVENT_ID_LENGTH`,value:`128`,doc:"The longest an event's own id may be, and the longest a producer's may be. An event id is `producer:at:sequence` and has to be unique across peers without a coordinator, so it is assembled rather than generated (see `events.ts`). Bounded because it crosses the wire on every fact and because the log keys on it."},{name:`MAX_EVENT_LIFETIME_MS`,value:`86400000`,doc:`How long a peer may keep an event, in milliseconds. A day.`},{name:`MAX_EVENTS`,value:`4000`,doc:`The most events the log holds. **Facts are never forgotten** — a peer joining late still needs the whole history for the log to be the same log — so this is not a ring buffer and exceeding it is a refusal rather than an eviction. Four thousand is a long session of a place emitting a fact every few seconds, and a place that needs more is a place that needs summaries.`},{name:`MAX_HUD_IMAGE`,value:`512`,doc:"How large a HUD image may be, in CSS pixels. **512, the largest feed bucket**, so a live HUD feed is never rendered at a size the bucket table in `render/feeds.ts` cannot give it and then scaled up by the overlay. It is also the point at which a picture in the corner of the screen stops being a picture in the corner."},{name:`MAX_HUD_IMAGES`,value:`8`,doc:`How many HUD images may be on screen at once. **Eight, which is more than fits on a phone screen and fewer than it takes to cover one.** A HUD image is drawn by the overlay rather than by the renderer, so it is cheap in GPU terms and expensive in the only currency that matters here: the player's view of the world.`},{name:`MAX_HUD_PANEL_LABEL`,value:`64`,doc:`The longest caption rendered on a world-space HUD panel.`},{name:`MAX_HUD_PANEL_VALUE`,value:`1000000000`,doc:`The common ceiling for a panel's current and full progress values.`},{name:`MAX_HUD_PANELS`,value:`64`,doc:`The most world-space HUD panels a place may keep alive at once.`},{name:`MAX_ITEM_COUNT`,value:`999`,doc:`The most of one item a player may be carrying. **Nine hundred and ninety-nine, and it is a number rather than a kind.** Nothing in this engine has a use for a thousand of anything — the thing a player holds, they hold — so the bound is here to catch a place multiplying a count into a million, not to describe a capacity anybody reaches.`},{name:`MAX_ITEMS`,value:`64`,doc:"The most distinct items one place may declare. **Sixty-four, and it is a naming bound rather than a memory one.** An item is a name and a count; there is no sprite and no slot, so what sixty-four items cost is sixty-four strings. The number is here so that a place has to say what it is carrying rather than accumulating names in a loop, which is the failure a `Set` of unbounded size does not report. **And there is no flag on an item, deliberately.** The sibling engine's inventory carries a `stackable` field and every one of its items sets it, and nothing reads it here or there: this engine has no inventory panel to show a slot in. A field nothing can act on reads as a feature and is not one, so `item-define` takes a name and nothing else and the flag arrives with the panel that would act on it."},{name:`MAX_LIGHT_INTENSITY`,value:`10`,doc:"How bright one light may be. **Ten, which is about three stops above unity.** Intensity is a multiplier on a falloff already normalised to the light's own radius (`render/point-lights.ts`), so one is a bright light and the useful range is small. Ten exists so a place can make a bonfire rather than being told its fire is exactly as bright as its candle — and no more, because a term that brightens a surface past one stops being a light and becomes a hole in the image."},{name:`MAX_LIGHT_RADIUS`,value:`100000`,doc:'How far one light may reach, in world units. **A hundred thousand, well inside the four-hundred-thousand far plane.** A light reaching further than anything sensible is a light that costs a term in every fragment of the world and reaches no fragment that is not already past the fog. The same bound as `MAX_ZONE_SIZE`\'s cousin `MAX_COORDINATE`, and chosen so that "a light that covers everything" is expressible without being unbounded.'},{name:`MAX_LIGHTS`,value:`256`,doc:"How many lights may exist at once, across every place. **Far more than are drawn.** `MAX_DRAWN_LIGHTS` in `render/point-lights.ts` is eight, and this is 256 — so a place may keep a far larger set than any frame can show and the host picks the nearest few. The gap is deliberate and it is the same reasoning as `MAX_ZONES`: the cost of a light nobody can see is a sort, while the cost of a limit low enough to need no selection would be a place that cannot light a corridor and a courtyard at once. A cap on the *held* count rather than on lights ever created, for the same reason as `MAX_PENDING_TIMERS`: only the ones currently existing cost anything."},{name:`MAX_MEDIUM_PUSH`,value:`200`,doc:"How fast a medium may push, in world units per second, on any axis. **Two hundred, which is a little over three times a walking player.** `DEFAULT_PLAYER_CONFIG` walks at 60, so this is a fast belt rather than a gentle one — and it is a ceiling on the *target velocity* the field pulls toward, not on the player's speed, so a place cannot use a medium to make someone move faster than the cap by combining it with a large `speedScale`."},{name:`MAX_MEDIUM_SPEED_SCALE`,value:`10`,doc:`What a medium may multiply a walking player's speed by. **Ten, and the floor is zero.** Zero is the quicksand case and is the reason the field is separate from a push at all: a slow medium and a fast one differ only in this number, and clamping the floor at something above zero would make "slow" mean "slightly slow".`},{name:`MAX_MEDIUMS`,value:`64`,doc:'How many mediums may exist at once, across every place. **Sixty-four, a quarter of `MAX_ZONES`, and the difference is what a medium does.** A zone is read and produces an event; a medium is read and *moves the player*, so two overlapping ones are not merely ambiguous but produce a frame the person in them has to feel. Sixty-four is far more than a conveyor network needs, and the resolution rule below ("the first whose box holds the point") only stays cheap while the count is small enough that "first" is obvious.'},{name:`MAX_MOVEMENT_MULTIPLIER`,value:`10`,doc:"The largest a speed or jump multiplier may be. The player's own `PlayerConfig` has no multiplier field — a script's `player-speed` becomes a host-side override — but ten is already faster than anything a player can react to, and an unbounded one is a NaN waiting for a division."},{name:`MAX_NAME_LENGTH`,value:`256`,doc:"The longest a name may be: a place's name, or a shape's id inside one. Names are map keys, appear in every log line, and travel over the wire in every event that mentions them, so an unbounded name is memory and bandwidth a peer can ask for. **It was sixty-four until a level file could not be read back.** The bound is about names a *person* chooses, and was far longer than anything typed — but an id in a level file is not chosen by hand. The level editor builds one from what the item is and where it stands, so it carries the item's world coordinates in full floating-point form; this planet's coordinates are large, and one ordinary wall placed by one click came to sixty-five characters. A file its own reader refused is a different failure from a name being too long, and the second fix is at `idFor` rather than here — see the note there. **256 rather than a rounder number:** a power of two, and an order of magnitude over the longest id anything here generates."},{name:`MAX_NARRATION`,value:`500`,doc:`The most words one narration line may be. **Five hundred, and it is the length of a sentence rather than a paragraph.** A narration is something a character says when you look at them; past a few sentences the player has stopped reading and started closing the game. The bound is here so that a place looping its own text cannot build a string nobody will ever see the end of.`},{name:`MAX_OPACITY`,value:`1`,doc:"How opaque an operation may be. Above 1 is meaningless; `makeOperation` defaults to 1."},{name:`MAX_OPTION_LABEL`,value:`80`,doc:`The most words one option's label may be. **Eighty, and it is about fitting.** An option is one line in that list; a label that wrapped would make two options of different heights and the list would be harder to read than a longer single line would have been.`},{name:`MAX_PENDING_TIMERS`,value:`10000`,doc:`How many timers a place may have outstanding at once. A cap on *live* timers rather than on timers ever created, because a script in a loop could otherwise make millions that are never pending: the ones that have fired are gone, and only the ones waiting are held. Ten thousand is far more than a place needs to express and few enough that the host's table stays small.`},{name:`MAX_PHOTO_PIXELS`,value:`number`,doc:"The most pixels one photo may hold, as a product rather than a side. **1920 × 1080, and it is separate from `MAX_PHOTO_SIZE` because the two bound different misuse.** 2048 × 2048 is inside the per-side bound and is four times the pixels of a high-definition frame; a place that asks for it is asking for a buffer the GPU has to find room for per photo. The product is checked by the host, since a pair of fields cannot express it."},{name:`MAX_PHOTO_SIZE`,value:`2048`,doc:"How long one side of a photo may be, in pixels. **2048, past which a single side is more than a high-definition frame on its own.** The product is bounded separately by `MAX_PHOTO_PIXELS`, because a square inside this side is four times the pixels of a 1080p frame and a pair of fields cannot express that."},{name:`MAX_PHOTOS`,value:`16`,doc:`How many photos a place may hold at once. **Sixteen, and the bound is memory rather than count.** A photo is a canvas the size of the picture, so the cost is the pixel budget below times this one: sixteen 1080p photos is about a hundred and thirty megabytes of RGBA, which is a lot for a place to pin and is the point at which the number stops being decorative. A place that wants a contact sheet reuses its ids.`},{name:`MAX_PLACE_SOURCE`,value:`1000000`,doc:'How much source one place may carry altogether, in characters. **A total, and `load-place.ts` is the only thing that enforces it** — `MAX_SCRIPT_SOURCE` above bounds one file, and `MAX_PLACE_FILES` bounds how many there are, so the product is forty million characters of TypeScript arriving into a browser tab that then compiles it with a real `Program` per file. That is not a large place, it is a hang. A million is ten full-size files, which is far more than any place needs and far less than the cap would be if the intent were "whatever fits". It is read from the *decompressed* bytes as each file is read, so the loader never retains more than this however large the archive claims to be — which is also why it is a character count and not a compressed one: a number read off the zip\'s own header would be a number the zip wrote about itself.'},{name:`MAX_PLAYER_ID_LENGTH`,value:`128`,doc:`The longest a player's identity may be. A player's identity is a peer-supplied identifier, so it is the most untrusted string in the system. It is bounded here and, more importantly, it is only ever compared for equality and never interpolated into a selector, a filename, or a command.`},{name:`MAX_PLAYERS`,value:`1`,doc:'How many players a place\'s notion of "which player" may name. There is one local player in this build (`src/player/`), and a place running on a peer acts on the player that peer is running. The cap is 1 for now and the field exists so that raising it is a data change rather than a format change.'},{name:`MAX_PRODUCER_LENGTH`,value:`128`,doc:`How long the account that caused an event may be, in characters. A producer is a peer's identity, arriving from the wire, so it is bounded like one.`},{name:`MAX_SCREEN_SIZE`,value:`100`,doc:`How large a screen may be, in world units. **A hundred metres, which is a cinema and not a wall.** The cost of drawing a quad does not change with its size, so this is not a performance bound: it is the point past which a screen is no longer a surface a place put somewhere and becomes a piece of the world, and the feed it shows is one bucket stretched over a hundred metres.`},{name:`MAX_SCREENS`,value:`64`,doc:"How many screens may exist at once. **Sixty-four, the same as `MAX_MEDIUMS` and for the same shape of reason**: a screen is a quad in the world plus, if it is live, a render target. The target is the expensive half, and `MAX_LIVE_FEEDS` bounds how many are redrawn in a frame, so what is left for this number to bound is the quads — which is why it is generous."},{name:`MAX_SCRIPT_SOURCE`,value:`100000`,doc:`The longest one of a place's script files may be, in characters. **A file, not a whole place.** A place is several files and there is no bound on how many there are, which is deliberate — the number of files is the person's decision and each one is small. This is the bound on a single file, so that one enormous file cannot arrive as a payload from a peer and be transpiled into an enormous program inside an interpreter with a step budget. A hundred thousand characters is roughly three thousand lines, which is a large module by any measure and comfortably more than any of the demo places.`},{name:`MAX_SHAPE_SIZE`,value:`1000000`,doc:"The largest a shape's own dimension may be. Smaller than `MAX_COORDINATE` deliberately: a shape ten million units across is not a shape, it is a number, and it defeats the candidate cache in `csg/bvh.ts` because its box overlaps every chunk. A kilometre is larger than the fog's far distance (`FOG_FAR` = eight chunks) by a factor of eight, so nothing visible is lost."},{name:`MAX_SOFTNESS`,value:`0.25`,doc:"How soft an operation's edge may be. `MAX_SOFTNESS` in `csg/operations.ts` is 0.25 and is not advisory: an operation's box is padded by `SOFTNESS_REACH * softness`, and `operationBounds` reads that constant rather than the operation. A softness above 0.25 would make the stored box smaller than the shape's real reach, so a chunk at the boundary would mesh differently from its neighbour — a LOD crack that follows the script rather than the terrain."},{name:`MAX_STEP_MS`,value:`250`,doc:"How long one step may run, in milliseconds — the same budget as ADR 0015's sandbox. Repeated here rather than imported so that the *limits* of a place are readable in one file, and so that `effects.ts` can be read without following an import into the interpreter. `interpreter.test.ts` asserts the two agree, so they cannot drift."},{name:`MAX_TEXT_LENGTH`,value:`512`,doc:`The longest text a script may put in the log, a toast, or a billboard. A line of text on a screen. Long enough for a paragraph, short enough that a peer cannot use the console scrollback as a place to put something.`},{name:`MAX_TIMER_MS`,value:`86400000`,doc:`How long a timer may be set for, in milliseconds — about a day. A timer longer than this is a place asking to be woken by something that will not happen in any session anybody will sit through, and the host holds pending timers in memory keyed by id, so an unbounded delay is an unbounded number of live records.`},{name:`MAX_ZONE_NAME_LENGTH`,value:`256`,doc:`The longest a zone's name may be, which is text *and* an identity: a zone is addressed by id and labelled by name, and the two are the same string in the payload.`},{name:`MAX_ZONE_SIZE`,value:`100000`,doc:`The largest a zone's box may be on any axis, in world units. A zone is meant to be a doorway or a platform — tens of units — so this is generous by two orders of magnitude. It bounds the number because the host tests the player's position against every zone and a zone spanning the whole world makes every zone's answer depend on every other.`},{name:`MAX_ZONES`,value:`256`,doc:`The most zones a place may have. A zone is a box tested against the player's position once a frame, so the cost is proportional to the count: a thousand zones is a thousand box tests per player per frame. A place that wants a thousand triggers is a place that wants a spatial index, and the number here is low enough that no index is needed yet.`},{name:`MIN_CAMERA_FOV`,value:`1`,doc:"How narrow and how wide a virtual camera's field of view may be, in degrees. **The same pair the player's camera accepts** (`camera-look`'s `fov`), because a security camera showing something the player's own camera could not is a difference nobody can see and a narrower value than one degree is a single pixel column. A field of view outside this pair is refused rather than clamped, as every field is."},{name:`MIN_HUD_IMAGE`,value:`16`,doc:`The smallest and largest a HUD image may be, in CSS pixels. **The same pair the feed a photo is displayed from is bucketed to**, because a HUD image larger than the largest feed bucket is a picture drawn at a size its own pixels do not have, and one smaller than the smallest is a thumbnail of nothing.`},{name:`MIN_PHOTO_SIZE`,value:`16`,doc:`The smallest and largest side of a photo, in pixels. **Sixteen because a smaller picture is a colour rather than a photo**, and because a zero side is a render target with no pixels in it, which is a place that sees its own code produce nothing with no error anywhere near the cause.`},{name:`MIN_SCREEN_SIZE`,value:`0.05`,doc:`The smallest and largest a screen may be, in world units. **Five centimetres to a hundred metres.** The floor is about a phone screen in a room and the ceiling is a cinema, which is as large as a surface a place plausibly calls a screen — beyond it a screen is a wall that happens to be a picture, and the cost of drawing it is the same either way. Both are in *world* units, so a screen's picture is its own size in metres rather than a resolution.`},{name:`MIN_SHAPE_SIZE`,value:`0.001`,doc:"The smallest a shape's own dimension may be. `csg/shapes.ts` has `MIN_RADIUS = 1e-3` and says a shape smaller than that is not a shape. The same floor is used here so a script cannot create an operation the field would treat as degenerate, which would be an operation that costs a box test per sample and produces no surface."}]},hB=jn(`<span class=place-docs-note> — `),gB=jn(`<li class=place-docs-field><code><!>: <!>`),_B=jn(`<ul>`),vB=jn(`<p class=place-docs-returns>returns `),yB=jn(`<div class=place-docs-entry><code class=place-docs-signature><!><!></code><p class=place-docs-doc></p><!><!>`),bB=jn(`<p class=place-docs-note>`),xB=jn(`<code class=place-docs-note>`),SB=jn(`<div class=place-docs-entry><code class=place-docs-signature></code><p class=place-docs-doc></p><!><!><!><!>`),CB=jn(`<div class=place-docs-variant><code></code><span class=place-docs-note> — </span><ul>`),wB=jn(`<div class=place-docs-entry><code class=place-docs-signature>every event carries</code><ul>`),TB=jn(`<div class=place-docs-overlay><div class=place-docs-panel><div class=place-docs-header><span class=place-docs-title>place reference</span><button type=button class=place-docs-close aria-label=close>×</button></div><div class=place-docs-toolbar><input class=place-docs-search type=text placeholder=filter…></div><div class=place-docs-body><!><!><!><!>`),EB=jn(`<button type=button>`),DB=jn(`<div class=place-docs-entry><code class=place-docs-signature></code><p class=place-docs-doc></p><ul>`),OB=jn(`<div class=place-docs-entry><code class=place-docs-signature> = <!></code><p class=place-docs-doc>`),kB=e=>(()=>{var t=gB(),n=t.firstChild,r=n.firstChild,i=r.nextSibling,a=i.nextSibling;return Qn(n,()=>e.field.name,r),Qn(n,()=>e.field.optional?`?`:``,i),Qn(n,()=>e.field.type,a),Qn(t,H(ln,{get when(){return e.field.doc!==``},get children(){var t=hB();return t.firstChild,Qn(t,()=>e.field.doc,null),t}}),null),t})(),AB=e=>(()=>{var t=yB(),n=t.firstChild,r=n.firstChild,i=r.nextSibling,a=n.nextSibling,o=a.nextSibling,s=o.nextSibling;return Qn(n,()=>e.fn.name,r),Qn(n,()=>e.fn.signature,i),Qn(a,()=>e.fn.doc),Qn(t,H(ln,{get when(){return e.fn.params.length>0},get children(){var t=_B();return Qn(t,H(cn,{get each(){return e.fn.params},children:e=>H(kB,{field:e})})),t}}),o),Qn(t,H(ln,{get when(){return e.fn.returns!==`void`},get children(){var t=vB();return t.firstChild,Qn(t,()=>e.fn.returns,null),t}}),s),t})(),jB=e=>(()=>{var t=SB(),n=t.firstChild,r=n.nextSibling,i=r.nextSibling,a=i.nextSibling,o=a.nextSibling,s=o.nextSibling;return Qn(n,()=>e.type.name),Qn(r,()=>e.type.doc),Qn(t,H(ln,{get when(){return e.type.union.length>0},get children(){var t=bB();return Qn(t,()=>e.type.union.join(` · `)),t}}),i),Qn(t,H(ln,{get when(){return e.type.members.length>0},get children(){var t=_B();return Qn(t,H(cn,{get each(){return e.type.members},children:e=>H(kB,{field:e})})),t}}),a),Qn(t,H(cn,{get each(){return e.type.alternatives},children:e=>(()=>{var t=CB(),n=t.firstChild,r=n.nextSibling;r.firstChild;var i=r.nextSibling;return Qn(n,()=>e.name),Qn(r,()=>e.doc,null),Qn(i,H(cn,{get each(){return e.members},children:e=>H(kB,{field:e})})),t})()}),o),Qn(t,H(ln,{get when(){return wn(()=>e.type.members.length===0&&e.type.union.length===0&&e.type.alternatives.length===0)()?e.type.type!==``:e.type.members.length===0&&e.type.union.length===0&&e.type.alternatives.length===0},get children(){var t=xB();return Qn(t,()=>e.type.type),t}}),s),t})(),MB=[{id:`functions`,label:`functions`},{id:`types`,label:`types`},{id:`events`,label:`events`},{id:`limits`,label:`limits`}],NB=e=>{let[t,n]=rn(`functions`),[r,i]=rn(``),a=nn(()=>{let e=r().trim().toLowerCase();return mB.functions.filter(t=>e===``||t.name.toLowerCase().includes(e))}),o=nn(()=>{let e=r().trim().toLowerCase();return mB.types.filter(t=>e===``||t.name.toLowerCase().includes(e))}),s=nn(()=>{let e=r().trim().toLowerCase();return mB.events.filter(t=>e===``||t.kind.toLowerCase().includes(e))}),c=nn(()=>{let e=r().trim().toLowerCase();return mB.limits.filter(t=>e===``||t.name.toLowerCase().includes(e))});on(()=>e.open?e.input:null,e=>e===null?void 0:e.suspendPointerLock());let l=new AbortController;return Nt(()=>l.abort()),window.addEventListener(`keydown`,t=>{t.key===`Escape`&&e.open&&(t.preventDefault(),e.onClose())},{signal:l.signal}),H(ln,{get when(){return e.open},get children(){var l=TB(),u=l.firstChild.firstChild,d=u.firstChild.nextSibling,f=u.nextSibling,p=f.firstChild,m=f.nextSibling,h=m.firstChild,g=h.nextSibling,_=g.nextSibling,v=_.nextSibling;return l.$$pointerdown=t=>{t.target===t.currentTarget&&e.onClose()},Wn(d,`click`,e.onClose,!0),Qn(f,H(cn,{each:MB,children:e=>(()=>{var r=EB();return r.$$click=()=>n(e.id),Qn(r,()=>e.label),Cn(()=>`place-docs-tab${t()===e.id?` place-docs-tab-active`:``}`,(e,t)=>{Un(r,e,t)}),r})()}),p),p.$$input=e=>i(e.currentTarget.value),Qn(m,H(ln,{get when(){return t()===`functions`},get children(){return H(cn,{get each(){return a()},children:e=>H(AB,{fn:e})})}}),h),Qn(m,H(ln,{get when(){return t()===`types`},get children(){return H(cn,{get each(){return o()},children:e=>H(jB,{type:e})})}}),g),Qn(m,H(ln,{get when(){return t()===`events`},get children(){return[(()=>{var e=wB(),t=e.firstChild.nextSibling;return Qn(t,H(cn,{get each(){return mB.eventCommon},children:e=>H(kB,{field:e})})),e})(),H(cn,{get each(){return s()},children:e=>(()=>{var t=DB(),n=t.firstChild,r=n.nextSibling,i=r.nextSibling;return Qn(n,()=>e.kind),Qn(r,()=>e.doc),Qn(i,H(cn,{get each(){return e.fields},children:e=>H(kB,{field:e})})),t})()})]}}),_),Qn(m,H(ln,{get when(){return t()===`limits`},get children(){return H(cn,{get each(){return c()},children:e=>(()=>{var t=OB(),n=t.firstChild,r=n.firstChild,i=r.nextSibling,a=n.nextSibling;return Qn(n,()=>e.name,r),Qn(n,()=>e.value,i),Qn(a,()=>e.doc),t})()})}}),v),Cn(()=>r(),e=>{p.value=e??``}),l}})};Mn([`pointerdown`,`click`,`input`]);var PB=new Set([`cloudFieldReady`,`cloudFieldFailed`]),FB=e=>{if(typeof e!=`object`||!e)return;let t=e.kind;return typeof t==`string`?t:void 0},IB=e=>{let t=FB(e);return t!==void 0&&PB.has(t)},LB=8e3,RB=()=>{let e=new Worker(new URL(new URL(`cloud-bake-worker-BIcZaPjG.js`,import.meta.url).href,``+import.meta.url),{type:`module`,name:`spacescape-cloud-bake`});return{post:t=>e.postMessage(t),addEventListener:(t,n)=>e.addEventListener(t,n),removeEventListener:(t,n)=>e.removeEventListener(t,n),terminate:()=>e.terminate()}},zB=(e,t=RB,n=LB)=>{let r=()=>{},i=()=>{},a=new Promise(e=>{r=e}),o=new Promise(e=>{i=e}),s=!1,c=!1,l,u=`not yet`,d=(e,t)=>{s=!0,u=t,l!==void 0&&clearTimeout(l),l=void 0,r(e),i(e)},f=()=>{s||d(rk(e),`main thread`)},p;try{p=t()}catch{return f(),{field:a,fallback:o,source:()=>u,dispose:()=>{}}}let m=t=>{let n=t?.data;if(IB(n)&&n.seed===e){if(!_ee(n)){console.warn(`cloud field for seed ${e} failed to bake — baking here instead:`,n.reason),f();return}if(!BB(n)){console.warn(`cloud field for seed ${e} arrived empty — baking here instead`),f();return}s||d({shape:n.shape,weather:n.weather},`worker`)}},h=e=>{console.warn(`cloud bake worker failed — baking on the main thread:`,e),f()};return p.addEventListener(`message`,m),p.addEventListener(`error`,h),l=setTimeout(()=>{l=void 0,!s&&(console.warn(`cloud field for seed ${e} did not arrive within ${n} ms — baking here instead`),f())},n),p.post({kind:`bakeCloudField`,seed:e}),{field:a,fallback:o,source:()=>u,dispose:()=>{c||(c=!0,l!==void 0&&clearTimeout(l),l=void 0,p.removeEventListener(`message`,m),p.removeEventListener(`error`,h),p.terminate())}}},_ee=e=>e.kind===`cloudFieldReady`,BB=e=>e.shape.data.length>0&&e.weather.data.length>0,VB=e=>{if(typeof e!=`object`||!e)return!1;let t=e.maps;if(typeof t!=`object`||!t)return!1;let n=t;return n.albedo instanceof Uint8Array&&n.height instanceof Uint8Array&&typeof n.width==`number`&&typeof n.height_==`number`&&typeof n.seaRadius==`number`&&typeof n.relief==`number`},HB=15e3,UB=()=>{let e=new Worker(new URL(new URL(`planet-bake-worker-DxzWWk3d.js`,import.meta.url).href,``+import.meta.url),{type:`module`,name:`spacescape-planet-bake`});return{post:t=>e.postMessage(t),addEventListener:(t,n)=>e.addEventListener(t,n),removeEventListener:(t,n)=>e.removeEventListener(t,n),terminate:()=>e.terminate()}},WB={colourAt:()=>({colour:{r:190,g:186,b:176},opacity:1})},GB=(e,t,n,r=UB,i=HB)=>{let a=()=>{},o=new Promise(e=>{a=e}),s=!1,c=`not yet`,l,u,d=()=>{u!==void 0&&clearTimeout(u),u=void 0},f=()=>{s||(s=!0,c=`main thread`,d(),l?.terminate(),l=void 0,a(Pg(e,WB,t,n)))};try{let o=r();l=o;let p=e=>{s||VB(e.data)&&(s=!0,c=`worker`,d(),o.removeEventListener(`message`,p),l=void 0,o.terminate(),a(e.data.maps))};o.addEventListener(`message`,p),o.post({params:e,width:t,height:n}),u=setTimeout(f,i)}catch{f()}return{maps:o,source:()=>c,disposed:()=>!1}},KB=3072,qB=1536,JB=kg(Ag)+140,YB=JB+480,XB=65535,ZB=(e,t)=>(e+1)*(t+1),QB=(e,t,n=XB)=>{let r=1;for(;r<=e;){if(e%r===0){let i=e/r;if(ZB(i,t)<=n)return Array.from({length:r},(e,t)=>({phiStart:t*2*Math.PI/r,phiLength:2*Math.PI/r,segments:i}))}r++}throw Error(`globe: no longitude banding of ${e} segments fits under ${n} vertices`)},$B=e=>{let t=(e-JB)/(YB-JB);return t<=0?0:t>=1?1:t},eV=(e,t)=>{let n={albedo:t.albedo,height:t.height,width:t.width,height_:t.height_,seaRadius:t.seaRadius,relief:t.relief},r=new uO;r.setMaps(cO(n),n);let i=QB(512,256).map(n=>{let i=new Uu(t.seaRadius,n.segments,256,n.phiStart,n.phiLength),a=new bu(i,r);return e.add(a),{geometry:i,mesh:a}});return{material:r,meshCount:i.length,update(e){let n=$B(e-t.seaRadius);r.opacity=n;for(let{mesh:e}of i)e.visible=n>0},dispose(){for(let{geometry:t,mesh:n}of i)e.remove(n),t.dispose()}}},tV=4e4,nV=.75,rV=130,iV=.985,aV=1.6,oV=1.6,sV=4.5,cV=.75,lV=1.4,uV=.007,dV=.013,fV=.01,pV=.019,mV=6,hV=.5,gV=90,_V=.7,vV=40,yV=.06,bV=3,xV=e=>Zi(ia(Mi(da(e,Mi(127.1,311.7,74.7)),da(e,Mi(269.5,183.3,246.1)),da(e,Mi(113.5,271.9,124.6)))).mul(43758.5453)),SV=(e,t)=>Mi(t.x.mul(e.cos).sub(t.z.mul(e.sin)),t.y,t.x.mul(e.sin).add(t.z.mul(e.cos))),CV=(e,t)=>Mi(t.x.mul(e.cos).add(t.z.mul(e.sin)),t.y,t.z.mul(e.cos).sub(t.x.mul(e.sin))),wV=(e,t,n,r,i)=>{let a=n.mul(Ai(rV)).toVar().floor().toVar(),o=xV(a).toVar(),s=xV(a.add(Mi(7.3,11.7,3.1))).toVar(),c=CV(r,a.add(s.mul(.7).add(.15)).normalize().toVar()).toVar(),l=e.projectionMatrix.mul(e.viewMatrix).mul(Ni(c,Ai(0))).toVar(),u=e.projectionMatrix.mul(e.viewMatrix).mul(Ni(t,Ai(0))).toVar(),d=l.xy.div(l.w.max(Ai(1e-6))).toVar(),f=u.xy.div(u.w.max(Ai(1e-6))).toVar(),p=ua(Ai(1e-6),l.w).mul(ua(Ai(1e-6),u.w)).toVar(),m=e.rendererUniform(`resolution`,`vec2`).toVar(),h=f.sub(d).mul(m).mul(.5).length().toVar(),g=Ai(aV).mul(i).toVar(),_=ta(sa(ta(Ai(1).sub(h.div(g))),Ai(oV))).toVar(),v=ha(Ai(iV),Ai(1),o.x).toVar(),y=o.y.mul(cV).add(.25).toVar(),b=o.z.sub(.5).toVar();return Mi(b.mul(-.28).add(1),b.mul(.06).add(1),b.mul(.42).add(1)).toVar().mul(_).mul(v).mul(y).mul(Ai(sV)).mul(p)},TV=(e,t,n,r)=>{let i=e.sub(t).length();return Ai(1).sub(ha(Ai(n),Ai(r),i))},EV=e=>ha(Ai(-9),Ai(-8+bV),e),DV=class extends Mu{sky=new zT;starBrightness=1;pixelScale=1.5;seaLevel;spherical;atmosphereHeight;scaleHeight;zenith;twilight;sunElevation;moonElevation;starTurn;starBrightnessUniform;pixelScaleUniform;seaLevelUniform;atmosphereUniform;scaleUniform;constructor(e=aT,t=sT,n=oT,r=!0){super(),this.seaLevel=e,this.atmosphereHeight=t,this.scaleHeight=n,this.spherical=r,this.depthTest=!1,this.depthWrite=!1,this.side=_u.BackSide}setWorld(e){this.seaLevel=e.seaLevel,this.spherical=e.spherical}setup(e){this.sky.declare(e);let t=[0,0,0];this.zenith=e.materialUniform(`uZenith`,`vec3`,()=>this.sky.lighting?this.sky.lighting.skyZenith:t),this.twilight=e.materialUniform(`uTwilight`,`float`,()=>this.sky.lighting?this.sky.lighting.twilight:1),this.sunElevation=e.materialUniform(`uSunElevation`,`float`,()=>this.sky.lighting?this.sky.lighting.sunElevation:0),this.moonElevation=e.materialUniform(`uMoonElevation`,`float`,()=>this.sky.lighting?this.sky.lighting.moonElevation:0),this.starBrightnessUniform=e.materialUniform(`uStarBrightness`,`float`,()=>this.starBrightness),this.pixelScaleUniform=e.materialUniform(`uStarPixelScale`,`float`,()=>this.pixelScale),this.starTurn=e.materialUniform(`uStarTurn`,`float`,()=>this.sky.lighting===null?0:this.sky.lighting.elapsed/_f%1*Math.PI*2),this.seaLevelUniform=e.materialUniform(`uSkySeaLevel`,`float`,()=>this.seaLevel),this.atmosphereUniform=e.materialUniform(`uSkyAtmosphere`,`float`,()=>this.atmosphereHeight),this.scaleUniform=e.materialUniform(`uSkyScale`,`float`,()=>this.scaleHeight)}eyeAltitude(e){let t=this.seaLevelUniform;return(this.spherical?e.cameraPosition.length():e.cameraPosition.y).sub(t).max(Ai(0))}buildFragmentBody(e){let t=e.positionWorld.sub(e.cameraPosition).normalize().toVar(),n=this.starTurn.toVar(),r={cos:n.cos().toVar(),sin:n.sin().toVar()},i=SV(r,t).toVar(),a=this.eyeAltitude(e),o=$i(a.div(this.scaleUniform).negate()).toVar(),s=ta(a.sub(this.atmosphereUniform).div(this.atmosphereUniform)).toVar(),c=ta(t.y),l=sa(c,Ai(nV)).toVar(),u=this.sky.skyColour.mix(this.zenith,l).mul(o).toVar(),d=ta(da(t,this.sky.sunDirection)).toVar(),f=sa(d,Ai(mV)).mul(hV).toVar(),p=sa(d,Ai(gV)).mul(_V),m=Ai(1).sub(ta(this.sunElevation.div(25)));u.addAssign(this.sky.sunLight.mul(f.add(p)).mul(m).mul(o));let h=ta(da(t,this.sky.moonDirection));if(u.addAssign(this.sky.moonLight.mul(sa(h,Ai(vV)).mul(yV)).mul(o)),this.spherical){let n=e.cameraPosition.dot(e.cameraPosition),r=e.cameraPosition.dot(t),i=n.sub(r.mul(r)).max(Ai(0)),a=Qi(i),o=this.seaLevelUniform,c=o.add(this.atmosphereUniform),l=r.negate(),d=Qi(c.mul(c).sub(i).max(Ai(0))),f=Qi(o.mul(o).sub(i).max(Ai(0))),p=l.add(d).max(Ai(0)).sub(l.sub(d).max(Ai(0))),m=l.add(f).max(Ai(0)).sub(l.sub(f).max(Ai(0))),h=_a(a.lessThan(o),m,Ai(0)),g=p.sub(h).mul($i(a.sub(o).max(Ai(0)).div(this.scaleUniform).negate())),_=Ai(1).sub($i(g.mul(Ai(-cT))));u.addAssign(this.sky.skyColour.mul(_).mul(s))}let g=ta(this.twilight).toVar(),_=c.mul(.35).add(.65),v=ta(sa(g,Ai(lV))).mul(_),y=s.mul(_);u.addAssign(wV(e,t,i,r,this.pixelScaleUniform).mul(v.max(y)).mul(this.starBrightnessUniform));let b=EV(this.sunElevation).toVar(),x=EV(this.moonElevation).toVar();return u.assign(u.add(this.sky.sunLight.mul(TV(t,this.sky.sunDirection,uV,dV)).mul(b).mul(2))),u.addAssign(this.sky.moonLight.mul(TV(t,this.sky.moonDirection,fV,pV)).mul(x).mul(2.2)),Ni(ta(u),Ai(1))}},OV=(e,t)=>{let n=new Uu(tV,48,24),r=new DV(t.seaLevel,sT,oT,t.spherical),i=new bu(n,r);return e.add(i),{material:r,setWorld(e){r.setWorld(e)},update(e,t){r.sky.lighting=t,i.position.set(e.x,e.y,e.z)},dispose(){e.remove(i),n.dispose()}}},kV=class{elapsed=0;realMs=0;timeOverride;timeSpeed=1;tick(e){return this.realMs+=e*1e3,this.elapsed+=e*this.timeSpeed,If(this.shownTime())}get state(){return{elapsed:this.elapsed,timeOverride:this.timeOverride,timeSpeed:this.timeSpeed}}nowMs(){return this.realMs}jumpTo(e){this.timeOverride=e}clearOverride(){this.timeOverride=void 0}setSpeed(e){this.timeSpeed=e}describe(){let e=this.shownTime(),t=Nf(e),n=`${this.timeSpeed}×`,r=this.timeOverride===void 0?`live`:`pinned`;return`phase: ${t} | t=${e.toFixed(1)}s of ${_f} | speed=${n} | ${r}`}shownTime(){return this.timeOverride??this.elapsed}},AV={root:`_root_9hv1i_1`,canvas:`_canvas_9hv1i_15`,header:`_header_9hv1i_30`,title:`_title_9hv1i_51`,subtitle:`_subtitle_9hv1i_58`,readout:`_readout_9hv1i_64`,row:`_row_9hv1i_73`,hints:`_hints_9hv1i_77`},jV=jn(`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);font-size:18px;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,0.8)">Click to play — left digs, right places`),MV=jn(`<div role=progressbar aria-valuemin=0 aria-valuemax=100 style="position:absolute;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%, -50%);border-radius:50%;-webkit-mask:radial-gradient(farthest-side, transparent 68%, #000 71%);mask:radial-gradient(farthest-side, transparent 68%, #000 71%);pointer-events:none">`),NV=jn(`<div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;pointer-events:none"><div style=position:absolute;left:6px;top:0;width:2px;height:14px;background:rgba(255,255,255,0.8)></div><div style=position:absolute;left:0;top:6px;width:14px;height:2px;background:rgba(255,255,255,0.8)>`),PV=jn(`<div style="position:absolute;inset:0;background:rgba(26, 89, 140, 0.45);pointer-events:none">`),FV=jn(`<div>clouds: `),IV=jn(`<div>globe: `),LV=jn(`<dl><div>fragment precision: </div><div>vertex layout: float32x3 + snorm16x2 + unorm8x4 = <!> B</div><div>level of detail: </div><!><!><!>`),RV=jn(`<a href=?>game`),zV=jn(`<a href=?spike>spike`),BV=jn(`<div><canvas></canvas><input type=file style=display:none><!><header><h1>spacescape</h1><p></p><p></p></header><!>`),VV=jn(`<div style="position:absolute;left:50%;top:calc(50% + 48px);transform:translateX(-50%);padding:6px 12px;border-radius:4px;background:rgba(180, 60, 40, 0.85);color:#fff;font-size:12px;font-family:monospace;pointer-events:none;white-space:pre-wrap">`),HV=jn(`<div style="position:absolute;left:50%;bottom:72px;transform:translateX(-50%);padding:8px 14px;border-radius:4px;background:rgba(20, 24, 30, 0.85);color:#e6edf3;font-size:13px;font-family:monospace;pointer-events:none">`),UV=jn(`<div>vertices: <!> sphere, <!> box`),WV=jn(`<div>chunks: <!>/<!> filled, <!> drawn`),GV=jn(`<div>triangles: <!> · workers: <!> busy, <!> pending, <!> queued`),KV=jn(`<div>water: <!> chunks, <!> triangles`),qV=jn(`<div>history: <!> undoable, <!> redoable`),JV=jn(`<a href=?edit>editor`),YV=jn(`<p class=place-loading>loading the editor…`),XV=250,vee=66,ZV=.05,QV=200,$V=e=>typeof location<`u`&&new URLSearchParams(location.search).has(e),eH=()=>typeof location>`u`?void 0:new URLSearchParams(location.search),tH=()=>$V(`spike`),nH=()=>$V(`edit`),rH=()=>!tH()&&!nH(),iH=uA(fA(eH())),aH=iH.ground,oH=new Map,sH=e=>{let t=oH.get(e);if(t!==void 0)return t;let n=aO(cA(e));return oH.set(e,n),n},cH={material:sH(iH.shape)},lH=`setting:cloud-quality`,uH=new zl,dH={material:Object.assign(new VT,{tint:{r:255,g:224,b:150},tintStrength:.45,wantsPattern:!1})},fH=e=>iH.frame.spherical&&iH.frame.radiusAt(e)>=iH.seaLevel||!iH.frame.spherical&&e.y>=iH.seaLevel?!1:aH(e.x,e.y,e.z)>0,pH=()=>typeof window<`u`&&typeof window.matchMedia==`function`&&window.matchMedia(`(any-pointer: coarse)`).matches,mH=()=>{if(typeof location>`u`)return;let e=new URLSearchParams(location.search).get(`lod`);if(e===null)return;if(e===`off`)return rE;let[t,n]=e.split(`:`).map(Number);if(Number.isFinite(t)&&Number.isFinite(n))return{full:t,coarse:n}},hH=e=>iE(e)?`off (every chunk full resolution)`:`full within ${e.full} chunks, coarse within ${e.coarse}`,gH=(e,t)=>{let n=t.zoneList;return[e,`shapes   ${t.places.operationCount} of ${h_}`,`zones    ${n.length} of 256`,`lights   ${t.lightCount} (nearest ${Math.min(t.lightCount,8)} drawn)`,`cameras  ${t.cameraList.length} of 32${t.watchedCamera===void 0?``:` (watching ${t.watchedCamera.id})`}`,`screens  ${t.screenList.length} of 64 (nearest ${Math.min(t.screenList.length,3)} drawn)`,`photos   ${t.photoList.length} of 16`,`images   ${t.imageList.length}`,`timers   ${t.pendingTimerCount}`,`events   ${t.events.length}`,`data     ${t.storedData.size}`,t.lastProblem===void 0?``:`problem  ${t.lastProblem}`].filter(e=>e!==``).join(`
-`)},_H=e=>e.state===`baking`?`maps still baking`:e.state===`failed`?`failed — ${e.reason}`:e.state===`not on this world`?`none — a flat world has no globe`:`${e.maps} | ${e.width}px`,vH=e=>{switch(e.state){case`baking`:return`baking the field…`;case`ready`:return`ready (baked on the ${e.field})`;case`failed`:return`NOT BUILT — ${e.reason}`}};function yH(){let e,[t,n]=rn(),[r,i]=rn(),[a,o]=rn(),[s]=rn(tH()),[c]=rn(nH()),[l]=rn(mH()),[u,d]=rn({undo:0,redo:0}),[f,p]=rn(!1),[m,h]=rn(!1),[g]=rn(pH()),[_,v]=rn(!1),[y,b]=rn(!1),[x,S]=rn(),[C,w]=rn(),[T,E]=rn(),[D,O]=rn(),[k,A]=rn(),[j,ee]=rn(),[te,M]=rn([]),[N,P]=rn([]),[F,ne]=rn([]),[I,re]=rn(0),ie,[ae,L]=rn(),[oe,se]=rn(),[R,ce]=rn({state:`baking`}),[le,ue]=rn({state:`baking`}),de=Rd(),[fe,pe]=rn(null),me=mf({onCommand:e=>fe()?.run(e)??`the world is still loading — try again shortly`,commands:()=>fe()?.help()??[]}),he,ge,_e=new Map,ve=new Map,ye,be,xe,Se,Ce,we=e=>ye?.(e)??Promise.resolve(`the world is still loading — try again shortly`),[Te,Ee]=rn(!1),[De,Oe]=rn(!1),[ke,Ae]=rn(!1),je=tz(wg.seed),Me=Le(),Ne,Pe,Fe,[Ie,Re]=rn(),ze,Be,Ve,[He,Ue]=rn(),[We,Ge]=rn(!1),[Ke,qe]=rn(),Je=`__wall-draft__`,[Ye,Xe]=rn([]),[Ze,Qe]=rn(`orbit`),[$e,et]=rn(!1),[tt,nt]=rn({radius:vD.radius,yRadius:vD.yRadius}),[rt,it]=rn(!1),at=`shape`,ot=iS({upAt:e=>iH.frame.upAt(e)}),st=Hv({level:()=>({version:1,items:[]}),setLevel:e=>Ne?.(e),cameraKind:Ze,setCameraKind:Qe},{get:()=>ot.reference(),set:e=>{e===void 0?ot.clear():ot.load(e)}}),ct=nn(()=>{let e=je.project().levels,t=st.sourceName();return t!==void 0&&e[t]!==void 0?t:Object.hasOwn(e,`level.json`)?L_:void 0}),lt=()=>{let e=ct()??`level.json`,t=je.project().levels[e]!==void 0,n=je.writeLevel(e,st.exportJson());me.print(n??`${t?`updated`:`attached`} ${e} in ${je.project().manifest.name} — save the place as a zip to keep it`)},z=(e,t)=>{if(!st.importJson(t,e)){me.print(`${e}: ${st.notice()??`could not be read`}`);return}Ee(!1),et(!0)},ut=()=>{if(st.tool()===`select`){st.setTool(at);return}at=st.tool(),st.setTool(`select`)},B=()=>{let e=Ie();if(e===void 0)return;if(st.tool()===`floor`){let t=e.finishFloor();if(t===void 0)return;let n=Wx(t.outline,t.plane),r=He(),i=r===void 0?-1:st.items().findIndex(e=>e.id===r),a=i===-1?void 0:st.items()[i];a!==void 0&&a.kind===`shape`&&a.shape.type===`Polygon`?(st.updateItem(i,{...a,at:[n.at.x,n.at.y,n.at.z],orientation:[n.orientation.x,n.orientation.y,n.orientation.z,n.orientation.w],shape:{...a.shape,points:n.points}}),Ue(void 0)):st.addFloor({...n,thickness:8}),e.reset(),st.setTool(`select`);return}let t=e.finish();if(t===void 0)return;let n=[t.plane.up.x,t.plane.up.y,t.plane.up.z],r=t.chains.map(e=>e.map(e=>[e.x,e.y,e.z])),i=He(),a=i===void 0?-1:st.items().findIndex(e=>e.id===i),o=a===-1?void 0:st.items()[a];if(o!==void 0&&o.kind===`walls`){let e=o.sides===void 0?void 0:r.map((e,t)=>o.sides?.[t]??`centre`),t=kv({up:n,height:o.height,thickness:o.thickness,lines:r,...e===void 0?{}:{sides:e}});st.updateItem(a,{...o,up:n,lines:r,...e===void 0?{}:{sides:e},at:[t.x,t.y,t.z]}),Ue(void 0)}else st.addWalls({up:n,lines:r,height:40,thickness:8,combine:st.combine()});e.reset(),st.setTool(`select`)},dt=e=>{let t=Ie();if(t===void 0)return;let n=st.items().find(t=>t.kind===`walls`&&t.id===e);if(n===void 0)return;let r=n.lines[0]?.[0];r!==void 0&&(t.seed(wx({x:r[0],y:r[1],z:r[2]},{x:n.up[0],y:n.up[1],z:n.up[2]}),n.lines.map(e=>e.map(e=>({x:e[0],y:e[1],z:e[2]})))),Ue(e),st.setTool(`walls`))},ft=e=>{let t=Ie();if(t===void 0)return;let n=st.items().find(t=>t.kind===`shape`&&t.id===e);if(n===void 0||n.kind!==`shape`||n.shape.type!==`Polygon`)return;let r=n.orientation,i=Gx(n.shape.points,{x:n.at[0],y:n.at[1],z:n.at[2]},r===void 0?oy:{x:r[0],y:r[1],z:r[2],w:r[3]});t.seed(i.plane,[i.outline]),Ue(e),st.setTool(`floor`)},pt=()=>{let e=Ke();if(e===void 0)return;if(e.itemId===Je||He()===e.itemId){Ie()?.deleteSegment(e.index),qe(void 0);return}let t=st.items().findIndex(t=>t.id===e.itemId);if(t===-1)return;let n=st.items()[t];if(n===void 0||n.kind!==`walls`)return;let r=gv(n,e.index);if(r===void 0)return;if(qe(void 0),r.lines.length===0){st.removeItem(t);return}let i=kv({up:n.up,height:n.height,thickness:n.thickness,lines:r.lines,...r.sides===void 0?{}:{sides:r.sides}});st.updateItem(t,{...n,lines:r.lines,...r.sides===void 0?{}:{sides:r.sides},at:[i.x,i.y,i.z]})},mt=()=>{let e=Ke();if(e===void 0||e.itemId===Je)return;let t=st.items().findIndex(t=>t.id===e.itemId);if(t===-1)return;let n=st.items()[t];if(n!==void 0&&n.kind===`walls`&&!(e.lineIndex<0||e.lineIndex>=n.lines.length)){if(e.itemId===He()){let e=Ie()?.state().chains;if(e===void 0||e.length!==n.lines.length)return}return{item:n,index:t,lineIndex:e.lineIndex}}},ht=()=>{let e=mt();return e===void 0?void 0:_v(e.item,e.lineIndex)},gt=e=>{let t=mt();if(t===void 0||_v(t.item,t.lineIndex)===e)return;let n=vv(t.item,t.lineIndex,e),r=kv({up:n.up,height:n.height,thickness:n.thickness,lines:n.lines,...n.sides===void 0?{}:{sides:n.sides}});st.updateItem(t.index,{...n,at:[r.x,r.y,r.z]})},_t=yR(),vt=mee(),yt=zR({getClient:()=>_t.repoClient(),getRepo:()=>_t.account()?.did??null}),bt=async()=>{try{let e=je.project(),t=await yt.publish(e);return`published ${e.manifest.name} at ${t}`}catch(e){return e instanceof Error?e.message:String(e)}},xt={login:async e=>(await _t.signIn(e),_t.describe()),logout:async()=>(await _t.signOut(),`signed out`),describe:()=>_t.describe()},[St,wt]=rn(null);mn(()=>import(`./PlaceEditor-BlpdfvTd.js`).then(e=>wt(()=>e.PlaceEditor)),__vite__mapDeps([3,1]),import.meta.url),QR().then(e=>{e!==null&&je.adopt(e)}),Nz();let Tt=nn(()=>{let e=t();return e===void 0?`not probed yet`:rT(e)}),Et;Bt(()=>{let t=nT();if(n(t),t.ok||console.warn(`fragment precision probe:`,t.reason),s()){let n=LD(e,t);o(n.counts);let r=n.orbit.attach(e);return n.orbit.apply(),n.viewport.renderer.setAnimationLoop(()=>{n.orbit.apply(),n.viewport.render()}),()=>{r(),n.dispose()}}let r=HT(e,{...t.ok?{precision:t.precision}:{}});r.setBackground(new eu(.07,.07,.09));let a=yN(r.scene),u=wN(r.scene),f=xN(),g=bN(),_=new pu(50,1,r.camera.near,r.camera.far),x=``,C=new Map,T=new Set;Et=(e,t)=>{let n=t.getContext(`2d`);if(n===null)return;let r=`photo`in e.source?f.canvas(e.source.photo):g.canvas(e.id);if(r===void 0){n.fillStyle=`#000`,n.fillRect(0,0,t.width,t.height);return}n.clearRect(0,0,t.width,t.height),n.drawImage(r,0,0,t.width,t.height)};let D=rH()?OV(r.scene,{seaLevel:iH.seaLevel,spherical:iH.frame.spherical}):null,k=new VT,j=new MN(k,dH.material),te=new Ju({color:new eu(1,.85,.4)}),N=l(),F=rH()?[]:CD(),I=new bD({scene:r.scene,material:k,operations:F,baseField:iH.baseField,...rH()?{seaMaterial:cH.material}:{},...rH()?vD:{},...N===void 0?{}:{bands:N}}),L=new jD({session:I,camera:r.camera,operations:I.operations,baseField:I.baseField}),fe=()=>{let e=tt();I.reshapeWindow($e()?yD.radius:e.radius,$e()?yD.yRadius:e.yRadius)};if(c()){let t=new _b(r.camera,{radius:900}),n=new bu(new Uu(DD.radius,24,16),te);n.visible=!1,r.scene.add(n);let a=()=>{I.follow(t.state.target);let e=L.preview;n.visible=e.visible,e.visible&&n.position.set(e.position.x,e.position.y,e.position.z),n.scale.setScalar(L.settings.radius/DD.radius)},o=()=>L.flushPreview(),s=()=>({width:e.clientWidth,height:e.clientHeight}),c=new Set,l,u=e=>{e.button!==0||e.shiftKey||(c.add(e.pointerId),l??=e.pointerId,L.tool.pointerDown(e,s().width,s().height),L.tool.setSuspended(c.size>1),t.setToolOwnsLeft(!0))},f=e=>{L.tool.pointerMove(e,s().width,s().height)},p=(e,n)=>{if(c.delete(e),e!==l){L.tool.setSuspended(c.size>1);return}l=void 0,L.tool.setSuspended(!1),n?L.tool.pointerLeave():L.tool.pointerUp(),t.setToolOwnsLeft(!1),d({undo:L.undoDepth,redo:L.redoDepth})},m=e=>p(e.pointerId,!1),h=e=>p(e.pointerId,!0),g=e=>{c.has(e.pointerId)&&p(e.pointerId,!0)},_=e=>{if(!e.ctrlKey&&!e.metaKey)return;let t=e.shiftKey;if(e.key===`z`&&!t)L.tool.undo();else if(e.key===`z`&&t||e.key===`y`)L.tool.redo();else return;e.preventDefault(),d({undo:L.undoDepth,redo:L.redoDepth})};e.addEventListener(`pointerdown`,u),e.addEventListener(`pointermove`,f),window.addEventListener(`pointerup`,m),window.addEventListener(`pointercancel`,h),e.addEventListener(`pointerleave`,g),window.addEventListener(`keydown`,_);let v=t.attach(e);t.apply();let y=0;return r.renderer.setAnimationLoop(e=>{t.apply(),a(),o(),r.render(),e-y>XV&&(y=e,i(I.stats()))}),()=>{e.removeEventListener(`pointerdown`,u),e.removeEventListener(`pointermove`,f),window.removeEventListener(`pointerup`,m),window.removeEventListener(`pointercancel`,h),e.removeEventListener(`pointerleave`,g),window.removeEventListener(`keydown`,_),v(),n.geometry.dispose(),I.dispose(),r.dispose()}}let we=new eu(.53,.81,.92);r.setBackground(we);let Le,Ye=new YD({session:I,sculpt:L,viewport:r,input:de,seaRadius:iH.seaLevel,waterAt:fH,frame:iH.frame,spawnRadius:iH.seaLevel-QV,mediumAt:e=>oe()?.(e.x,e.y,e.z),figureDistanceAt:e=>j.solidDistanceAt(e),onUse:e=>{if(wt===void 0){Le=void 0,E(void 0);return}let t=r.camera.getWorldDirection(uH),n=j.pick(sx(Ye.player),{x:t.x,y:t.y,z:t.z}),i=wt.heldItem,a=n?.figure.id,o=a===void 0?0:wt.useDuration(a),s=performance.now();if(Le!==void 0&&(!e.useHeld||a!==Le.entityId||o!==Le.duration)&&(Le=void 0,E(void 0)),o===0){e.use&&a!==void 0?wt.use(a,i):e.use&&wt.useItem(i);return}e.use&&a!==void 0&&(Le={entityId:a,startedAt:s,duration:o,item:i},E(0));let c=Le;if(c===void 0)return;if(!e.useHeld||a!==c.entityId){Le=void 0,E(void 0);return}let l=Math.min(1,(s-c.startedAt)/c.duration);E(l),l>=1&&(Le=void 0,E(void 0),wt.use(c.entityId,c.item))}}),Qe=null,rt=null,at=[],ct=0,lt=0,z=()=>{let e=++ct,t=GB(Ag,KB,qB);t.maps.then(n=>{if(e===ct)try{Qe=eV(r.scene,n),ce({state:`ready`,maps:t.source()===`main thread`?`main thread`:`worker`,width:n.width})}catch(e){console.warn(`the globe could not be built:`,e),ce({state:`failed`,reason:e instanceof Error?e.message:String(e)})}},t=>{e===ct&&ce({state:`failed`,reason:t instanceof Error?t.message:String(t)})})},ut=()=>{let e=++lt,t=zB(wg.seed);at.push(t),t.field.then(n=>{if(e===lt)try{rt=pA(r.scene,wg.seed,n,iH.seaLevel,iH.deck),ue({state:`ready`,field:t.source()===`main thread`?`main thread`:`worker`}),eB(lH).then(t=>{e===lt&&(t===`high`||t===`low`)&&rt?.setQuality(t)})}catch(e){console.warn(`cloud layer could not be built:`,e),ue({state:`failed`,reason:e instanceof Error?e.message:String(e)})}},t=>{e===lt&&ue({state:`failed`,reason:t instanceof Error?t.message:String(t)})})},B=()=>{ct++,lt++,Qe?.dispose(),Qe=null,rt?.dispose(),rt=null};iH.frame.spherical&&z(),ut();let dt=e=>{if(e===iH.shape)return`the world is already ${lA(e)}`;let t=uA(e);iH=t,aH=t.ground,cH={material:sH(e)},I.setSeaMaterial(cH.material),L.setBaseField(t.baseField),I.setBaseField(t.baseField),Ye.setWorld({frame:t.frame,seaRadius:t.seaLevel},t.seaLevel-QV),B(),t.frame.spherical?z():ce({state:`not on this world`}),ut();let n={seaLevel:t.seaLevel,spherical:t.frame.spherical};return D?.setWorld(n),k.fog.setWorld(n),cH.material.fog.setWorld(n),dH.material.fog.setWorld(n),`the world is now ${lA(e)}; ${I.stats().chunks} chunks re-meshing`},ft=de.attach(e),pt=de.onPointerLockChange(p),mt=de.onPointerLockSuspensionChange(v),ht=new kV,gt=vA(r.scene);j.attach(r.scene);let _t=SA(r.scene),yt=[],St,wt,Tt,Dt=e=>{yt.push(e),S(e)},Ot=e=>{me.print(e)},kt=()=>new Promise(e=>{let t=ae();if(t===void 0){e(`this build has no place picker — use /place:list`);return}t.value=``,t.addEventListener(`change`,()=>{let n=t.files?.[0];if(n===void 0){e(`no file chosen`);return}At(n).then(e)},{once:!0}),t.addEventListener(`cancel`,()=>e(`no file chosen`),{once:!0}),t.click()}),At=async e=>{let{readPlaceZip:t}=await mn(async()=>{let{readPlaceZip:e}=await import(`./load-place-CUIBdlsL.js`);return{readPlaceZip:e}},__vite__mapDeps([4,1,0]),import.meta.url),n;try{n=await t(e)}catch(e){return e instanceof Error?e.message:String(e)}let r=je.adopt(FR(n));if(r!==null)return r;let i=await Nt({files:n.files,entry:n.entry,seed:n.manifest.seed,name:n.manifest.name,spawn:n.manifest.spawn,models:n.models,levels:n.levels,sounds:n.sounds,world:n.manifest.world,editable:n.manifest.editable,mesh:n.manifest.mesh});return i.startsWith(`could not load`)?i:`opened ${n.manifest.name}\n${i}`};xe=kt;let jt=()=>{for(let e of _e.values())e.pause(),e.src=``;_e.clear();for(let e of ve.values())URL.revokeObjectURL(e);ve.clear(),wt?.dispose(),wt=void 0,he=void 0,it(!1),j.clear(),j.aim(void 0),A(void 0),ee(void 0),O(void 0),Tt?.dispose(),Tt=void 0,St=void 0,se(void 0),yt.length=0,S(void 0),w(void 0),gt.update([]),a.clear(),u.clear(),f.reconcile([]),g.sync([],new Map),M([]),P([]),ne([]),x=``,C.clear(),T.clear(),L.places.clearAll(),L.refreshPlaces(),Ye.setEditing(!0)},Mt=(e,t)=>$N(e,t,{seaRadius:iH.seaLevel,heightAt:L.terrainHeight,solidAt:(e,t,n)=>Ye.world.getSolidAt({x:e,y:t,z:n})}),Nt=async e=>{let{files:t,entry:n,seed:r,name:i}=e,{spawn:a,models:o,levels:s,sounds:c,world:l,editable:u,mesh:d}=e;if(jt(),ie={files:t,entry:n,seed:r,name:i,spawn:a,models:o,levels:s,sounds:c,world:l,...u===void 0?{}:{editable:u},...d===void 0?{}:{mesh:d}},l!==void 0&&dt(l),I.setMeshSettings(d??YT),o!==void 0&&Object.keys(o).length>0){Tt=await Vw.from(o);for(let e of Tt.problems)Dt(`model "${e.name}": ${e.reason}`)}Xe(Tt?.names()??[]);let p=new sN({files:t,entry:n,levels:s,seed:r,now:()=>ht.nowMs(),world:{places:L.places,figures:j,models:Tt,terrainHeight:Mt,solidAt:(e,t,n)=>Ye.world.getSolidAt({x:e,y:t,z:n}),waterAt:(e,t,n)=>fH({x:e,y:t,z:n}),mediumAt:(e,t,n)=>p.mediumAt(e,t,n),raycast:(e,t,n)=>Ye.raycast(e,t,n),geometryChanged:e=>L.refreshPlaces(e)},effects:{playSound:(e,t)=>{let n=c?.[e];if(n===void 0){Dt(`sound "${e}" is not listed in this place's manifest`);return}let r=ve.get(e);if(r===void 0){let t=e.split(`.`).pop()?.toLowerCase(),i=t===`mp3`?`audio/mpeg`:t===`wav`?`audio/wav`:t===`m4a`?`audio/mp4`:t===`webm`?`audio/webm`:`audio/ogg`;r=URL.createObjectURL(new Blob([Uint8Array.from(n).buffer],{type:i})),ve.set(e,r)}let i=t.id||`oneshot:${e}:${ht.nowMs()}:${_e.size}`,a=_e.get(i);a!==void 0&&(a.pause(),a.currentTime=0);let o=new Audio(r);o.volume=t.volume,o.playbackRate=t.pitch,o.loop=t.loop,_e.set(i,o),t.id===``&&o.addEventListener(`ended`,()=>_e.delete(i),{once:!0}),o.play().catch(t=>{_e.delete(i),Dt(`could not play sound "${e}": ${t instanceof Error?t.message:String(t)}`)})},stopSound:(e,t)=>{let n=_e.get(t);n!==void 0&&(n.pause(),n.currentTime=0,_e.delete(t))},log:e=>Ot(e),toast:e=>w(e),narrate:(e,t)=>O({who:e,text:t}),dialog:e=>{A(e),O(void 0)},closeDialog:()=>A(void 0),ending:e=>{ee(e),A(void 0),O(void 0)},movePlayer:(e,t)=>Ye.teleportPlayer(e,t),setPlayerSpeed:e=>Ye.setPlayerSpeed(e),setPlayerJump:e=>Ye.setPlayerJump(e),setFlying:e=>Ye.setFlying(e),lookAt:(e,t)=>Ye.lookAt(e,t),clearCamera:()=>Ye.clearCameraLook(),watchCamera:e=>Ye.watchCamera(e.at,e.target,e.fov),takePhoto:e=>f.request(e),showImage:e=>M(t=>t.filter(t=>t.id!==e.id).concat(e)),hideImage:e=>M(t=>t.filter(t=>t.id!==e)),showHudMeter:e=>P(t=>t.filter(t=>t.id!==e.id).concat(e)),hideHudMeter:e=>P(t=>t.filter(t=>t.id!==e)),showHudLabel:e=>ne(t=>t.filter(t=>t.id!==e.id).concat(e)),hideHudLabel:e=>ne(t=>t.filter(t=>t.id!==e))},clock:ht,onNotice:Dt});try{await p.load()}catch(e){return p.dispose(),`could not load "${i}": ${e instanceof Error?e.message:String(e)}`}wt=p,it(!0),he=p,Ye.setEditing(u!==!1),St=i,se(()=>p.mediumAt),gt.update(wt.zoneList),a!==void 0&&Ye.teleportPlayer({x:a[0],y:a[1],z:a[2]});let m=gH(i,wt)+(u===!1?`
+`)},_H=e=>e.state===`baking`?`maps still baking`:e.state===`failed`?`failed — ${e.reason}`:e.state===`not on this world`?`none — a flat world has no globe`:`${e.maps} | ${e.width}px`,vH=e=>{switch(e.state){case`baking`:return`baking the field…`;case`ready`:return`ready (baked on the ${e.field})`;case`failed`:return`NOT BUILT — ${e.reason}`}};function yH(){let e,[t,n]=rn(),[r,i]=rn(),[a,o]=rn(),[s]=rn(tH()),[c]=rn(nH()),[l]=rn(mH()),[u,d]=rn({undo:0,redo:0}),[f,p]=rn(!1),[m,h]=rn(!1),[g]=rn(pH()),[_,v]=rn(!1),[y,b]=rn(!1),[x,S]=rn(),[C,w]=rn(),[T,E]=rn(),[D,O]=rn(),[k,A]=rn(),[j,ee]=rn(),[te,M]=rn([]),[N,P]=rn([]),[F,ne]=rn([]),[I,re]=rn(0),ie,[ae,L]=rn(),[oe,se]=rn(),[R,ce]=rn({state:`baking`}),[le,ue]=rn({state:`baking`}),de=Rd(),[fe,pe]=rn(null),me=mf({onCommand:e=>fe()?.run(e)??`the world is still loading — try again shortly`,commands:()=>fe()?.help()??[]}),he,ge,_e=new Map,ve=new Map,ye,be,xe,Se,Ce,we=e=>ye?.(e)??Promise.resolve(`the world is still loading — try again shortly`),[Te,Ee]=rn(!1),[De,Oe]=rn(!1),[ke,Ae]=rn(!1),je=tz(wg.seed),Me=Le(),Ne,Pe,Fe,[Ie,Re]=rn(),ze,Be,Ve,[He,Ue]=rn(),[We,Ge]=rn(!1),[Ke,qe]=rn(),Je=`__wall-draft__`,[Ye,Xe]=rn([]),[Ze,Qe]=rn(`orbit`),[$e,et]=rn(!1),[tt,nt]=rn({radius:vD.radius,yRadius:vD.yRadius}),[rt,it]=rn(!1),at=`shape`,ot=iS({upAt:e=>iH.frame.upAt(e)}),st=Hv({level:()=>({version:1,items:[]}),setLevel:e=>Ne?.(e),cameraKind:Ze,setCameraKind:Qe},{get:()=>ot.reference(),set:e=>{e===void 0?ot.clear():ot.load(e)}}),ct=nn(()=>{let e=je.project().levels,t=st.sourceName();return t!==void 0&&e[t]!==void 0?t:Object.hasOwn(e,`level.json`)?L_:void 0}),lt=()=>{let e=ct()??`level.json`,t=je.project().levels[e]!==void 0,n=je.writeLevel(e,st.exportJson());me.print(n??`${t?`updated`:`attached`} ${e} in ${je.project().manifest.name} — save the place as a zip to keep it`)},z=(e,t)=>{if(!st.importJson(t,e)){me.print(`${e}: ${st.notice()??`could not be read`}`);return}Ee(!1),et(!0)},ut=()=>{if(st.tool()===`select`){st.setTool(at);return}at=st.tool(),st.setTool(`select`)},B=()=>{let e=Ie();if(e===void 0)return;if(st.tool()===`floor`){let t=e.finishFloor();if(t===void 0)return;let n=Wx(t.outline,t.plane),r=He(),i=r===void 0?-1:st.items().findIndex(e=>e.id===r),a=i===-1?void 0:st.items()[i];a!==void 0&&a.kind===`shape`&&a.shape.type===`Polygon`?(st.updateItem(i,{...a,at:[n.at.x,n.at.y,n.at.z],orientation:[n.orientation.x,n.orientation.y,n.orientation.z,n.orientation.w],shape:{...a.shape,points:n.points}}),Ue(void 0)):st.addFloor({...n,thickness:8}),e.reset(),st.setTool(`select`);return}let t=e.finish();if(t===void 0)return;let n=[t.plane.up.x,t.plane.up.y,t.plane.up.z],r=t.chains.map(e=>e.map(e=>[e.x,e.y,e.z])),i=He(),a=i===void 0?-1:st.items().findIndex(e=>e.id===i),o=a===-1?void 0:st.items()[a];if(o!==void 0&&o.kind===`walls`){let e=o.sides===void 0?void 0:r.map((e,t)=>o.sides?.[t]??`centre`),t=kv({up:n,height:o.height,thickness:o.thickness,lines:r,...e===void 0?{}:{sides:e}});st.updateItem(a,{...o,up:n,lines:r,...e===void 0?{}:{sides:e},at:[t.x,t.y,t.z]}),Ue(void 0)}else st.addWalls({up:n,lines:r,height:40,thickness:8,combine:st.combine()});e.reset(),st.setTool(`select`)},dt=e=>{let t=Ie();if(t===void 0)return;let n=st.items().find(t=>t.kind===`walls`&&t.id===e);if(n===void 0)return;let r=n.lines[0]?.[0];r!==void 0&&(t.seed(wx({x:r[0],y:r[1],z:r[2]},{x:n.up[0],y:n.up[1],z:n.up[2]}),n.lines.map(e=>e.map(e=>({x:e[0],y:e[1],z:e[2]})))),Ue(e),st.setTool(`walls`))},ft=e=>{let t=Ie();if(t===void 0)return;let n=st.items().find(t=>t.kind===`shape`&&t.id===e);if(n===void 0||n.kind!==`shape`||n.shape.type!==`Polygon`)return;let r=n.orientation,i=Gx(n.shape.points,{x:n.at[0],y:n.at[1],z:n.at[2]},r===void 0?oy:{x:r[0],y:r[1],z:r[2],w:r[3]});t.seed(i.plane,[i.outline]),Ue(e),st.setTool(`floor`)},pt=()=>{let e=Ke();if(e===void 0)return;if(e.itemId===Je||He()===e.itemId){Ie()?.deleteSegment(e.index),qe(void 0);return}let t=st.items().findIndex(t=>t.id===e.itemId);if(t===-1)return;let n=st.items()[t];if(n===void 0||n.kind!==`walls`)return;let r=gv(n,e.index);if(r===void 0)return;if(qe(void 0),r.lines.length===0){st.removeItem(t);return}let i=kv({up:n.up,height:n.height,thickness:n.thickness,lines:r.lines,...r.sides===void 0?{}:{sides:r.sides}});st.updateItem(t,{...n,lines:r.lines,...r.sides===void 0?{}:{sides:r.sides},at:[i.x,i.y,i.z]})},mt=()=>{let e=Ke();if(e===void 0||e.itemId===Je)return;let t=st.items().findIndex(t=>t.id===e.itemId);if(t===-1)return;let n=st.items()[t];if(n!==void 0&&n.kind===`walls`&&!(e.lineIndex<0||e.lineIndex>=n.lines.length)){if(e.itemId===He()){let e=Ie()?.state().chains;if(e===void 0||e.length!==n.lines.length)return}return{item:n,index:t,lineIndex:e.lineIndex}}},ht=()=>{let e=mt();return e===void 0?void 0:_v(e.item,e.lineIndex)},gt=e=>{let t=mt();if(t===void 0||_v(t.item,t.lineIndex)===e)return;let n=vv(t.item,t.lineIndex,e),r=kv({up:n.up,height:n.height,thickness:n.thickness,lines:n.lines,...n.sides===void 0?{}:{sides:n.sides}});st.updateItem(t.index,{...n,at:[r.x,r.y,r.z]})},_t=yR(),vt=mee(),yt=zR({getClient:()=>_t.repoClient(),getRepo:()=>_t.account()?.did??null}),bt=async()=>{try{let e=je.project(),t=await yt.publish(e);return`published ${e.manifest.name} at ${t}`}catch(e){return e instanceof Error?e.message:String(e)}},xt={login:async e=>(await _t.signIn(e),_t.describe()),logout:async()=>(await _t.signOut(),`signed out`),describe:()=>_t.describe()},[St,wt]=rn(null);mn(()=>import(`./PlaceEditor-BdOOHV84.js`).then(e=>wt(()=>e.PlaceEditor)),__vite__mapDeps([3,1]),import.meta.url),QR().then(e=>{e!==null&&je.adopt(e)}),Nz();let Tt=nn(()=>{let e=t();return e===void 0?`not probed yet`:rT(e)}),Et;Bt(()=>{let t=nT();if(n(t),t.ok||console.warn(`fragment precision probe:`,t.reason),s()){let n=LD(e,t);o(n.counts);let r=n.orbit.attach(e);return n.orbit.apply(),n.viewport.renderer.setAnimationLoop(()=>{n.orbit.apply(),n.viewport.render()}),()=>{r(),n.dispose()}}let r=HT(e,{...t.ok?{precision:t.precision}:{}});r.setBackground(new eu(.07,.07,.09));let a=yN(r.scene),u=wN(r.scene),f=xN(),g=bN(),_=new pu(50,1,r.camera.near,r.camera.far),x=``,C=new Map,T=new Set;Et=(e,t)=>{let n=t.getContext(`2d`);if(n===null)return;let r=`photo`in e.source?f.canvas(e.source.photo):g.canvas(e.id);if(r===void 0){n.fillStyle=`#000`,n.fillRect(0,0,t.width,t.height);return}n.clearRect(0,0,t.width,t.height),n.drawImage(r,0,0,t.width,t.height)};let D=rH()?OV(r.scene,{seaLevel:iH.seaLevel,spherical:iH.frame.spherical}):null,k=new VT,j=new MN(k,dH.material),te=new Ju({color:new eu(1,.85,.4)}),N=l(),F=rH()?[]:CD(),I=new bD({scene:r.scene,material:k,operations:F,baseField:iH.baseField,...rH()?{seaMaterial:cH.material}:{},...rH()?vD:{},...N===void 0?{}:{bands:N}}),L=new jD({session:I,camera:r.camera,operations:I.operations,baseField:I.baseField}),fe=()=>{let e=tt();I.reshapeWindow($e()?yD.radius:e.radius,$e()?yD.yRadius:e.yRadius)};if(c()){let t=new _b(r.camera,{radius:900}),n=new bu(new Uu(DD.radius,24,16),te);n.visible=!1,r.scene.add(n);let a=()=>{I.follow(t.state.target);let e=L.preview;n.visible=e.visible,e.visible&&n.position.set(e.position.x,e.position.y,e.position.z),n.scale.setScalar(L.settings.radius/DD.radius)},o=()=>L.flushPreview(),s=()=>({width:e.clientWidth,height:e.clientHeight}),c=new Set,l,u=e=>{e.button!==0||e.shiftKey||(c.add(e.pointerId),l??=e.pointerId,L.tool.pointerDown(e,s().width,s().height),L.tool.setSuspended(c.size>1),t.setToolOwnsLeft(!0))},f=e=>{L.tool.pointerMove(e,s().width,s().height)},p=(e,n)=>{if(c.delete(e),e!==l){L.tool.setSuspended(c.size>1);return}l=void 0,L.tool.setSuspended(!1),n?L.tool.pointerLeave():L.tool.pointerUp(),t.setToolOwnsLeft(!1),d({undo:L.undoDepth,redo:L.redoDepth})},m=e=>p(e.pointerId,!1),h=e=>p(e.pointerId,!0),g=e=>{c.has(e.pointerId)&&p(e.pointerId,!0)},_=e=>{if(!e.ctrlKey&&!e.metaKey)return;let t=e.shiftKey;if(e.key===`z`&&!t)L.tool.undo();else if(e.key===`z`&&t||e.key===`y`)L.tool.redo();else return;e.preventDefault(),d({undo:L.undoDepth,redo:L.redoDepth})};e.addEventListener(`pointerdown`,u),e.addEventListener(`pointermove`,f),window.addEventListener(`pointerup`,m),window.addEventListener(`pointercancel`,h),e.addEventListener(`pointerleave`,g),window.addEventListener(`keydown`,_);let v=t.attach(e);t.apply();let y=0;return r.renderer.setAnimationLoop(e=>{t.apply(),a(),o(),r.render(),e-y>XV&&(y=e,i(I.stats()))}),()=>{e.removeEventListener(`pointerdown`,u),e.removeEventListener(`pointermove`,f),window.removeEventListener(`pointerup`,m),window.removeEventListener(`pointercancel`,h),e.removeEventListener(`pointerleave`,g),window.removeEventListener(`keydown`,_),v(),n.geometry.dispose(),I.dispose(),r.dispose()}}let we=new eu(.53,.81,.92);r.setBackground(we);let Le,Ye=new YD({session:I,sculpt:L,viewport:r,input:de,seaRadius:iH.seaLevel,waterAt:fH,frame:iH.frame,spawnRadius:iH.seaLevel-QV,mediumAt:e=>oe()?.(e.x,e.y,e.z),figureDistanceAt:e=>j.solidDistanceAt(e),onUse:e=>{if(wt===void 0){Le=void 0,E(void 0);return}let t=r.camera.getWorldDirection(uH),n=j.pick(sx(Ye.player),{x:t.x,y:t.y,z:t.z}),i=wt.heldItem,a=n?.figure.id,o=a===void 0?0:wt.useDuration(a),s=performance.now();if(Le!==void 0&&(!e.useHeld||a!==Le.entityId||o!==Le.duration)&&(Le=void 0,E(void 0)),o===0){e.use&&a!==void 0?wt.use(a,i):e.use&&wt.useItem(i);return}e.use&&a!==void 0&&(Le={entityId:a,startedAt:s,duration:o,item:i},E(0));let c=Le;if(c===void 0)return;if(!e.useHeld||a!==c.entityId){Le=void 0,E(void 0);return}let l=Math.min(1,(s-c.startedAt)/c.duration);E(l),l>=1&&(Le=void 0,E(void 0),wt.use(c.entityId,c.item))}}),Qe=null,rt=null,at=[],ct=0,lt=0,z=()=>{let e=++ct,t=GB(Ag,KB,qB);t.maps.then(n=>{if(e===ct)try{Qe=eV(r.scene,n),ce({state:`ready`,maps:t.source()===`main thread`?`main thread`:`worker`,width:n.width})}catch(e){console.warn(`the globe could not be built:`,e),ce({state:`failed`,reason:e instanceof Error?e.message:String(e)})}},t=>{e===ct&&ce({state:`failed`,reason:t instanceof Error?t.message:String(t)})})},ut=()=>{let e=++lt,t=zB(wg.seed);at.push(t),t.field.then(n=>{if(e===lt)try{rt=pA(r.scene,wg.seed,n,iH.seaLevel,iH.deck),ue({state:`ready`,field:t.source()===`main thread`?`main thread`:`worker`}),eB(lH).then(t=>{e===lt&&(t===`high`||t===`low`)&&rt?.setQuality(t)})}catch(e){console.warn(`cloud layer could not be built:`,e),ue({state:`failed`,reason:e instanceof Error?e.message:String(e)})}},t=>{e===lt&&ue({state:`failed`,reason:t instanceof Error?t.message:String(t)})})},B=()=>{ct++,lt++,Qe?.dispose(),Qe=null,rt?.dispose(),rt=null};iH.frame.spherical&&z(),ut();let dt=e=>{if(e===iH.shape)return`the world is already ${lA(e)}`;let t=uA(e);iH=t,aH=t.ground,cH={material:sH(e)},I.setSeaMaterial(cH.material),L.setBaseField(t.baseField),I.setBaseField(t.baseField),Ye.setWorld({frame:t.frame,seaRadius:t.seaLevel},t.seaLevel-QV),B(),t.frame.spherical?z():ce({state:`not on this world`}),ut();let n={seaLevel:t.seaLevel,spherical:t.frame.spherical};return D?.setWorld(n),k.fog.setWorld(n),cH.material.fog.setWorld(n),dH.material.fog.setWorld(n),`the world is now ${lA(e)}; ${I.stats().chunks} chunks re-meshing`},ft=de.attach(e),pt=de.onPointerLockChange(p),mt=de.onPointerLockSuspensionChange(v),ht=new kV,gt=vA(r.scene);j.attach(r.scene);let _t=SA(r.scene),yt=[],St,wt,Tt,Dt=e=>{yt.push(e),S(e)},Ot=e=>{me.print(e)},kt=()=>new Promise(e=>{let t=ae();if(t===void 0){e(`this build has no place picker — use /place:list`);return}t.value=``,t.addEventListener(`change`,()=>{let n=t.files?.[0];if(n===void 0){e(`no file chosen`);return}At(n).then(e)},{once:!0}),t.addEventListener(`cancel`,()=>e(`no file chosen`),{once:!0}),t.click()}),At=async e=>{let{readPlaceZip:t}=await mn(async()=>{let{readPlaceZip:e}=await import(`./load-place-CSY94dsT.js`);return{readPlaceZip:e}},__vite__mapDeps([4,1,0]),import.meta.url),n;try{n=await t(e)}catch(e){return e instanceof Error?e.message:String(e)}let r=je.adopt(FR(n));if(r!==null)return r;let i=await Nt({files:n.files,entry:n.entry,seed:n.manifest.seed,name:n.manifest.name,spawn:n.manifest.spawn,models:n.models,levels:n.levels,sounds:n.sounds,world:n.manifest.world,editable:n.manifest.editable,mesh:n.manifest.mesh});return i.startsWith(`could not load`)?i:`opened ${n.manifest.name}\n${i}`};xe=kt;let jt=()=>{for(let e of _e.values())e.pause(),e.src=``;_e.clear();for(let e of ve.values())URL.revokeObjectURL(e);ve.clear(),wt?.dispose(),wt=void 0,he=void 0,it(!1),j.clear(),j.aim(void 0),A(void 0),ee(void 0),O(void 0),Tt?.dispose(),Tt=void 0,St=void 0,se(void 0),yt.length=0,S(void 0),w(void 0),gt.update([]),a.clear(),u.clear(),f.reconcile([]),g.sync([],new Map),M([]),P([]),ne([]),x=``,C.clear(),T.clear(),L.places.clearAll(),L.refreshPlaces(),Ye.setEditing(!0)},Mt=(e,t)=>$N(e,t,{seaRadius:iH.seaLevel,heightAt:L.terrainHeight,solidAt:(e,t,n)=>Ye.world.getSolidAt({x:e,y:t,z:n})}),Nt=async e=>{let{files:t,entry:n,seed:r,name:i}=e,{spawn:a,models:o,levels:s,sounds:c,world:l,editable:u,mesh:d}=e;if(jt(),ie={files:t,entry:n,seed:r,name:i,spawn:a,models:o,levels:s,sounds:c,world:l,...u===void 0?{}:{editable:u},...d===void 0?{}:{mesh:d}},l!==void 0&&dt(l),I.setMeshSettings(d??YT),o!==void 0&&Object.keys(o).length>0){Tt=await Vw.from(o);for(let e of Tt.problems)Dt(`model "${e.name}": ${e.reason}`)}Xe(Tt?.names()??[]);let p=new sN({files:t,entry:n,levels:s,seed:r,now:()=>ht.nowMs(),world:{places:L.places,figures:j,models:Tt,terrainHeight:Mt,solidAt:(e,t,n)=>Ye.world.getSolidAt({x:e,y:t,z:n}),waterAt:(e,t,n)=>fH({x:e,y:t,z:n}),mediumAt:(e,t,n)=>p.mediumAt(e,t,n),raycast:(e,t,n)=>Ye.raycast(e,t,n),geometryChanged:e=>L.refreshPlaces(e)},effects:{playSound:(e,t)=>{let n=c?.[e];if(n===void 0){Dt(`sound "${e}" is not listed in this place's manifest`);return}let r=ve.get(e);if(r===void 0){let t=e.split(`.`).pop()?.toLowerCase(),i=t===`mp3`?`audio/mpeg`:t===`wav`?`audio/wav`:t===`m4a`?`audio/mp4`:t===`webm`?`audio/webm`:`audio/ogg`;r=URL.createObjectURL(new Blob([Uint8Array.from(n).buffer],{type:i})),ve.set(e,r)}let i=t.id||`oneshot:${e}:${ht.nowMs()}:${_e.size}`,a=_e.get(i);a!==void 0&&(a.pause(),a.currentTime=0);let o=new Audio(r);o.volume=t.volume,o.playbackRate=t.pitch,o.loop=t.loop,_e.set(i,o),t.id===``&&o.addEventListener(`ended`,()=>_e.delete(i),{once:!0}),o.play().catch(t=>{_e.delete(i),Dt(`could not play sound "${e}": ${t instanceof Error?t.message:String(t)}`)})},stopSound:(e,t)=>{let n=_e.get(t);n!==void 0&&(n.pause(),n.currentTime=0,_e.delete(t))},log:e=>Ot(e),toast:e=>w(e),narrate:(e,t)=>O({who:e,text:t}),dialog:e=>{A(e),O(void 0)},closeDialog:()=>A(void 0),ending:e=>{ee(e),A(void 0),O(void 0)},movePlayer:(e,t)=>Ye.teleportPlayer(e,t),setPlayerSpeed:e=>Ye.setPlayerSpeed(e),setPlayerJump:e=>Ye.setPlayerJump(e),setFlying:e=>Ye.setFlying(e),lookAt:(e,t)=>Ye.lookAt(e,t),clearCamera:()=>Ye.clearCameraLook(),watchCamera:e=>Ye.watchCamera(e.at,e.target,e.fov),takePhoto:e=>f.request(e),showImage:e=>M(t=>t.filter(t=>t.id!==e.id).concat(e)),hideImage:e=>M(t=>t.filter(t=>t.id!==e)),showHudMeter:e=>P(t=>t.filter(t=>t.id!==e.id).concat(e)),hideHudMeter:e=>P(t=>t.filter(t=>t.id!==e)),showHudLabel:e=>ne(t=>t.filter(t=>t.id!==e.id).concat(e)),hideHudLabel:e=>ne(t=>t.filter(t=>t.id!==e))},clock:ht,onNotice:Dt});try{await p.load()}catch(e){return p.dispose(),`could not load "${i}": ${e instanceof Error?e.message:String(e)}`}wt=p,it(!0),he=p,Ye.setEditing(u!==!1),St=i,se(()=>p.mediumAt),gt.update(wt.zoneList),a!==void 0&&Ye.teleportPlayer({x:a[0],y:a[1],z:a[2]});let m=gH(i,wt)+(u===!1?`
 editing off — dig and place are disabled`:``);return yt.length===0?m:`${m}\n— with ${yt.length} problem(s):\n${yt.map(e=>`  ${e}`).join(`
 `)}`},Pt=e=>Nt({files:e.scripts,entry:e.manifest.entry,seed:e.manifest.seed,name:e.manifest.name,spawn:e.manifest.spawn,models:e.models,levels:e.levels,sounds:e.sounds,world:e.manifest.world,editable:e.manifest.editable,mesh:e.manifest.mesh});ge=Nt;let Ft={loadDemo:async e=>{let t=KN(e);if(t===void 0)return`no place called "${e}"`;let n=Mb.halfSize??5,r=t.spawn??[t.spawnAt?.[0]??0,Mt(0,0)+(t.spawnLift??0)+n+1,t.spawnAt?.[1]??0],i=YN(t,{models:t.models===void 0?void 0:await qN(t.models),spawn:r}),a=je.adopt(i),o=await Pt(i);return a===null?`${o}\ncode     ${t.entry} — /place:editor`:`${o}\n— the editor did not take this place: ${a}`},openFromDisk:kt,probeFolder:e=>bz(e),saveToFolder:async()=>{let e=jz();if(e!==null)try{await gee(e,`readwrite`)}catch(t){let n=e.name;return await Pz(),`could not use "${n}": ${t instanceof Error?t.message:String(t)} — press save folder again to choose one`}else{try{e=await Iz(`readwrite`)}catch(e){return`could not open a folder: ${e instanceof Error?e.message:String(e)}`}if(e===null)return`no folder chosen`}try{let t=await Kz(e,je.project());await Mz(e);let n=`${t.written} file${t.written===1?``:`s`}`,r=t.deleted===0?``:`, removed ${t.deleted} stale file${t.deleted===1?``:`s`}`,i=await Oz(e)?`commit and push with your git client`:`this folder is not a git repository — save a zip or run git init`;return`saved ${n} to ${e.name}${r} — ${i}`}catch(t){return`could not save to "${e.name}": ${t instanceof Error?t.message:String(t)}`}},openFromFolder:async()=>{let e;try{e=await Iz(`readwrite`)}catch(e){return`could not open a folder: ${e instanceof Error?e.message:String(e)}`}if(e===null)return`no folder chosen`;let t;try{t=await qz(e)}catch(t){return`could not open "${e.name}": ${t instanceof Error?t.message:String(t)}`}await Mz(e);let n=je.adopt(t);if(n!==null)return n;let r=await Pt(t);return r.startsWith(`could not load`)?r:`opened ${t.manifest.name} from ${e.name}\n${r}`},chooseFolder:async()=>{let e;try{e=await Iz(`readwrite`)}catch(e){return`could not open a folder: ${e instanceof Error?e.message:String(e)}`}return e===null?`no folder chosen`:(await Mz(e),`folder set to ${e.name}`)},unload:()=>{if(wt===void 0)return hP;let e=St??`place`;return jt(),`unloaded ${e}`},describe:()=>wt===void 0?hP:gH(St??`place`,wt),notices:()=>yt,toggleEditor:()=>(Ee(e=>!e),Te()?`editor closed`:`editor open — write a place, then run it`),toggleLevel:()=>{let e=!$e();return et(e),e?(st.setTool(`select`),`level editor open — click the world to place things, ctrl-Z to undo`):`level editor closed`},toggleBrowser:()=>(Oe(e=>!e),De()?`catalog closed`:`catalog open`),toggleDocs:()=>(Ae(e=>!e),ke()?`reference closed`:`reference open`),loadAddress:async e=>{try{return await It(await vt.recordAtUri(e))}catch(t){return`could not open "${e}": ${t instanceof Error?t.message:String(t)}`}},publish:bt};Se=Ft.saveToFolder,Ce=Ft.openFromFolder;let It=async e=>{let t=await vt.project(e),n=je.adopt(t);return n===null?Pt(t):n};be=async e=>{Ot(await It(e))},ye=async e=>Pt(e),pe(Gf({setFlying:e=>Ye.setFlying(e),setNoClip:e=>Ye.setNoClip(e),toSpace:e=>Ye.placeInSpace(e),clock:ht,setStatus:e=>{let t=e??!y();return b(t),t?`status shown`:`status hidden`},cloud:{coverage:e=>{if(rt===null)return`no cloud layer yet — the field is still baking`;let t=rt.material;return e!==void 0&&(t.coverage=e),`coverage ${t.coverage.toFixed(3)}`},density:e=>{if(rt===null)return`no cloud layer yet — the field is still baking`;let t=rt.material;return e!==void 0&&(t.density=e),`density ${t.density.toFixed(3)}`},quality:e=>rt===null?`no cloud layer yet — the field is still baking`:(e!==void 0&&(rt.setQuality(e),tB(lH,e)),`quality ${rt.quality}`),state:()=>rt===null?`no cloud layer yet — ${vH(le())}`:`built | quality ${rt.quality} | coverage ${rt.material.coverage.toFixed(3)} | density ${rt.material.density.toFixed(3)} | ${vH(le())}`},windowSize:{radius:e=>(e!==void 0&&(nt(t=>({...t,radius:e})),$e()||fe()),`window radius ${tt().radius} chunks in x and z`),yRadius:e=>(e!==void 0&&(nt(t=>({...t,yRadius:e})),$e()||fe()),`window radius ${tt().yRadius} chunks in y`),state:()=>$e()?`editor window ${yD.radius} chunks in x and z, ${yD.yRadius} in y`:`window ${tt().radius} chunks in x and z, ${tt().yRadius} in y`},world:{shape:e=>dt(e===void 0?iH.shape:e),describe:()=>[`shape   ${lA(iH.shape)}`,`sea     ${iH.seaLevel.toFixed(0)} ${iH.frame.spherical?`units from the centre`:`world y`}`,`window  ${hH(N??nE)}`,`far     ${_H(R())}`].join(`
 `)}}).with(mP(Ft)).with(UR(xt)));let Lt=e=>{if(!e.ctrlKey&&!e.metaKey)return;let t=e.shiftKey;if(e.key===`z`&&!t)L.tool.undo();else if(e.key===`z`&&t||e.key===`y`)L.tool.redo();else return;e.preventDefault(),d({undo:L.undoDepth,redo:L.redoDepth})};window.addEventListener(`keydown`,Lt);let Rt=0,zt=0,Bt=LS(r.scene);Ve=oS(r.scene),ze=$x(r.scene),Be=nS(r.scene);let Vt=Uw(r.scene),Ht=tee(r.scene),Ut=KS(r.scene),Wt=ob({places:L.places,figures:j,models:{get:e=>Tt?.get(e)},geometryChanged:e=>L.invalidate(e)});Ne=e=>Wt.apply(e),Xe(Tt?.names()??[]);let Gt=vb(r.camera),Kt=ux(r.camera,de),qt=()=>Ze()===`orbit`?Gt:Kt,Jt=()=>{let e=sx(Ye.player),t=r.camera.getWorldDirection(uH);return{at:e,target:{x:e.x+t.x*240,y:e.y+t.y*240,z:e.z+t.z*240}}},Yt,Xt=t=>{if(Yt?.kind===t)return;Yt?.dispose();let n=t===`orbit`?Gt:Kt;n.attach(e),Yt=n},V=e=>{de.setEnabled(e&&Ze()===`no-clip`)},Zt=!1,Qt=!1,$t=t=>{let n=e.getBoundingClientRect();return{x:t.clientX-n.left,y:t.clientY-n.top}},en=(t,n)=>{let i=e.getBoundingClientRect();r.camera.updateMatrixWorld();let a=Zw(t-i.left,n-i.top,i.width,i.height);return Xw(r.camera,a.x,a.y)},tn=(e,t)=>{let n=Ie();if(n===void 0)return;let r=en(e,t);r!==void 0&&n.aim($t({clientX:e,clientY:t}),r)},nn=(e,t,n)=>{let r=Ie();if(r===void 0)return;let i=en(e,t);if(i===void 0)return;let a=$t({clientX:e,clientY:t});if(!r.state().active){r.begin(a,i)||st.setNotice(`nothing under the pointer to draw on`);return}n?r.commit():r.begin(a,i)},rn=e=>{let t=r.camera.position;return Math.hypot(t.x-e.x,t.y-e.y,t.z-e.z)},an=e=>({x:e.at[0],y:e.at[1],z:e.at[2]}),H=e=>e.kind!==`shape`||e.orientation===void 0?oy:{x:e.orientation[0],y:e.orientation[1],z:e.orientation[2],w:e.orientation[3]},sn=()=>{let e=st.selectedItem(),t=st.tool()===`image`?ot.pose():void 0,n=st.gizmo()!==`off`&&Ze()===`orbit`,r=t!==void 0||e!==void 0&&cn(e);Ht.setVisible(n&&r&&st.gizmo()===`move`),Ut.setVisible(n&&e!==void 0&&cn(e)&&st.gizmo()===`rotate`);let i=t?.at??(e===void 0?void 0:an(e));if(i===void 0||!n)return;let a=rn(i);Ht.place(i,a),Ut.place(i,a)},cn=e=>e===void 0?!1:e.kind===`figure`||e.kind!==`walls`&&zv(e.shape.type),ln=()=>{let t=ze;if(t===void 0)return;let n=Ie(),i=Wv(st.tool())&&n!==void 0;if(t.setVisible(i),!i||n===void 0)return;let a=e.getBoundingClientRect(),o={width:a.width,height:a.height};t.render(n.state(),r.camera,o,14)},un=e=>{let t=xn().find(t=>t.itemId===e.itemId&&t.index===e.index);return t===void 0?void 0:[t.a,t.b]},dn=()=>{let e=Be;if(e===void 0)return;let t=Ke(),n=t===void 0?void 0:un(t);if(n===void 0){e.hide();return}e.show(n[0],n[1])},fn=e=>{qt().update(e),sn(),ln(),dn(),L.flushInvalidated(),r.render()};Fe=e=>{(async()=>{let t=await sS(e);if(ot.image()===void 0){r.camera.updateMatrixWorld();let e=Yw(L.collisionField,Xw(r.camera,0,0));e!==void 0&&ot.setAt(e.point)}ot.setImage(t),ot.setVisible(!0)})()},Pe=(t,n)=>{if(Wv(st.tool())){if(We()){Sn(t,n);return}nn(t,n,!0);return}r.camera.updateMatrixWorld();let i=Zw(t,n,e.clientWidth,e.clientHeight),a=Xw(r.camera,i.x,i.y);if(st.tool()===`select`){let e=MS(st.items(),a,(e,t,n)=>{let r=j.pick(e,t,n);return r===void 0?void 0:{id:r.figure.id,distance:r.distance}});st.select(e?.index);return}if(st.tool()===`image`)return;let o=Yw(L.collisionField,a);if(o===void 0){st.setNotice(`nothing under the pointer to build on`);return}let s=Pv[st.shapeKind()]/2,c=[o.point.x+o.normal.x*s,o.point.y+o.normal.y*s,o.point.z+o.normal.z*s];st.tool()===`shape`?st.addShapeAt(c,st.shapeKind(),st.combine()):st.addFigureAt({kind:`figure`,id:``,figure:st.tool(),model:Tt?.names()[0]??``,at:c,...st.tool()===`npc`?{name:`New character`}:{}})};let pn=e=>{if(e.kind===`walls`)return;if(!P_(e)){Vt.show(Ww(e,Vt.material),!0);return}let t=Tt?.get(e.model);Vt.show(t?.draw(Vt.material,e.meshResolution),!1)},hn=async t=>{let n=st.selectedItem(),i=st.tool()===`image`?ot.pose():void 0;if(st.gizmo()!==`move`||Zt||n===void 0&&i===void 0)return;sn();let a=e.getBoundingClientRect(),o=Ht.armsOnScreen(r.camera,{width:a.width,height:a.height}),s=_S($t(t),o);if(s===void 0)return;let c=i?.at??(n===void 0?void 0:an(n));if(c===void 0)return;Zt=!0,Qt=!0,qt().claimGesture(!0),Ht.setHeld(s),i===void 0&&n!==void 0&&pn(n);let l=o.find(e=>e.axis===s),u=c;try{await qw(t,({totalDelta:e})=>{if(l===void 0)return;let t=vS(e,l,Ht.armLength()),n=_n(s);u={x:c.x+n.x*t,y:c.y+n.y*t,z:c.z+n.z*t},i===void 0?Vt.moveTo(u):ot.setAt(u),Ht.place(u,rn(u))})}finally{Ht.setHeld(void 0),Vt.hide(),qt().claimGesture(!1),Zt=!1}if(i!==void 0)return;let d=st.selectedIndex();if(d===void 0||u.x===c.x&&u.y===c.y&&u.z===c.z)return;let f=st.items()[d];f!==void 0&&st.updateItem(d,{...f,at:[u.x,u.y,u.z]})},gn=async t=>{let n=st.selectedItem();if(st.gizmo()!==`rotate`||n===void 0||Zt)return;sn();let i=e.getBoundingClientRect(),a=Ut.ringsOnScreen(r.camera,{width:i.width,height:i.height}),o=HS($t(t),a);if(o===void 0||P_(n)&&o!==`y`)return;Zt=!0,Qt=!0,qt().claimGesture(!0),Ut.setHeld(o),pn(n);let s=H(n),c=$t(t),l=_n(o),u=a.find(e=>e.axis===o),d=s;try{await qw(t,({event:e})=>{u!==void 0&&(d=cy(sy(l.x,l.y,l.z,US(c,$t(e),u)),s),Vt.turnTo(d))})}finally{Ut.setHeld(void 0),Vt.hide(),qt().claimGesture(!1),Zt=!1}let f=st.selectedIndex();if(f===void 0)return;let p=st.items()[f];if(p!==void 0){if(P_(p)){let e=uy(d).yaw*Math.PI/180;e!==(p.yaw??0)&&st.updateItem(f,{...p,yaw:e});return}p.kind!==`walls`&&(d.x!==s.x||d.y!==s.y||d.z!==s.z||d.w!==s.w)&&st.updateItem(f,{...p,orientation:[d.x,d.y,d.z,d.w]})}},_n=e=>e===`x`?{x:1,y:0,z:0}:e===`y`?{x:0,y:1,z:0}:{x:0,y:0,z:1},vn=new Hl,yn=new zl,bn=t=>{r.camera.updateMatrixWorld(),vn.copy(r.camera.projectionMatrix).multiply(r.camera.matrixWorldInverse),yn.set(t.x,t.y,t.z);let n=e.getBoundingClientRect();return hS(yn,vn,{width:n.width,height:n.height})},xn=()=>{let e=He(),t=Ie(),n=[];if(st.tool()===`walls`&&t!==void 0){let r=0,i=t.state().chains;for(let t=0;t<i.length;t++){let a=i[t];for(let i=0;i+1<a.length;i++)n.push({itemId:e??Je,index:r,lineIndex:t,a:a[i],b:a[i+1]}),r+=1}}for(let t of st.items())if(t.kind===`walls`&&t.id!==e)for(let e of mv(t))n.push({itemId:t.id,index:e.index,lineIndex:e.lineIndex,a:e.a,b:e.b});return n},Sn=(t,n)=>{let r=e.getBoundingClientRect(),i={x:t-r.left,y:n-r.top},a=BS(xn(),bn,i,28);if(qe(a),a===void 0)return;let o=st.items().findIndex(e=>e.id===a.itemId);o!==-1&&st.select(o)};Re(Ct(Me,()=>qx({groundAt:e=>Yw(L.collisionField,e)?.point,upAt:e=>iH.frame.upAt(e),projectToScreen:bn,snapRadius:28}))),Ct(Me,()=>{let t;on(()=>$e()&&Wv(st.tool()),e=>{e||(Ie()?.reset(),Ue(void 0),Ge(!1),qe(void 0))}),on(()=>({kind:Ze(),open:$e()}),({kind:e,open:n})=>{if(t===void 0){t=e;return}if(t===e)return;let r=t===`orbit`?Gt:Kt,i=e===`orbit`?Gt:Kt;t=e,n&&(i.adopt(r.pose()),i.update(0),Xt(e),V(n))}),on(st.selectedItem,e=>{if(e===void 0){Bt.hide();return}let t=P_(e)?Tt?.get(e.model)?.half:void 0;Bt.show(IS(e,t))}),on(()=>ot.image(),e=>{let t=Ve;if(t===void 0||e===void 0)return;let n=!0;return cS(e).then(({texture:e,aspect:r})=>{if(!n){e.dispose();return}t.setImage(e,r)}),()=>{n=!1}}),on(()=>({open:$e(),pose:ot.pose(),opacity:ot.opacity(),visible:ot.visible()}),({open:e,pose:t,opacity:n,visible:r})=>{let i=Ve;i!==void 0&&(t!==void 0&&i.setPose(t),n!==void 0&&i.setOpacity(n),i.setVisible(e&&r===!0&&t!==void 0))}),on($e,t=>{if(!t)return;fe();let n=qt();n.adopt(Jt()),n.update(0);let r=e=>{k.fog.enabled=e,cH.material.fog.enabled=e,dH.material.fog.enabled=e,Qe!==null&&(Qe.material.fog.enabled=e)};r(!1);let i=!1,a=e=>{e!==i&&(i=e,qt().claimGesture(e))},o,s=!1,c=e=>{if(Qt=!1,Wv(st.tool())){if(st.tool()===`floor`&&He()!==void 0&&(e.pointerType!==`mouse`||e.button===0)&&Ie()?.pickPoint($t(e))===!0){s=!0,e.pointerType!==`mouse`&&a(!0);return}if(We()){o={x:e.clientX,y:e.clientY};return}e.pointerType!==`mouse`&&a(!0),nn(e.clientX,e.clientY,e.pointerType===`mouse`&&e.button===0);return}let t=e;st.gizmo()===`move`?hn(t):st.gizmo()===`rotate`&&gn(t)};e.addEventListener(`pointerdown`,c);let l=e=>{if(Wv(st.tool())){if(s){let t=Ie(),n=t?.state().plane,r=en(e.clientX,e.clientY),i=n===void 0||r===void 0?void 0:Ex(r,n);t!==void 0&&i!==void 0&&t.movePicked(i);return}We()||tn(e.clientX,e.clientY)}};e.addEventListener(`pointermove`,l),Xt(Ze()),V(!0);let u=e=>{if(Wv(st.tool())){if(s){s=!1,a(!1);return}if(We()){let t=o;if(o=void 0,e.pointerType===`mouse`&&e.button!==0)return;t!==void 0&&Math.hypot(e.clientX-t.x,e.clientY-t.y)<=6&&Sn(e.clientX,e.clientY);return}a(!1);return}if(e.pointerType===`mouse`&&e.button===0){if(Qt){Qt=!1;return}Pe?.(e.clientX,e.clientY)}};e.addEventListener(`pointerup`,u);let d=()=>{a(!1),o=void 0};e.addEventListener(`pointercancel`,d);let f=de.suspendPointerLock();return()=>{e.removeEventListener(`pointerdown`,c),e.removeEventListener(`pointermove`,l),e.removeEventListener(`pointerup`,u),e.removeEventListener(`pointercancel`,d),de.setEnabled(!0),f(),Yt?.dispose(),Yt=void 0,a(!1),qt().claimGesture(!1),Zt=!1,Qt=!1,o=void 0,s=!1,Vt.hide(),Be?.hide(),Ve?.setVisible(!1),r(!0),fe()}})});let Cn=(e,t,n)=>{let i=e.width/Math.max(1,e.height);t===void 0?(_.up.copy(r.camera.up),_.position.copy(r.camera.position),_.quaternion.copy(r.camera.quaternion),_.fov=r.camera.fov,_.near=r.camera.near,_.far=r.camera.far,_.aspect=i,_.updateProjectionMatrix()):vN(_,t,i,iH.frame.upAt(t.at),r.camera.fov);let o=wt?.visibleLights(_.position,8)??[],s=k.lights.lights,c=cH.material.lights.lights,l=dH.material.lights.lights;k.lights.lights=o,cH.material.lights.lights=o,dH.material.lights.lights=o,n&&t!==void 0&&a.hideShowing(t.id,!0);try{r.renderer.render(r.scene,_,e)}finally{k.lights.lights=s,cH.material.lights.lights=c,dH.material.lights.lights=l,n&&t!==void 0&&a.hideShowing(t.id,!1)}};return r.renderer.setAnimationLoop(e=>{let t=Rt===0?1/60:Math.min((e-Rt)/1e3,ZV);if(Rt=e,$e()){fn(t);return}Ye.tick(t),wt?.movePlayer(Ye.player.position.x,Ye.player.position.y,Ye.player.position.z);let n=ht.tick(t);if(wt?.step(),j.size>0){let e=r.camera.getWorldDirection(uH);j.aim(j.pick(sx(Ye.player),{x:e.x,y:e.y,z:e.z})?.figure.id)}else j.aim(void 0);let o=wt?.visibleLights(Ye.player.position,8)??[];if(k.lights.lights=o,cH.material.lights.lights=o,dH.material.lights.lights=o,gt.update(wt?.zoneList??[]),_t.update(wt?.beamList??[],wt?.particleList??[],ht.nowMs()),we.set(n.skyColor[0],n.skyColor[1],n.skyColor[2]),k.sky.lighting=n,k.fog.colour=n.skyColor,cH.material.sky.lighting=n,cH.material.fog.colour=n.skyColor,dH.material.sky.lighting=n,dH.material.fog.colour=n.skyColor,Qe!==null){Qe.material.sky.lighting=n,Qe.material.fog.colour=n.skyColor;let e=Ye.player.position,t=Math.hypot(e.x,e.y,e.z),r=$B(t-iH.seaLevel);Qe.update(t),k.opacity=1-r,k.transparent=r>0,k.depthWrite=r===0;let i=1-r;k.fog.nearField=i,cH.material.fog.nearField=i,Qe.material.fog.nearField=i}D!==null&&(D.material.pixelScale=r.pixelRatio),D?.update(Ye.player.position,n),rt?.update(Ye.player.position,n);let s=new Map((wt?.cameraList??[]).map(e=>[e.id,e])),c=wt?.photoList??[];f.reconcile(c);let l=new Map;for(let e of c){let t=f.texture(e.id);t!==void 0&&l.set(e.id,t)}a.sync(wt?.screenList??[],s,l,{camera:r.camera,viewportHeight:r.renderer.canvas.height,upAt:e=>iH.frame.upAt(e)}),u.sync(wt?.hudPanelList??[],{camera:r.camera,viewportHeight:r.renderer.canvas.height,upAt:e=>iH.frame.upAt(e)});let p=wt?.imageList??[],_=p.map(e=>`${e.id}:${e.corner}:${e.width}x${e.height}:${`camera`in e.source?`c${e.source.camera}`:`p${e.source.photo}`}`).join(`|`);_!==x&&(x=_,M([...p])),g.sync(p,s);let v=new Set(p.map(e=>e.id));for(let e of C.keys())v.has(e)||C.delete(e);let y=f.next();y!==void 0&&(Cn(y.target,y.request.camera,!1),f.capture(y,r.renderer).then(()=>re(e=>e+1)).catch(e=>{console.warn(`a photo could not be read back:`,e)}));for(let t of g.feeds()){let n=t.image.id;T.has(n)||e-(C.get(n)??-1/0)<vee||(C.set(n,e),T.add(n),Cn(t.target,t.camera,!1),g.capture(t,r.renderer).then(()=>re(e=>e+1)).catch(e=>{console.warn(`a HUD feed could not be read back:`,e)}).finally(()=>T.delete(n)))}for(let e of a.feeds(Ye.player.position))Cn(e.target,e.camera,!0),a.markRendered(e.screen.id);Ye.underwater!==m()&&h(Ye.underwater),r.render(),e-zt>XV&&(zt=e,i(I.stats()),d({undo:L.undoDepth,redo:L.redoDepth}))}),()=>{window.removeEventListener(`keydown`,Lt),pe(null),pt(),mt(),ft(),D?.dispose(),jt(),a.dispose(),u.dispose(),f.dispose(),g.dispose(),gt.dispose(),_t.dispose();for(let e of at)e.dispose();at.length=0,B(),I.dispose(),r.dispose()}});var Dt=BV(),Ot=Dt.firstChild,kt=Ot.nextSibling,At=kt.nextSibling,jt=At.nextSibling,Mt=jt.firstChild,Nt=Mt.nextSibling,Pt=Nt.nextSibling,Ft=jt.nextSibling,It=e;return typeof It==`function`||Array.isArray(It)?Yn(()=>It,Ot):e=Ot,Yn(()=>L,kt),Vn(kt,`accept`,tP),Qn(Dt,H(ln,{get when(){return wn(()=>!(!rH()||g()||f()))()?!_():rH()&&!g()&&!f()},get children(){return jV()}}),At),Qn(Dt,H(ln,{get when(){return rH()},get children(){return[H(ln,{get when(){return T()!==void 0},get children(){var e=MV();return Cn(()=>({e:`Use progress ${Math.round((T()??0)*100)}%`,t:Math.round((T()??0)*100),a:`conic-gradient(rgba(255,255,255,0.95) ${(T()??0)*100}%, rgba(255,255,255,0.2) 0)`}),({e:t,t:n,a:r},i)=>{t!==i?.e&&Vn(e,`aria-label`,t),n!==i?.t&&Vn(e,`aria-valuenow`,n),r!==i?.a&&Kn(e,`background`,r)}),e}}),(()=>{var e=NV();return e.firstChild.nextSibling,e})(),H(ln,{get when(){return m()},get children(){return PV()}}),H(ln,{get when(){return x()},children:e=>(()=>{var t=VV();return Qn(t,e),t})()}),H(ln,{get when(){return C()},children:e=>(()=>{var t=HV();return Qn(t,e),t})()}),H(WN,{narration:D,dialog:k,ending:j,images:te,hudMeters:N,hudLabels:F,revision:I,drawImage:(e,t)=>Et?.(e,t),onChoose:(e,t)=>he?.choose(e,t),onRestart:()=>{let e=ie,t=ge;e!==void 0&&t!==void 0&&t(e)},suspendPointerLock:()=>de.suspendPointerLock()}),H(ln,{get when(){return g()},get children(){return H(HD,{input:de})}})]}}),jt),Qn(Nt,H(ln,{get when(){return s()},get fallback(){return H(ln,{get when(){return c()},fallback:`Game — first-person mountains, dig and place`,children:`Phase 4 — chunked surface nets, streamed in workers`})},children:`Phase 0 spike — renderer, packed vertices, sampler3D`})),Qn(jt,H(ln,{get when(){return y()},get children(){var e=LV(),t=e.firstChild;t.firstChild;var n=t.nextSibling,i=n.firstChild.nextSibling;i.nextSibling;var o=n.nextSibling;o.firstChild;var s=o.nextSibling,c=s.nextSibling,d=c.nextSibling;return Qn(t,Tt,null),Qn(n,20,i),Qn(o,(()=>{var e=wn(()=>l()===void 0);return()=>e()?`default (full within 1 chunk, coarse within 2)`:hH(l())})(),null),Qn(e,H(ln,{get when(){return rH()},get children(){return[(()=>{var e=FV();return e.firstChild,Qn(e,()=>vH(le()),null),Cn(()=>AV.row,(t,n)=>{Un(e,t,n)}),e})(),(()=>{var e=IV();return e.firstChild,Qn(e,()=>_H(R()),null),Cn(()=>AV.row,(t,n)=>{Un(e,t,n)}),e})()]}}),s),Qn(e,H(ln,{get when(){return a()},children:e=>(()=>{var t=UV(),n=t.firstChild.nextSibling,r=n.nextSibling.nextSibling;return r.nextSibling,Qn(t,()=>e().sphere,n),Qn(t,()=>e().box,r),Cn(()=>AV.row,(e,n)=>{Un(t,e,n)}),t})()}),c),Qn(e,H(ln,{get when(){return r()},children:e=>[(()=>{var t=WV(),n=t.firstChild.nextSibling,r=n.nextSibling.nextSibling,i=r.nextSibling.nextSibling;return i.nextSibling,Qn(t,()=>e().filled,n),Qn(t,()=>e().chunks,r),Qn(t,()=>e().drawn,i),Cn(()=>AV.row,(e,n)=>{Un(t,e,n)}),t})(),(()=>{var t=GV(),n=t.firstChild.nextSibling,r=n.nextSibling.nextSibling,i=r.nextSibling.nextSibling,a=i.nextSibling.nextSibling;return a.nextSibling,Qn(t,()=>e().triangles.toLocaleString(),n),Qn(t,()=>e().busy,r),Qn(t,()=>e().pending,i),Qn(t,()=>e().queued,a),Cn(()=>AV.row,(e,n)=>{Un(t,e,n)}),t})(),H(ln,{get when(){return rH()},get children(){var t=KV(),n=t.firstChild.nextSibling,r=n.nextSibling.nextSibling;return r.nextSibling,Qn(t,()=>e().waterFilled,n),Qn(t,()=>e().waterTriangles.toLocaleString(),r),Cn(()=>AV.row,(e,n)=>{Un(t,e,n)}),t}}),H(ln,{get when(){return u().undo>0||u().redo>0},get children(){var e=qV(),t=e.firstChild.nextSibling,n=t.nextSibling.nextSibling;return n.nextSibling,Qn(e,()=>u().undo,t),Qn(e,()=>u().redo,n),Cn(()=>AV.row,(t,n)=>{Un(e,t,n)}),e}})]}),d),Cn(()=>({e:AV.readout,t:AV.row,a:AV.row,o:AV.row}),({e:r,t:i,a,o:s},c)=>{Un(e,r,c?.e),Un(t,i,c?.t),Un(n,a,c?.a),Un(o,s,c?.o)}),e}}),Pt),Qn(Pt,H(ln,{get when(){return!s()},get fallback(){return[`drag or right-drag to orbit · shift-drag or middle-drag to pan · wheel or pinch to dolly · `,(()=>{var e=RV();return Bn(e),e})()]},get children(){return H(ln,{get when(){return c()},get fallback(){return[`WASD move · mouse look · space jump · left digs · right places · ctrl-z undo · / for commands · `,(()=>{var e=JV();return Bn(e),e})(),` ·`,` `,(()=>{var e=zV();return Bn(e),e})()]},get children(){return[`drag to sculpt · right-drag to orbit · shift-drag to pan · ctrl-z undo · `,(()=>{var e=RV();return Bn(e),e})(),` · `,(()=>{var e=zV();return Bn(e),e})()]}})}})),Qn(Dt,H(ln,{get when(){return rH()},get children(){return[H(NB,{get open(){return ke()},onClose:()=>Ae(!1),input:de}),H(ln,{get when(){return $e()},get children(){return[H(Xy,{editor:st,canvas:e,get models(){return Ye()},get canAttach(){return rt()},get attachName(){return ct()},onAttach:lt,onClose:()=>et(!1),imagePlane:ot,onChooseImage:e=>Fe?.(e),onEditWalls:dt,onEditOutline:ft}),H(ln,{get when(){return st.coarsePointer()},get children(){return H(Qy,{selecting:()=>st.tool()===`select`,onToggleSelect:ut,onApply:()=>{let t=e.getBoundingClientRect();Pe?.(t.left+t.width/2,t.top+t.height/2)}})}}),H(ln,{get when(){return Wv(st.tool())},get children(){return H(Cx,{controller:Ie,onFinish:B,get floor(){return st.tool()===`floor`},get editing(){return He()!==void 0},segmentSelect:We,onToggleSegmentSelect:()=>{qe(void 0),Ge(e=>!e)},get segmentPicked(){return Ke()!==void 0},get segmentSide(){return ht()},onSetSegmentSide:gt,onDeleteSegment:pt})}}),H(Zy,{cameraKind:Ze,get coarsePointer(){return st.coarsePointer},get tool(){return st.tool}})]}}),H(pB,{get open(){return De()},onClose:()=>Oe(!1),library:vt,get accountDid(){return _t.account()?.did??null},resolveHandle:e=>_t.resolveHandle(e),onPlay:async e=>{await be?.(e)},input:de}),H(gf,{terminal:me,input:de,editor:{open:Te,setOpen:Ee,content:()=>{let e=St();return e===null?YV():H(e,{state:je,onRun:we,onPublish:bt,get onStatus(){return me.print},onOpen:()=>xe?.()??Promise.resolve(`the world is still loading — try again shortly`),get onSaveToFolder(){return Fz()?Se:void 0},get onOpenFromFolder(){return Fz()?Ce:void 0},onAttachLevelFromEditor:lt,onOpenLevelInEditor:z,onClose:()=>Ee(!1)})},run:we}})]}}),Ft),Cn(()=>({e:AV.root,t:AV.canvas,a:AV.header,o:AV.title,i:AV.subtitle,n:AV.hints}),({e,t,a:n,o:r,i,n:a},o)=>{Un(Dt,e,o?.e),Un(Ot,t,o?.t),Un(jt,n,o?.a),Un(Mt,r,o?.o),Un(Nt,i,o?.i),Un(Pt,a,o?.n)}),Dt}var bH={status:`_status_od5f2_1`},xH=jn(`<output>`),SH=500,CH=()=>{let[e,t]=rn(`finishing sign-in…`);on(nn(vR),e=>{t(`signed in — closing…`),window.close(),setTimeout(()=>t(`signed in as ${e} — you can close this window`),SH)});var n=xH();return Qn(n,e),Cn(()=>bH.status,(e,t)=>{Un(n,e,t)}),n},wH=document.getElementById(`root`);if(wH===null)throw Error(`The #root element is missing. It is declared in index.html, and every other assumption in this file is downstream of it being there.`);if(window.location.hostname===`localhost`){let e=new URL(window.location.href);e.hostname=`127.0.0.1`,window.location.replace(e.href)}else{let e=gR();mr(()=>H(e?CH:yH,{}),wH)}export{Vn as A,rn as B,Un as C,wn as D,Qn as E,ln as F,Nt as H,H as I,Yt as L,jn as M,mn as N,Yn as O,cn as P,on as R,Bn as S,Cn as T,Bt as U,Xt as V,_t as W,DA as _,iP as a,Tp as b,pP as c,Kj as d,Yj as f,OA as g,AA as h,rP as i,Kn as j,mr as k,VM as l,Jj as m,aP as n,eP as o,qj as p,nP as r,oP as s,TR as t,LM as u,wA as v,Mn as w,Wn as x,ev as y,nn as z};
