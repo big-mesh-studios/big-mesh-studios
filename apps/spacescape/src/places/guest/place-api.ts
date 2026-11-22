@@ -477,6 +477,13 @@ export interface CreateEntityOptions {
    * decides.
    */
   readonly meshResolution?: number;
+  /**
+   * Which mesher to use for this figure's geometry.
+   *
+   * **Absent means the model's own default.** A prop that wants the exact, hard-edged
+   * CSG mesh for a flat-surfaced model says so here.
+   */
+  readonly meshMode?: "surface-nets" | "marching-cubes" | "csg";
 }
 
 /** A prop, which is anything the player uses rather than talks to. */
@@ -515,6 +522,7 @@ export const createProp = (options: CreatePropOptions): void => {
     ...(options.meshResolution === undefined
       ? {}
       : { meshResolution: options.meshResolution }),
+    ...(options.meshMode === undefined ? {} : { meshMode: options.meshMode }),
     ...(options.solid === undefined ? {} : { solid: options.solid }),
   });
 };
@@ -532,6 +540,7 @@ export const createNpc = (options: CreateNpcOptions): void => {
     ...(options.meshResolution === undefined
       ? {}
       : { meshResolution: options.meshResolution }),
+    ...(options.meshMode === undefined ? {} : { meshMode: options.meshMode }),
   });
 };
 

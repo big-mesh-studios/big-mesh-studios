@@ -89,6 +89,7 @@ import type { ClockCommands } from "../console/commands";
 import type { Medium } from "../player/player";
 import { MAX_ENTITIES } from "./limits";
 import { createLevelApplier } from "./level/apply-level";
+import type { Material } from "@random-mesh/rmsl/scene";
 import { LEVEL_VERSION, parseLevelPlan } from "./level/level-plan";
 import type { LevelItem } from "./level/types";
 import type { FigureSet } from "../figures/figure-set";
@@ -176,6 +177,8 @@ export interface HostWorld {
    * gets from `entity-add` rather than a crash — the same shape as `mediumAt` being absent.
    */
   figures?: FigureSet;
+  /** The terrain's own material, for level CSG meshes to be lit the same way. */
+  material?: Material;
   /**
    * Where an entity's model comes from, by name.
    *
@@ -1085,6 +1088,12 @@ export class PlaceHost {
       // once, before anything is on screen, and `flushGeometry` in the `finally` below is what
       // puts it there.
       geometryChanged: (bounds) => this.geometryChanged(bounds),
+       ...(this.options.world.material !== undefined
+         ? { material: this.options.world.material }
+         : {}),
+       ...(this.options.world.figures !== undefined
+         ? { csgGroup: this.options.world.figures.group }
+         : {}),
     });
 
     applier.apply({ version: LEVEL_VERSION, items });
@@ -1541,6 +1550,12 @@ export class PlaceHost {
           // **Absent means the model's own resolution**, which `FigureModel` derives from its
           // size. A script that wants a finer or coarser mesh for one instance says so here.
           meshResolution: optionalNumber("meshResolution"),
+          meshMode: (() => {
+            const v = optionalString(payload, "meshMode");
+            return v === "csg" || v === "surface-nets" || v === "marching-cubes"
+              ? (v as "csg" | "surface-nets" | "marching-cubes")
+              : undefined;
+          })(),
           // **Solid by default**, because the common case is furniture and a pickup is the
           // exception a script has to ask for.
           solid:

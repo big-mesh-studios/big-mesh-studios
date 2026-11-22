@@ -361,7 +361,7 @@ export class Session {
    * out from under a bridge rather than moving the bridge — which is the visible, explicable
    * result, rather than a place silently losing everything it built.
    */
-  setBaseField(spec: BaseFieldSpec): void {
+  setBaseField(spec: BaseFieldSpec | undefined): void {
     this.baseFieldSpec = spec;
     this.invalidateAll();
     this.setOperations(this.currentOperations);
@@ -381,9 +381,9 @@ export class Session {
    *
    * @returns how many chunks the window now holds; zero once disposed.
    */
-  reshapeWindow(radius: number, yRadius: number): number {
+  reshapeWindow(radius: number, yRadius: number, bands: LodBands = this.window.bands): number {
     if (this.disposed) return 0;
-    return this.window.reshape(radius, yRadius, this.window.bands);
+    return this.window.reshape(radius, yRadius, bands);
   }
 
   /**
@@ -435,7 +435,9 @@ export class Session {
     return {
       kind: "setModel",
       revision: this.revision,
-      operations: serialiseOperations(this.currentOperations),
+      operations: serialiseOperations(
+         this.currentOperations.filter((op) => op.visual !== false),
+       ),
       paint: [],
       // **One value, not a kind beside parameters.** The union carries its own parameters, so a
       // message cannot name a planet and arrive holding a landscape's four numbers.

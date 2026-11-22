@@ -39,7 +39,7 @@
  * the first tick would otherwise throw on every tick forever.
  */
 
-import { MAX_STEP_MS } from "./limits";
+import { MAX_LOAD_MS, MAX_STEP_MS } from "./limits";
 import { GUEST_QUERIES, type GuestBridge } from "./bridge";
 import { asPlaceSource } from "./bundle";
 import {
@@ -513,8 +513,8 @@ export const createInterpreter = async (
   }
 
   /** Spends one step's budget running `body`, or throws explaining why it stopped. */
-  const withinBudget = (body: () => unknown): unknown => {
-    deadline = Date.now() + stepBudgetMs;
+  const withinBudget = (body: () => unknown, budgetMs = stepBudgetMs): unknown => {
+    deadline = Date.now() + budgetMs;
     try {
       return body();
     } finally {
@@ -536,7 +536,7 @@ export const createInterpreter = async (
       // world being driven by a dead place's script — which would look like the new script
       // misbehaving.
       releaseHandlers();
-      withinBudget(() => call(bundle));
+      withinBudget(() => call(bundle), MAX_LOAD_MS);
     },
 
     evaluate(source: string): unknown {

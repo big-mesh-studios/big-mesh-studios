@@ -467,5 +467,7 @@ export const placeOperation = (
     opacity?: number;
     /** See `Operation.material`; a numeric id, not a name. */
     material?: number;
+     /** Whether this operation is drawn. Defaults to true. */
+     visual?: boolean;
   } = {},
 ): Operation => makeOperation(0, origin, shape, combine, options);

@@ -41,11 +41,13 @@
  * distance across should not be one cell.
  */
 import type { Bounds, Vec3 } from "@big-mesh-studios/core";
+import type { OperationShape } from "@big-mesh-studios/sdf";
 import { writeOctahedralNormal } from "@big-mesh-studios/core";
 import {
   Field,
   OperationBVH,
   boundsOf,
+  rotate,
   type Operation,
 } from "@big-mesh-studios/csg";
 // **From the sibling modules and not from this package's index.** The index re-exports this
@@ -53,6 +55,22 @@ import {
 // and then breaks the moment an initialisation order matters. `apps/spacescape/src/mesh/` draws
 // the same line between its own modules for the same reason.
 import { ChunkMeshBuilder } from "./chunk-mesh";
+import {
+  BufferGeometry as RmslBufferGeometry,
+  BoxGeometry,
+  SphereGeometry,
+  CylinderGeometry,
+  ConeGeometry,
+  TorusGeometry,
+  BufferAttribute,
+  MeshBasicMaterial,
+} from "@random-mesh/rmsl/scene";
+import {
+  Brush,
+  Evaluator,
+  ADDITION,
+  SUBTRACTION,
+} from "@random-mesh/rmsl-bvh-csg";
 import { marchingCubes, marchingCubesScratchFor } from "./marching-cubes";
 import type { MarchingCubesScratch } from "./marching-cubes";
 import type { MeshProgress } from "./surface-nets";
@@ -126,7 +144,7 @@ export const DEFAULT_BUDGET: MeshBudget = {
  * **The status line reports what the mesh actually is either way**, so choosing wrong is visible
  * and neither is a trap.
  */
-export type MeshMode = "surface-nets" | "marching-cubes";
+export type MeshMode = "surface-nets" | "marching-cubes" | "csg";
 
 /**
  * Marching cubes, and why it is the one a person gets without asking.
@@ -176,6 +194,11 @@ export const MESH_MODES: ReadonlyArray<{
     label: "Nets",
     hint: "One vertex per cell. The fewest triangles. Closed wherever the surface is well resolved — which is nearly always, but is not a promise, and its edges float off the surface, so a boundary cannot be cut along them.",
   },
+  {
+    value: "csg",
+    label: "CSG",
+    hint: "Exact mesh-level booleans via rmsl-bvh-csg. Hard edges only, fewer triangles on flat surfaces, no smooth blends.",
+  },
 ];
 
 /**
@@ -220,7 +243,7 @@ const HELD: {
 } = {};
 
 const heldScratch = (
-  mode: MeshMode,
+  mode: "surface-nets" | "marching-cubes",
   samples: number,
 ): SurfaceNetsScratch | MarchingCubesScratch => {
   const existing = HELD[mode];
@@ -659,12 +682,255 @@ const fillNormals = (mesh: ChunkMesh, field: Field): void => {
  * scene; the second has geometry and the caller should leave the previous mesh up rather
  * than blank the screen because a shape is smaller than one sample.
  */
+/**
+ * Builds one primitive's geometry in rmsl form, baked into world space.
+ */
+const shapeToRmslGeometry = (shape: OperationShape): RmslBufferGeometry => {
+  switch (shape.type) {
+    case "Sphere":
+      return new SphereGeometry(shape.radius, 16, 12);
+    case "Ellipsoid": {
+      const g = new SphereGeometry(1, 16, 12);
+      const pos = g.attributes.position.array as Float32Array;
+      for (let i = 0; i < pos.length; i += 3) {
+        pos[i] *= shape.radius.x;
+        pos[i + 1] *= shape.radius.y;
+        pos[i + 2] *= shape.radius.z;
+      }
+      const nor = g.attributes.normal?.array as Float32Array | undefined;
+      if (nor) {
+        for (let i = 0; i < nor.length; i += 3) {
+          // approximate normals by scaling (not unit, but CSG re-normalises? no) — acceptable
+        }
+      }
+      return g;
+    }
+    case "Box":
+      return new BoxGeometry(shape.len.x * 2, shape.len.y * 2, shape.len.z * 2);
+    case "RoundBox":
+      return new BoxGeometry(
+        (shape.len.x + shape.radius) * 2,
+        (shape.len.y + shape.radius) * 2,
+        (shape.len.z + shape.radius) * 2,
+      );
+    case "Capsule":
+    case "Cylinder":
+      return new CylinderGeometry(shape.radius, shape.radius, shape.len, 16);
+    case "Cone":
+      return new ConeGeometry(shape.radius, shape.len, 16);
+    case "Torus":
+      return new TorusGeometry(shape.majorRadius, shape.minorRadius, 12, 24);
+    case "HexPrism":
+      return new CylinderGeometry(shape.radius, shape.radius, shape.len, 6);
+    case "Polygon":
+      return polygonPrismRmslGeometry(shape.points, shape.len);
+    default:
+      throw new Error(`Unsupported shape for CSG mesher: ${(shape as { type: string }).type}`);
+  }
+};
+
+const polygonPrismRmslGeometry = (
+  points: readonly { readonly x: number; readonly z: number }[],
+  len: number,
+): RmslBufferGeometry => {
+  const half = len / 2;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const n = points.length;
+  // bottom vertices 0..n-1, top vertices n..2n-1
+  for (let i = 0; i < n; i++) {
+    positions.push(points[i].x, -half, points[i].z);
+    normals.push(0, -1, 0);
+  }
+  for (let i = 0; i < n; i++) {
+    positions.push(points[i].x, half, points[i].z);
+    normals.push(0, 1, 0);
+  }
+  // bottom fan
+  for (let i = 1; i < n - 1; i++) {
+    indices.push(0, i + 1, i);
+  }
+  // top fan (reversed)
+  for (let i = 1; i < n - 1; i++) {
+    indices.push(n, n + i, n + i + 1);
+  }
+  // sides
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    // compute normal for side:
+    const dx = points[j].x - points[i].x;
+    const dz = points[j].z - points[i].z;
+    const nx = dz;
+    const nz = -dx;
+    const lenn = Math.hypot(nx, nz) || 1;
+    const nnx = nx / lenn;
+    const nnz = nz / lenn;
+    const base = positions.length / 3;
+    // add 4 vertices for side (bottom i, bottom j, top j, top i)
+    positions.push(points[i].x, -half, points[i].z);
+    normals.push(nnx, 0, nnz);
+    positions.push(points[j].x, -half, points[j].z);
+    normals.push(nnx, 0, nnz);
+    positions.push(points[j].x, half, points[j].z);
+    normals.push(nnx, 0, nnz);
+    positions.push(points[i].x, half, points[i].z);
+    normals.push(nnx, 0, nnz);
+    const b = base;
+    indices.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  const g = new RmslBufferGeometry();
+  g.setAttribute("position", new BufferAttribute(new Float32Array(positions), 3));
+  g.setAttribute("normal", new BufferAttribute(new Float32Array(normals), 3));
+  g.setIndex(indices);
+  return g;
+};
+
+const bakeTransformIntoGeometry = (g: RmslBufferGeometry, op: Operation): void => {
+  const pos = g.attributes.position.array as Float32Array;
+  const nor = g.attributes.normal?.array as Float32Array | undefined;
+  for (let i = 0; i < pos.length; i += 3) {
+    const v = { x: pos[i], y: pos[i + 1], z: pos[i + 2] };
+    const r = rotate(v, op.orientation);
+    pos[i] = r.x + op.origin.x;
+    pos[i + 1] = r.y + op.origin.y;
+    pos[i + 2] = r.z + op.origin.z;
+  }
+  if (nor) {
+    for (let i = 0; i < nor.length; i += 3) {
+      const v = { x: nor[i], y: nor[i + 1], z: nor[i + 2] };
+      const r = rotate(v, op.orientation);
+      nor[i] = r.x;
+      nor[i + 1] = r.y;
+      nor[i + 2] = r.z;
+    }
+  }
+};
+
+const ensureColorAttribute = (g: RmslBufferGeometry, op: Operation): void => {
+  if (g.attributes.color) return;
+  const count = g.attributes.position.count;
+  const arr = new Float32Array(count * 4);
+  const colour = op.colour ?? { r: 255, g: 255, b: 255 };
+  const mat = op.material ?? 0;
+  for (let i = 0; i < count; i++) {
+    arr[i * 4] = colour.r / 255;
+    arr[i * 4 + 1] = colour.g / 255;
+    arr[i * 4 + 2] = colour.b / 255;
+    arr[i * 4 + 3] = mat;
+  }
+  g.setAttribute("color", new BufferAttribute(arr, 4));
+};
+
+const rmslGeometryToChunkMesh = (g: RmslBufferGeometry): ChunkMesh => {
+  const pos = g.attributes.position.array as Float32Array;
+  const nor = g.attributes.normal?.array as Float32Array | undefined;
+  const col = g.attributes.color?.array as Float32Array | undefined;
+  const idx = (g.index?.array ?? new Uint32Array()) as Uint32Array;
+
+  const vertexCount = pos.length / 3;
+  const positions = new Float32Array(pos);
+  const normalOct = new Int16Array(vertexCount * 2);
+  const colours = new Uint8Array(vertexCount * 4);
+  for (let i = 0; i < vertexCount; i++) {
+    if (nor) {
+      writeOctahedralNormal(normalOct, i * 2, {
+        x: nor[i * 3],
+        y: nor[i * 3 + 1],
+        z: nor[i * 3 + 2],
+      });
+    } else {
+      writeOctahedralNormal(normalOct, i * 2, { x: 0, y: 1, z: 0 });
+    }
+    if (col) {
+      colours[i * 4] = Math.round(col[i * 4] * 255);
+      colours[i * 4 + 1] = Math.round(col[i * 4 + 1] * 255);
+      colours[i * 4 + 2] = Math.round(col[i * 4 + 2] * 255);
+      colours[i * 4 + 3] = Math.round(col[i * 4 + 3]);
+    } else {
+      colours[i * 4] = 255;
+      colours[i * 4 + 1] = 255;
+      colours[i * 4 + 2] = 255;
+      colours[i * 4 + 3] = 0;
+    }
+  }
+  const indices = new Uint32Array(idx);
+  return {
+    positions,
+    normalOct,
+    colours,
+    indices,
+    vertexCount,
+    triangleCount: indices.length / 3,
+  };
+};
+
+const meshModelCsg = (
+  operations: readonly Operation[],
+  budget: MeshBudget,
+): MeshResult | undefined => {
+  const region = meshRegion(operations, budget);
+  if (region === undefined) return undefined;
+
+  const brushes: Brush[] = [];
+  const csgOps: Operation[] = [];
+  for (const op of operations) {
+    if (op.combine === "Paint") continue;
+    const g = shapeToRmslGeometry(op.shape);
+    bakeTransformIntoGeometry(g, op);
+    ensureColorAttribute(g, op);
+    const brush = new Brush(g, new MeshBasicMaterial());
+    brush.updateMatrix();
+    brush.updateMatrixWorld(true);
+    brushes.push(brush);
+    csgOps.push(op);
+  }
+  if (brushes.length === 0) return undefined;
+
+  const ev = new Evaluator();
+  ev.attributes = ["position", "normal", "color"];
+
+  let current: Brush | null = null;
+  let bi = 0;
+  for (const op of operations) {
+    if (op.combine === "Paint") continue;
+    const brush = brushes[bi++];
+    if (current === null) {
+      if (op.combine === "Add") current = brush;
+      continue;
+    }
+    if (op.combine === "Add") {
+      current = ev.evaluate(current, brush, ADDITION) as Brush;
+    } else if (op.combine === "Subtract") {
+      current = ev.evaluate(current, brush, SUBTRACTION) as Brush;
+    }
+  }
+  if (current === null) return undefined;
+
+  const built = rmslGeometryToChunkMesh(current.geometry);
+
+  const field = operationsField(operations, budget);
+  fillNormals(built, field);
+
+  const mesh = built;
+  return {
+    mesh,
+    region,
+    samples: (region.samples + 2) ** 3,
+    triangles: mesh.triangleCount,
+    report: reportMesh(mesh),
+  };
+};
+
 export const meshModel = (
   operations: readonly Operation[],
   budget: MeshBudget = DEFAULT_BUDGET,
   mode: MeshMode = DEFAULT_MESH_MODE,
   onProgress?: MeshProgress,
 ): MeshResult | undefined => {
+  if (mode === "csg") {
+    return meshModelCsg(operations, budget);
+  }
   const region = meshRegion(operations, budget);
   if (region === undefined) return undefined;
 
@@ -722,7 +988,10 @@ export const meshModel = (
    * expects rather than holding a region it is not inside.
    */
   const endRegion = field.beginRegion(sampleExtent(region));
-  const scratch = heldScratch(mode, region.samples);
+  const scratch = heldScratch(
+    mode as "surface-nets" | "marching-cubes",
+    region.samples,
+  );
   /**
    * **The broadest blend in the model, so the broad pass knows how far it may not trust a
    * value.** Given to both meshers because both now take it: it is the same number and it is

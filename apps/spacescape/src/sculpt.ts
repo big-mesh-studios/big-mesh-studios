@@ -211,7 +211,7 @@ export class SculptSession {
    * ADR 0009 — the two sides build from the same numbers rather than sharing one object — and
    * it means neither side can be left holding a field the other has replaced.
    */
-  setBaseField(spec: BaseFieldSpec): void {
+  setBaseField(spec: BaseFieldSpec | undefined): void {
     this.base = baseFieldFor(spec);
     this.field = this.buildField();
   }

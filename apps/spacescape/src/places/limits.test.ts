@@ -503,6 +503,9 @@ describe("every limit is exercised at its edge", () => {
       "MAX_DATA_KEYS",
       "MAX_PLAYERS",
       "MAX_STEP_MS",
+      // Load gets a separate, more generous budget than a per-frame step. Enforced in the
+      // interpreters' load path rather than by any payload field.
+      "MAX_LOAD_MS",
       // A host's own collections, like `MAX_LIGHTS` — how many cameras, screens, HUD images and
       // world HUD panels a place has standing rather than anything one payload can say. Checked at
       // the limit and one past it in `host.test.ts`, by a place that fills them.

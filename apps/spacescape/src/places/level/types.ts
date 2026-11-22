@@ -28,6 +28,7 @@
  */
 
 import type { Combine, PlaceShape, Vec3Like } from "../guest/place-api";
+import type { MeshMode } from "@big-mesh-studios/meshing";
 
 /**
  * One shape standing in the world.
@@ -87,8 +88,16 @@ export interface LevelShape {
   };
   /** One of `MATERIAL_NAMES`. */
   readonly material?: string;
+  /**
+   * How this shape is drawn.
+   *
+   * **`"field"` (the default) meshes it through the terrain's chunks, which is what every
+   * shape has always done. `"csg"` instead builds an exact mesh via `rmsl-bvh-csg` and draws
+   * it on top, leaving the shape in the field for collision. The chunk resolution can then be
+   * coarsened without the flat surface losing its look.
+   */
+  readonly visual?: "field" | "csg";
 }
-
 /**
  * One figure standing in the world: a prop, or something that talks.
  *
@@ -128,6 +137,8 @@ export interface LevelFigure {
    * rather than a per-instance one.
    */
   readonly meshResolution?: number;
+  /** Which mesher to use for this figure's model. Absent means the model's own default. */
+  readonly meshMode?: MeshMode;
   /** Whether the player walks into it. A pickup says false. */
   readonly solid?: boolean;
   /** What to call it, and what a prop is asked at. Required for an npc. */
@@ -225,6 +236,8 @@ export interface LevelWalls {
     readonly g: number;
     readonly b: number;
   };
+  /** How this walls item is drawn. See `LevelShape.visual`. */
+  readonly visual?: "field" | "csg";
 }
 
 /** The name of one primitive, which is what a shape's own parameters hang off. */

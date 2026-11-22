@@ -228,6 +228,27 @@ export interface PlaceManifest {
    * `sharpEdges` inherits the default spacing rather than having to restate it.
    */
   readonly mesh?: MeshSettings;
+  /**
+   * Cloud rendering for this place. `"off"` disables clouds entirely; `"high"`/`"low"`
+   * select the cloud technique. Absent means the engine default (high, or remembered setting).
+   * Indoor demos should use `"off"`.
+   */
+  readonly clouds?: "high" | "low" | "off";
+  /** Whether base terrain chunks are meshed/rendered. Absent/true means yes. Indoor levels can set false. */
+  readonly terrain?: boolean;
+  /** Whether caves are included in the base field. Absent/true means yes. */
+  readonly caves?: boolean;
+  /** Lighting/material path. "simple" is cheaper (no point lights/fog/patterns sky complexity). Absent uses engine default. */
+  readonly lighting?: "simple" | "full";
+  /** Optional world-space AABB used for chunk preloading and/or player restriction. */
+  readonly playBounds?: {
+    readonly min: readonly [number, number, number];
+    readonly max: readonly [number, number, number];
+  };
+  /** Preload all terrain chunks touching `playBounds` on load. */
+  readonly preloadPlayBounds?: boolean;
+  /** Keep the player inside `playBounds`. */
+  readonly restrictPlayerToPlayBounds?: boolean;
   /** The file that runs, relative to the zip's root. Must be one of `scripts`. */
   readonly entry: string;
   /**
@@ -298,6 +319,35 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
   if (record.editable !== undefined && typeof record.editable !== "boolean")
     return false;
   if (record.mesh !== undefined && !isMeshResolution(record.mesh)) return false;
+  if (
+    record.clouds !== undefined &&
+    record.clouds !== "high" &&
+    record.clouds !== "low" &&
+    record.clouds !== "off"
+  )
+    return false;
+  if (record.terrain !== undefined && typeof record.terrain !== "boolean")
+    return false;
+  if (record.caves !== undefined && typeof record.caves !== "boolean")
+    return false;
+  if (
+    record.lighting !== undefined &&
+    record.lighting !== "simple" &&
+    record.lighting !== "full"
+  )
+    return false;
+  if (record.playBounds !== undefined && !isPlayBounds(record.playBounds))
+    return false;
+  if (
+    record.preloadPlayBounds !== undefined &&
+    typeof record.preloadPlayBounds !== "boolean"
+  )
+    return false;
+  if (
+    record.restrictPlayerToPlayBounds !== undefined &&
+    typeof record.restrictPlayerToPlayBounds !== "boolean"
+  )
+    return false;
 
   if (!isFileList(record.scripts)) return false;
   if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;
@@ -384,6 +434,25 @@ const isSpawn = (value: unknown): value is PlaceSpawn => {
       Number.isFinite(axis) &&
       Math.abs(axis) <= MAX_PLACE_SPAWN,
   );
+};
+
+const isVec3Tuple = (value: unknown): value is readonly [number, number, number] =>
+  Array.isArray(value) &&
+  value.length === 3 &&
+  value.every(
+    (axis) =>
+      typeof axis === "number" && Number.isFinite(axis) && Math.abs(axis) <= MAX_PLACE_SPAWN,
+  );
+
+const isPlayBounds = (
+  value: unknown,
+): value is { min: readonly [number, number, number]; max: readonly [number, number, number] } => {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  if (!isVec3Tuple(r.min) || !isVec3Tuple(r.max)) return false;
+  const min = r.min as readonly [number, number, number];
+  const max = r.max as readonly [number, number, number];
+  return min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2];
 };
 
 /**

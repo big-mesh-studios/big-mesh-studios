@@ -626,6 +626,12 @@ importers:
       '@big-mesh-studios/csg':
         specifier: workspace:*
         version: link:../csg
+      '@random-mesh/rmsl':
+        specifier: 'catalog:'
+        version: 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+      '@random-mesh/rmsl-bvh-csg':
+        specifier: 0.0.1
+        version: 0.0.1(@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2)))
     devDependencies:
       '@big-mesh-studios/sdf':
         specifier: workspace:*
@@ -1255,6 +1261,16 @@ packages:
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
+
+  '@random-mesh/rmsl-bvh-csg@0.0.1':
+    resolution: {integrity: sha512-Pfe1vT1f2cgkLDQP1fgUtafE3oCIJLvSwsZpxbKYNfnpNrEcx6qt2/LJL4LHE1xuHhLrKrvqCpE4/0h9M56jyg==}
+    peerDependencies:
+      '@random-mesh/rmsl': '>=1.17.0'
+
+  '@random-mesh/rmsl-bvh@0.0.1':
+    resolution: {integrity: sha512-9Wv0NTmyoMJJw89X44xZBHCNnU2OLkUxJ4Ww87O9SIFD1mLYmWBo3vF6SsT0clzuUXUH2DKVFbgpX2zJ8Cvk+Q==}
+    peerDependencies:
+      '@random-mesh/rmsl': '>=1.17.0'
 
   '@random-mesh/rmsl@1.17.0':
     resolution: {integrity: sha512-91PpR+44hg8aQ6oVGCze+cchN8OL2+ew6mQ8dw6VFODtKKSPnLOPbIpBEl/pbs6TeuN3BfFPXRgd+puqbNBqQw==}
@@ -2639,6 +2655,15 @@ snapshots:
   '@msgpack/msgpack@2.8.0': {}
 
   '@oxc-project/types@0.152.0': {}
+
+  '@random-mesh/rmsl-bvh-csg@0.0.1(@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2)))':
+    dependencies:
+      '@random-mesh/rmsl': 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
+      '@random-mesh/rmsl-bvh': 0.0.1(@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2)))
+
+  '@random-mesh/rmsl-bvh@0.0.1(@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2)))':
+    dependencies:
+      '@random-mesh/rmsl': 1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))
 
   '@random-mesh/rmsl@1.17.0(vite@8.3.2(@types/node@26.4.0)(esbuild@0.28.2))':
     dependencies:

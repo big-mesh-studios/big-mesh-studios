@@ -56,7 +56,7 @@ import { Group, Mesh } from "@random-mesh/rmsl/scene";
 
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 
-import type { CellCoord } from "../world";
+import { BLOCK_WORLD, type CellCoord } from "../world";
 import type { MeshedChunk } from "../mesh/protocol";
 import {
   type SlotGeometry,
@@ -448,6 +448,29 @@ export class ChunkMeshStore {
     }
     this.slotCells.length = slots;
     for (let slot = 0; slot < slots; slot++) this.slotCells[slot] = undefined;
+  }
+
+  /** Occludable superchunk meshes for low-res occlusion pass. */
+  occludables(): Array<{
+    key: string;
+    min: [number, number, number];
+    max: [number, number, number];
+    mesh: SceneMesh;
+    setVisible(visible: boolean): void;
+  }> {
+    const out: Array<{ key: string; min: [number, number, number]; max: [number, number, number]; mesh: SceneMesh; setVisible(v: boolean): void }> = [];
+    const span = SUPERCHUNK_SPAN * BLOCK_WORLD;
+    for (const surface of this.surfaces) {
+      for (const [key, sc] of surface.superchunks) {
+        const mesh = sc.mesh;
+        if (!mesh) continue;
+        const [sx, sy, sz] = key.split(",").map(Number) as [number, number, number];
+        const min: [number, number, number] = [sx * span, sy * span, sz * span];
+        const max: [number, number, number] = [min[0] + span, min[1] + span, min[2] + span];
+        out.push({ key, min, max, mesh, setVisible: (v) => { mesh.visible = v; } });
+      }
+    }
+    return out;
   }
 
   /**

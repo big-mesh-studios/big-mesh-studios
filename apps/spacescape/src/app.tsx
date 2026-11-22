@@ -164,7 +164,7 @@ import {
   starterOperations,
   type SessionStats,
 } from "./session";
-import { DEFAULT_PLANET, DEFAULT_TERRAIN } from "@big-mesh-studios/csg";
+import { DEFAULT_PLANET, DEFAULT_TERRAIN, type BaseFieldSpec } from "@big-mesh-studios/csg";
 import {
   DEFAULT_LOD_BANDS,
   DEFAULT_MESH_RESOLUTION,
@@ -173,6 +173,7 @@ import {
   type LodBands,
   type MeshSettings,
 } from "./world";
+import { BLOCK_WORLD } from "./constants";
 import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
@@ -215,6 +216,7 @@ import { ModelLibrary } from "./places/model-library";
 import { FigureSet } from "./figures/figure-set";
 import { PlaceOverlay } from "./places/ui/PlaceOverlay";
 import { MAX_DRAWN_LIGHTS } from "./render/point-lights";
+import { OcclusionCuller } from "./render/occlusion";
 import { demoPlace, demoProject, loadDemoModels } from "./places/demos";
 import { surfaceHeightAt } from "./world/surface-height";
 import { PLACE_MIME_TYPE, type PlaceSpawn } from "./places/place-file";
@@ -318,6 +320,8 @@ interface StartPlace {
   readonly name: string;
   /** Where the player starts. See `PlaceManifest.spawn`. */
   readonly spawn?: PlaceSpawn;
+  /** Optional initial heading/yaw in radians. */
+  readonly spawnHeading?: number;
   /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
   readonly models?: Readonly<Record<string, Uint8Array>>;
   /** Local sound files declared by its manifest. */
@@ -352,6 +356,16 @@ interface StartPlace {
    * A partial setting inherits the default spacing, as it does in the manifest.
    */
   readonly mesh?: MeshSettings;
+  readonly clouds?: "high" | "low" | "off";
+  readonly terrain?: boolean;
+  readonly caves?: boolean;
+  readonly lighting?: "simple" | "full";
+  readonly playBounds?: {
+    readonly min: readonly [number, number, number];
+    readonly max: readonly [number, number, number];
+  };
+  readonly preloadPlayBounds?: boolean;
+  readonly restrictPlayerToPlayBounds?: boolean;
 }
 
 /** The largest step a frame is allowed to advance the world, in seconds. */
@@ -605,7 +619,8 @@ type CloudStatus =
       readonly state: "ready";
       readonly field: Extract<CloudBakeSource, "worker" | "main thread">;
     }
-  | { readonly state: "failed"; readonly reason: string };
+  | { readonly state: "failed"; readonly reason: string }
+  | { readonly state: "disabled"; readonly reason: string };
 
 /**
  * One line, or several, saying what a running place has actually done.
@@ -666,6 +681,8 @@ const describeCloudStatus = (status: CloudStatus): string => {
       return `ready (baked on the ${status.field})`;
     case "failed":
       return `NOT BUILT — ${status.reason}`;
+    case "disabled":
+      return `off — ${status.reason}`;
   }
 };
 
@@ -673,6 +690,7 @@ export default function App() {
   let canvas!: HTMLCanvasElement;
   const [precision, setPrecision] = createSignal<PrecisionProbe | undefined>();
   const [stats, setStats] = createSignal<SessionStats | undefined>();
+  const [playerPos, setPlayerPos] = createSignal<string>("");
   const [spikeCounts, setSpikeCounts] = createSignal<
     SpikeScene["counts"] | undefined
   >();
@@ -693,6 +711,7 @@ export default function App() {
    * whole game's readout and not the editor's.
    */
   const [statusVisible, setStatusVisible] = createSignal(false);
+  const [fps, setFps] = createSignal(0);
   /** What the loaded place most recently complained about, for a line over the game. */
   const [placeBanner, setPlaceBanner] = createSignal<string | undefined>();
   /** A toast a place asked for, since there is no HUD to show it in. */
@@ -1646,6 +1665,11 @@ export default function App() {
       ...(measured.ok ? { precision: measured.precision } : {}),
     });
     viewport.setBackground(new Color(0.07, 0.07, 0.09));
+    (globalThis as any).__spacescape = {
+      renderer: viewport.renderer,
+      scene: viewport.scene,
+      viewport,
+    };
 
     /**
      * The screens a place puts in the world, the feeds behind them, and the photos it takes.
@@ -1736,6 +1760,14 @@ export default function App() {
      * by the same shader, sky, fog and point lights as the ground it stands on.
      */
     const figures = new FigureSet(material, FIGURE_TINT.material);
+    const occlusion = new OcclusionCuller();
+    const occlusionIds = new Map<string, number>();
+    let occlusionNextId = 1;
+    const occlusionIdFor = (key: string): number => {
+      let id = occlusionIds.get(key);
+      if (id === undefined) { id = occlusionNextId++; occlusionIds.set(key, id); }
+      return id;
+    };
     const previewMaterial = new MeshBasicMaterial({
       color: new Color(1, 0.85, 0.4),
     });
@@ -1759,6 +1791,14 @@ export default function App() {
       ...(isGame() ? GAME_WINDOW : {}),
       ...(chosen !== undefined ? { bands: chosen } : {}),
     });
+    (globalThis as any).__spacescape = {
+      ...(globalThis as any).__spacescape,
+      session,
+      figures,
+      occlusion,
+      occlusionIds,
+      occlusionIdFor,
+    };
 
     const sculpt = new SculptSession({
       session,
@@ -1777,6 +1817,22 @@ export default function App() {
      * the window, which is a visible re-mesh but only when somebody asks for one.
      */
     const applyWindow = (): void => {
+      if (placeTerrain === false || placePreloadPlayBounds) {
+        if (placePlayBounds) {
+          const { min, max } = placePlayBounds;
+          const cx = (min[0] + max[0]) / 2;
+          const cy = (min[1] + max[1]) / 2;
+          const cz = (min[2] + max[2]) / 2;
+          const rx = Math.ceil((max[0] - min[0]) / 2 / BLOCK_WORLD) + 1;
+          const ry = Math.ceil((max[1] - min[1]) / 2 / BLOCK_WORLD) + 1;
+          const rz = Math.ceil((max[2] - min[2]) / 2 / BLOCK_WORLD) + 1;
+          session.reshapeWindow(Math.max(rx, rz), ry, LOD_OFF);
+          session.follow({ x: cx, y: cy, z: cz });
+        } else {
+          session.reshapeWindow(0, 0);
+        }
+        return;
+      }
       const base = gameWindow();
       // The editor has its own spherical reach rather than widening the game's flat one:
       // eight chunks is where the fog closes, and a window of that shape covers a building
@@ -2059,6 +2115,14 @@ export default function App() {
      */
     let globeField = 0;
     let cloudField = 0;
+    let placeClouds: "high" | "low" | "off" | undefined;
+    let placeTerrain: boolean | undefined;
+    let placeCaves: boolean | undefined;
+    let placePlayBounds:
+      | { min: readonly [number, number, number]; max: readonly [number, number, number] }
+      | undefined;
+    let placePreloadPlayBounds: boolean | undefined;
+    let placeRestrictPlayerToPlayBounds: boolean | undefined;
 
     /**
      * Starts the globe's and the clouds' bakes, for a spherical world.
@@ -2122,8 +2186,34 @@ export default function App() {
      * Putting them together would have made "a flat world has no far field" true, and it is
      * not.
      */
+    const applyCloudPreference = (attempt: number): void => {
+      if (layer === null) return;
+      if (placeClouds === "off") {
+        layer.dispose();
+        layer = null;
+        setCloudStatus({ state: "disabled", reason: "disabled by place" });
+        return;
+      }
+      if (placeClouds === "high" || placeClouds === "low") {
+        layer.setQuality(placeClouds);
+        return;
+      }
+      void readSetting<string>(CLOUD_QUALITY_KEY).then((remembered) => {
+        if (attempt !== cloudField) return;
+        if (remembered === "high" || remembered === "low") {
+          layer?.setQuality(remembered);
+        }
+      });
+    };
+
     const startClouds = (): void => {
       const attempt = ++cloudField;
+      if (placeClouds === "off") {
+        layer?.dispose();
+        layer = null;
+        setCloudStatus({ state: "disabled", reason: "disabled by place" });
+        return;
+      }
 
       const cloudBake = bakeCloudFieldOffThread(DEFAULT_TERRAIN.seed);
       cloudBakes.push(cloudBake);
@@ -2143,18 +2233,7 @@ export default function App() {
               field:
                 cloudBake.source() === "main thread" ? "main thread" : "worker",
             });
-            /**
-             * **The remembered technique, applied once the layer exists.** Reading it before the
-             * bake would race the layer's own construction, so it is read here where `layer` is
-             * guaranteed, and checked against the two names before it is trusted — a value from a
-             * build whose vocabulary has since changed must not reach `setQuality`.
-             */
-            void readSetting<string>(CLOUD_QUALITY_KEY).then((remembered) => {
-              if (attempt !== cloudField) return;
-              if (remembered === "high" || remembered === "low") {
-                layer?.setQuality(remembered);
-              }
-            });
+            applyCloudPreference(attempt);
           } catch (reason) {
             // A material that throws on its first draw is the same fault as no layer at
             // all, and it used to be invisible: the promise's callback threw, the
@@ -2218,6 +2297,20 @@ export default function App() {
      * switch back starts them again — which is why each bake has a generation rather than the
      * pair of flags this used to need, and why a switch is visibly slow the first time each way.
      */
+    const effectiveBaseField = (spec: BaseFieldSpec | undefined): BaseFieldSpec | undefined => {
+      if (placeTerrain === false) return undefined;
+      if (spec === undefined || placeCaves !== false) return spec;
+      if (spec.kind === "terrain") {
+        const { caves: _caves, ...params } = spec.params as any;
+        return { kind: "terrain", params };
+      }
+      if (spec.kind === "planet") {
+        const { caves: _caves, ...params } = spec.params as any;
+        return { kind: "planet", params };
+      }
+      return spec;
+    };
+
     const setWorldShape = (shape: WorldShape): string => {
       if (shape === WORLD.shape) {
         return `the world is already ${describeWorldShape(shape)}`;
@@ -2238,8 +2331,9 @@ export default function App() {
       // **The main thread's field before the workers'**, so the player's collision and the
       // mesher are never reading two different landscapes — which is ADR 0009's rule, and the
       // gap between the two lines is a frame.
-      sculpt.setBaseField(next.baseField);
-      session.setBaseField(next.baseField);
+      const baseField = effectiveBaseField(next.baseField);
+      sculpt.setBaseField(baseField);
+      session.setBaseField(baseField);
 
       // **Then the physics.** `setWorld` re-derives the player's basis from the new frame, which
       // a body carried across could not do.
@@ -2413,6 +2507,13 @@ export default function App() {
         // **And the grid its walls need**, which is the manifest's statement about how finely
         // to sample them.
         mesh: place.manifest.mesh,
+        clouds: place.manifest.clouds,
+        terrain: place.manifest.terrain,
+        caves: place.manifest.caves,
+        lighting: place.manifest.lighting,
+        playBounds: place.manifest.playBounds,
+        preloadPlayBounds: place.manifest.preloadPlayBounds,
+        restrictPlayerToPlayBounds: place.manifest.restrictPlayerToPlayBounds,
       });
       return report.startsWith("could not load")
         ? report
@@ -2469,6 +2570,18 @@ export default function App() {
       hudBusy.clear();
       sculpt.places.clearAll();
       sculpt.refreshPlaces();
+      placeClouds = undefined;
+      placeTerrain = undefined;
+      placeCaves = undefined;
+      placePlayBounds = undefined;
+      placePreloadPlayBounds = undefined;
+      placeRestrictPlayerToPlayBounds = undefined;
+      const baseField = effectiveBaseField(WORLD.baseField);
+      sculpt.setBaseField(baseField);
+      session.setBaseField(baseField);
+      if (layer === null) startClouds();
+      else applyCloudPreference(cloudField);
+      applyWindow();
       // **The aim comes back with the place's absence.** A locked place that was unloaded by
       // `/place:unload`, by another load, or by the editor's Run must not leave the next world
       // unable to dig for a reason nothing on screen explains.
@@ -2511,7 +2624,23 @@ export default function App() {
      */
     const startPlace = async (place: StartPlace): Promise<string> => {
       const { files, entry, seed, name } = place;
-      const { spawn, models, levels, sounds, world, editable, mesh } = place;
+      const {
+        spawn,
+        spawnHeading,
+        models,
+        levels,
+        sounds,
+        world,
+        editable,
+        mesh,
+        clouds,
+        terrain,
+        caves,
+        lighting,
+        playBounds,
+        preloadPlayBounds,
+        restrictPlayerToPlayBounds,
+      } = place;
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
@@ -2528,12 +2657,22 @@ export default function App() {
         seed,
         name,
         spawn,
+        ...(spawnHeading !== undefined ? { spawnHeading } : {}),
         models,
         levels,
         sounds,
         world,
         ...(editable !== undefined ? { editable } : {}),
         ...(mesh !== undefined ? { mesh } : {}),
+        ...(clouds !== undefined ? { clouds } : {}),
+        ...(terrain !== undefined ? { terrain } : {}),
+        ...(caves !== undefined ? { caves } : {}),
+        ...(lighting !== undefined ? { lighting } : {}),
+        ...(playBounds !== undefined ? { playBounds } : {}),
+        ...(preloadPlayBounds !== undefined ? { preloadPlayBounds } : {}),
+        ...(restrictPlayerToPlayBounds !== undefined
+          ? { restrictPlayerToPlayBounds }
+          : {}),
       };
 
       // **The world is put in place before anything is built on it**, and before the models are
@@ -2545,13 +2684,50 @@ export default function App() {
       //
       // **Before the drop rather than after**, so a place that fails to switch cannot leave the
       // previous one half standing.
-      if (world !== undefined) setWorldShape(world);
+      placeTerrain = terrain;
+      placeCaves = caves;
+      placePlayBounds = playBounds;
+      placePreloadPlayBounds = preloadPlayBounds;
+      placeRestrictPlayerToPlayBounds = restrictPlayerToPlayBounds;
+      const simpleMaterial =
+        lighting === "simple" || (lighting !== "full" && placeTerrain === false);
+      if (material.wantsPattern !== !simpleMaterial || material.simple !== simpleMaterial) {
+        material.wantsPattern = !simpleMaterial;
+        material.simple = simpleMaterial;
+        material.needsUpdate = true;
+      }
+      material.fog.enabled = !simpleMaterial;
+      FIGURE_TINT.material.fog.enabled = !simpleMaterial;
+      if (FIGURE_TINT.material.simple !== simpleMaterial) {
+        FIGURE_TINT.material.simple = simpleMaterial;
+        FIGURE_TINT.material.needsUpdate = true;
+      }
+      if (world !== undefined) {
+        setWorldShape(world);
+      } else {
+        const baseField = effectiveBaseField(WORLD.baseField);
+        sculpt.setBaseField(baseField);
+        session.setBaseField(baseField);
+      }
 
       // **The mesh grid is put in place before any level is applied**, because the level is
       // meshed by the first request the apply makes and a grid that arrived after it would
       // build thin walls once at the old spacing. Absent means the engine's default, not the
       // previous place's choice — see `StartPlace.mesh`.
       session.setMeshSettings(mesh ?? DEFAULT_MESH_RESOLUTION);
+      applyWindow();
+
+      placeClouds = clouds;
+      if (clouds === "off") {
+        layer?.dispose();
+        layer = null;
+        setCloudStatus({ state: "disabled", reason: "disabled by place" });
+      } else if (layer !== null) {
+        if (clouds === "high" || clouds === "low") layer.setQuality(clouds);
+        else applyCloudPreference(cloudField);
+      } else {
+        startClouds();
+      }
 
       // **The models, read and meshed before the host exists**, so a place that names a model
       // it does not attach finds out at load rather than at the moment it stands the first
@@ -2595,6 +2771,7 @@ export default function App() {
           // model reader is the same seam — a host can be stood up in a test with two fixtures
           // and never touch a zip.
           figures,
+          material,
           models: modelLibrary,
           terrainHeight: groundHeightAt,
           solidAt: (x, y, z) => game.world.getSolidAt({ x, y, z }),
@@ -2763,7 +2940,10 @@ export default function App() {
       // carries it and the reference uses it, so reading it here is what makes `spawn` a promise
       // the format keeps rather than one it makes.
       if (spawn !== undefined) {
-        game.teleportPlayer({ x: spawn[0], y: spawn[1], z: spawn[2] });
+        game.teleportPlayer(
+          { x: spawn[0], y: spawn[1], z: spawn[2] },
+          spawnHeading,
+        );
       }
 
       // **The load's own problems, not "loaded".** A place that built half of itself reports
@@ -2812,6 +2992,13 @@ export default function App() {
         world: project.manifest.world,
         editable: project.manifest.editable,
         mesh: project.manifest.mesh,
+        clouds: project.manifest.clouds,
+        terrain: project.manifest.terrain,
+        caves: project.manifest.caves,
+        lighting: project.manifest.lighting,
+        playBounds: project.manifest.playBounds,
+        preloadPlayBounds: project.manifest.preloadPlayBounds,
+        restrictPlayerToPlayBounds: project.manifest.restrictPlayerToPlayBounds,
       });
 
     // **Published for the overlay's "play again".** The button is rendered from the application
@@ -2874,6 +3061,9 @@ export default function App() {
        */
       const refused = placeEditor.adopt(project);
       const summary = await startProject(project);
+      if (demo.spawnHeading !== undefined) {
+        game.teleportPlayer({ x: spawn[0], y: spawn[1], z: spawn[2] }, demo.spawnHeading);
+      }
       return refused === null
         ? `${summary}\ncode     ${demo.entry} — /place:editor`
         : `${summary}\n— the editor did not take this place: ${refused}`;
@@ -3192,6 +3382,10 @@ export default function App() {
 
     let lastTime = 0;
     let lastReadout = 0;
+    let fpsAccum = 0;
+    let fpsFrames = 0;
+    let fpsLast = 0;
+    let occlusionFrame = 0;
     // ---- The level editor ----
     //
     // **Here rather than beside the scene assembly above**, because it needs the model
@@ -4573,6 +4767,14 @@ export default function App() {
       const dt =
         lastTime === 0 ? 1 / 60 : Math.min((time - lastTime) / 1000, MAX_STEP);
       lastTime = time;
+      fpsAccum += dt;
+      fpsFrames += 1;
+      if (time - fpsLast >= 500) {
+        setFps(fpsFrames / Math.max(0.001, fpsAccum));
+        fpsAccum = 0;
+        fpsFrames = 0;
+        fpsLast = time;
+      }
 
       // **The editor owns the frame while it is open.** Everything below this is the game's,
       // and running it would put `placeCamera` and the place's own `onTick` back in charge of
@@ -4583,6 +4785,17 @@ export default function App() {
       }
 
       game.tick(dt);
+      if (placeRestrictPlayerToPlayBounds && placePlayBounds) {
+        const p = game.player.position;
+        const min = placePlayBounds.min;
+        const max = placePlayBounds.max;
+        const cx = Math.min(max[0], Math.max(min[0], p.x));
+        const cy = Math.min(max[1], Math.max(min[1], p.y));
+        const cz = Math.min(max[2], Math.max(min[2], p.z));
+        if (cx !== p.x || cy !== p.y || cz !== p.z) {
+          game.teleportPlayer({ x: cx, y: cy, z: cz });
+        }
+      }
 
       // ---- The place, on the same frame ----
       //
@@ -4785,6 +4998,14 @@ export default function App() {
         if (!hudIds.has(id)) hudCapturedAt.delete(id);
       }
 
+      occlusionFrame++;
+      const occludables = [
+        ...session.store.occludables().map((o) => ({ id: occlusionIdFor(o.key), min: o.min, max: o.max, mesh: (o as any).mesh, setVisible: o.setVisible })),
+        ...figures.occludables().map((o) => ({ id: occlusionIdFor(o.key), min: o.min, max: o.max, mesh: (o as any).mesh, setVisible: o.setVisible })),
+      ];
+      // Feed renders use their own cameras; occlusion is main-camera view dependent.
+      occlusion.showAll(occludables);
+
       // **One photo a frame.** The target is read back through a pixel-pack buffer, so there is no
       // pipeline stall; the next job waits for the fence, which is why `next` returns nothing while
       // one is in flight.
@@ -4836,12 +5057,27 @@ export default function App() {
       }
 
       if (game.underwater !== underwater()) setUnderwater(game.underwater);
+      {
+        const cam = viewport.camera;
+        cam.updateMatrixWorld?.(true);
+        const dir = cam.getWorldDirection(TMP_FORWARD);
+        occlusion.update(
+          viewport.renderer as any,
+          cam,
+          occludables,
+          occlusionFrame,
+          cam.position,
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+      }
       viewport.render();
 
       if (time - lastReadout > READOUT_INTERVAL_MS) {
         lastReadout = time;
         setStats(session.stats());
         setHistory({ undo: sculpt.undoDepth, redo: sculpt.redoDepth });
+        const p = game.player.position;
+        setPlayerPos(`${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`);
       }
     });
 
@@ -5106,6 +5342,8 @@ export default function App() {
             <Show when={stats()}>
               {(value) => (
                 <>
+                  <div class={styles.row}>fps: {fps().toFixed(1)}</div>
+                  <div class={styles.row}>player: {playerPos()}</div>
                   <div class={styles.row}>
                     chunks: {value().filled}/{value().chunks} filled,{" "}
                     {value().drawn} drawn

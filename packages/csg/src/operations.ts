@@ -110,6 +110,11 @@ export interface Operation {
    * `Field.distance`. See ADR 0048.
    */
   material?: number;
+  /**
+   * Whether this operation is drawn by the chunk mesher. Defaults to true. A false
+   * value keeps it in the collision field but omits it from the rendered mesh.
+   */
+  visual?: boolean;
 }
 
 /** An operation and the things derived from it once, when it is added. */
@@ -582,6 +587,8 @@ export const makeOperation = (
     opacity?: number;
     /** See `Operation.material`. Omitted rather than defaulted to a number, for the reason there. */
     material?: number;
+    /** Whether this operation contributes to the rendered mesh. Defaults to true. */
+    visual?: boolean;
   } = {},
 ): Operation => ({
   index,
@@ -608,4 +615,5 @@ export const makeOperation = (
   // claim to have decided something it did not, and a reader could not tell an
   // operation that chose plain from one that never asked.
   ...(options.material === undefined ? {} : { material: options.material }),
+  ...(options.visual === undefined ? {} : { visual: options.visual }),
 });

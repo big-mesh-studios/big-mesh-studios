@@ -33,7 +33,7 @@ import {
   ScriptExecutionError as LuauRuntimeError,
 } from "@big-mesh-studios/luau-runtime";
 
-import { MAX_STEP_MS } from "./limits";
+import { MAX_LOAD_MS, MAX_STEP_MS } from "./limits";
 import {
   mulberry32,
   ScriptExecutionError,
@@ -72,8 +72,8 @@ export const createLuauInterpreter = async (
    * the QuickJS twin: a step that fails has spent its budget, and the next step gets a
    * fresh one — three failing steps are three budgets, the cap-not-allowance rule.
    */
-  const withinBudget = <T>(body: () => T): T => {
-    state.setDeadline(stepBudgetMs);
+  const withinBudget = <T>(body: () => T, budgetMs = stepBudgetMs): T => {
+    state.setDeadline(budgetMs);
     try {
       return body();
     } finally {
@@ -90,9 +90,11 @@ export const createLuauInterpreter = async (
    * comparison that would otherwise fail quietly — a throw that reaches the frame loop
    * unclassified is ADR 0015's bug, wearing a bundler seam.
    */
-  const run = <T>(body: () => T, bounded: boolean): T => {
+  const run = <T>(body: () => T, bounded: boolean | number): T => {
     try {
-      return bounded ? withinBudget(body) : body();
+      return bounded === false
+        ? body()
+        : withinBudget(body, bounded === true ? stepBudgetMs : bounded);
     } catch (error) {
       if (error instanceof LuauRuntimeError) {
         throw new ScriptExecutionError(error.kind, error.message);
@@ -130,7 +132,7 @@ export const createLuauInterpreter = async (
       run(() => {
         state.load(bytecode);
         state.call();
-      }, true);
+      }, MAX_LOAD_MS);
     },
 
     evaluate(source: string): unknown {

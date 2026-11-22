@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@big-mesh-studios/core": "workspace:*",
-    "@big-mesh-studios/csg": "workspace:*"
+    "@big-mesh-studios/csg": "workspace:*",
+    "@random-mesh/rmsl": "catalog:",
+    "@random-mesh/rmsl-bvh-csg": "0.0.1"
   },
   "devDependencies": {
     "@big-mesh-studios/sdf": "workspace:*",

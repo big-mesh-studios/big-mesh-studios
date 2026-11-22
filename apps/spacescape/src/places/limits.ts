@@ -562,3 +562,13 @@ export const MAX_CLOCK_MULTIPLIER = 100;
  * interpreter. `interpreter.test.ts` asserts the two agree, so they cannot drift.
  */
 export const MAX_STEP_MS = 250;
+
+/**
+ * How long a place's top-level load may run, in milliseconds.
+ *
+ * **Larger than a step budget, because load is one-time initialization.** A place may create
+ * many shapes/lights/entities during top-level execution; on slower machines this can exceed a
+ * frame-step budget while still being perfectly healthy. Compile is already unbounded outside
+ * the VM deadline; this covers load+top-level execution.
+ */
+export const MAX_LOAD_MS = 10_000;

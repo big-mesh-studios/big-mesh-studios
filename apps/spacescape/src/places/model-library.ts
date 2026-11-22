@@ -180,6 +180,8 @@ export interface FigureModel {
    * for when the default is too coarse or too expensive for one prop.
    */
   readonly resolution: number;
+  /** The mesher this model defaults to. */
+  readonly mode?: MeshMode;
   /**
    * A new `Mesh` over this model's own geometry, or `undefined` when the model has no surface.
    *
@@ -203,7 +205,7 @@ export interface FigureModel {
    * The geometry is shared and the transforms are not, and this function is where that is said
    * rather than repeated at every call site that might get it wrong.
    */
-  draw(material: Material, resolution?: number): Mesh | undefined;
+  draw(material: Material, resolution?: number, mode?: MeshMode): Mesh | undefined;
 
   /**
    * Frees the model's GPU buffers.
@@ -321,22 +323,9 @@ export const readModelFile = async (
    * prop a finer mesh without giving every other instance of that model its own buffers, and an
    * instance that asks for the default is answered from the geometry already built above.
    */
-  const geometries = new Map<number, BufferGeometry | undefined>([
-    [resolution, defaultGeometry],
+  const geometries = new Map<string, BufferGeometry | undefined>([
+    [`${mode}:${resolution}`, defaultGeometry],
   ]);
-  const geometryAt = (voxelSize: number): BufferGeometry => {
-    if (geometries.has(voxelSize)) {
-      return geometries.get(voxelSize) ?? defaultGeometry;
-    }
-    const built = meshModel(operations, budgetFor(voxelSize, budget), mode);
-    const geometry =
-      built?.mesh === undefined ? undefined : toChunkGeometry(built.mesh);
-    geometries.set(voxelSize, geometry);
-    // **A requested size that resolves nothing falls back to the model's own.** The override is
-    // a quality control, not a way to make a prop disappear; the default is known to have a
-    // surface because this function refuses a model without one.
-    return geometry ?? defaultGeometry;
-  };
 
   return {
     name,
@@ -358,12 +347,40 @@ export const readModelFile = async (
     },
     triangles: result?.triangles ?? 0,
     resolution,
-    draw: (material: Material, requested?: number): Mesh | undefined => {
-      const geometry =
-        requested === undefined || requested === resolution
-          ? defaultGeometry
-          : geometryAt(requested);
-      return new Mesh(geometry, material);
+    mode,
+    draw: (
+      material: Material,
+      requested?: number,
+      requestedMode?: MeshMode,
+    ): Mesh | undefined => {
+      const useMode = requestedMode ?? mode;
+      const key = `${useMode}:${requested ?? resolution}`;
+      let geometry = geometries.get(key);
+      if (geometry === undefined && !geometries.has(key)) {
+        if (requested === undefined || requested === resolution) {
+          // default resolution: mesh with the model's default mode unless overridden
+          if (useMode === mode && requested === undefined) {
+            geometry = defaultGeometry;
+          } else {
+            const built = meshModel(
+              operations,
+              budgetFor(requested ?? resolution, budget),
+              useMode,
+            );
+            geometry = built?.mesh === undefined ? undefined : toChunkGeometry(built.mesh);
+          }
+        } else {
+          const built = meshModel(
+            operations,
+            budgetFor(requested, budget),
+            useMode,
+          );
+          geometry = built?.mesh === undefined ? undefined : toChunkGeometry(built.mesh);
+        }
+        geometries.set(key, geometry);
+      }
+      const resolved = geometry ?? defaultGeometry;
+      return resolved === undefined ? undefined : new Mesh(resolved, material);
     },
     dispose: (): void => {
       for (const geometry of geometries.values()) geometry?.dispose();
@@ -404,13 +421,14 @@ export class ModelLibrary {
   static async from(
     entries: Readonly<Record<string, Uint8Array>>,
     budget: MeshBudget = FIGURE_MESH_BUDGET,
+    mode: MeshMode = "marching-cubes",
   ): Promise<ModelLibrary> {
     const models = new Map<string, FigureModel>();
     const problems: ModelProblem[] = [];
 
     for (const [name, bytes] of Object.entries(entries)) {
       try {
-        models.set(name, await readModelFile(name, bytes, budget));
+        models.set(name, await readModelFile(name, bytes, budget, mode));
       } catch (error) {
         problems.push({
           name,

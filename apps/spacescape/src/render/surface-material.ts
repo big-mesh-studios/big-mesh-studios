@@ -92,6 +92,9 @@ export class SurfaceMaterial extends NodeMaterial {
    */
   wantsPattern = true;
 
+  /** Cheap indoor/simple shading path: no patterns/volume/point lights/complex sky, flat ambient+directional. */
+  simple = false;
+
   /**
    * How many world units the volume spans, edge to edge.
    *
@@ -295,6 +298,13 @@ export class SurfaceMaterial extends NodeMaterial {
       const ramp = vec3(sampled.g, sampled.b, sampled.g.mul(sampled.b));
       albedo.assign(albedo.mix(ramp, float(1).sub(covered)));
       albedo.mulAssign(darken);
+    }
+
+    if (this.simple) {
+      const lighting = vec3(0.82, 0.82, 0.82).add(normal.y.max(float(0)).mul(0.18));
+      const shaded = albedo.mul(lighting).clamp(vec3(0, 0, 0), vec3(1, 1, 1));
+      const washed = shaded.mix(this.tintUniform!, this.tintStrengthUniform!);
+      return vec4(washed, this.opacityUniform!);
     }
 
     // Sun, moon, flat ambient. Nothing else, and that is the point: one directional

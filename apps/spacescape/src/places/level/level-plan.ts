@@ -257,6 +257,9 @@ const readShape = (value: Record<string, unknown>, where: string): ReadItem => {
         : { orientation: payload.orientation }),
       ...(payload.colour === undefined ? {} : { colour: payload.colour }),
       ...(payload.material === undefined ? {} : { material: payload.material }),
+      ...(value.visual === "csg" || value.visual === "field"
+        ? { visual: value.visual }
+        : {}),
     },
   };
 };
@@ -291,6 +294,11 @@ const readFigure = (
       ...(payload.meshResolution === undefined
         ? {}
         : { meshResolution: payload.meshResolution }),
+      ...(value.meshMode === "csg" ||
+      value.meshMode === "surface-nets" ||
+      value.meshMode === "marching-cubes"
+        ? { meshMode: value.meshMode }
+        : {}),
       ...(payload.solid === undefined ? {} : { solid: payload.solid }),
       ...(payload.name === undefined ? {} : { name: payload.name }),
     },
@@ -435,6 +443,14 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
   const colour = readColour(value.colour, `${where}.colour`);
   if (colour !== null && "refusal" in colour) return colour;
 
+  const visual = value.visual;
+  if (
+    visual !== undefined &&
+    visual !== "field" &&
+    visual !== "csg"
+  ) {
+    return refuse(`${where}.visual`, "is not a visual this build knows");
+  }
   // **And nothing but its own keys**, the same rule a shape's own parameters are held to: a
   // field this build does not know is a file written by something else, and there is no safe
   // reading of a field nobody validated.
@@ -451,6 +467,7 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
     "softness",
     "material",
     "colour",
+    "visual",
   ]);
   for (const key of Object.keys(value)) {
     if (!known.has(key)) {
@@ -472,6 +489,7 @@ const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
       ...(softness === undefined ? {} : { softness }),
       ...(material === undefined ? {} : { material }),
       ...(colour === null ? {} : { colour: colour.colour }),
+      ...(visual === undefined ? {} : { visual: visual as "field" | "csg" }),
     },
   };
 };
@@ -562,7 +580,7 @@ const readColour = (
 const shapePayload = (
   item: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const { kind: _kind, ...rest } = item;
+  const { kind: _kind, visual: _visual, ...rest } = item;
   return { ...rest, place: LEVEL_PLACE };
 };
 
@@ -570,7 +588,7 @@ const shapePayload = (
 const figurePayload = (
   item: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const { kind: _itemKind, figure, ...rest } = item;
+  const { kind: _itemKind, figure, meshMode: _meshMode, ...rest } = item;
   return { ...rest, kind: figure };
 };
 

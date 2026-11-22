@@ -18,6 +18,8 @@ minimumReleaseAgeExclude:
   - "@solidjs/signals@2.0.0-beta.29"
   - "@solidjs/web@2.0.0-beta.29"
   - solid-js@2.0.0-beta.29
+  - '@random-mesh/rmsl-bvh-csg@0.0.1'
+  - '@random-mesh/rmsl-bvh@0.0.1'
 
 # Every version that more than one package depends on is written here once,
 # and each package asks for "catalog:" rather than naming a range of its own.

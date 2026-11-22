@@ -111,6 +111,8 @@ export interface DemoPlace {
    * gets, so the two cannot disagree about where the ground is.
    */
   readonly spawn?: PlaceSpawn;
+  /** Optional initial heading/yaw in radians. */
+  readonly spawnHeading?: number;
 
   /**
    * Where the fallback spawn sits in plan, in world units, when `spawn` is not given.
@@ -182,6 +184,16 @@ export interface DemoPlace {
    * is part of the artwork, not a detail around it. Absent means the engine's default.
    */
   readonly mesh?: MeshSettings;
+  readonly clouds?: "high" | "low" | "off";
+  readonly terrain?: boolean;
+  readonly caves?: boolean;
+  readonly lighting?: "simple" | "full";
+  readonly playBounds?: {
+    readonly min: readonly [number, number, number];
+    readonly max: readonly [number, number, number];
+  };
+  readonly preloadPlayBounds?: boolean;
+  readonly restrictPlayerToPlayBounds?: boolean;
 }
 
 /**
@@ -235,6 +247,7 @@ export const DEMO_PLACES: readonly DemoPlace[] = [
     // than on the origin the interior walls cross.** See `PLATFORM_LIFT` and `SPAWN`.
     spawnLift: SNACK_LIFT,
     spawnAt: SNACK_SPAWN,
+    lighting: "full",
     // **Thirty-nine models, named exactly as the script asks for them.** A name here that the
     // script does not use is a wasted download; a name the script uses and this omits is a prop
     // that never appears, reported by `ModelLibrary` as a problem against the place's name.
@@ -260,6 +273,7 @@ export const DEMO_PLACES: readonly DemoPlace[] = [
     // TypeScript place carries.
     world: "flat",
     spawn: [-267.84, -51.4, 78.22],
+    spawnHeading: Math.PI,
     // **Names exactly as the script and the level ask for them**, in their own folder so
     // none of them can shadow a snack model of a similar shape.
     models: Object.fromEntries(
@@ -290,6 +304,15 @@ export const DEMO_PLACES: readonly DemoPlace[] = [
       splitColours: true,
       bakeOcclusion: 0.8,
     },
+    clouds: "off",
+    terrain: false,
+    caves: false,
+    playBounds: {
+      min: [-580, -75, -150],
+      max: [0, 20, 240],
+    },
+    preloadPlayBounds: true,
+    restrictPlayerToPlayBounds: true,
   },
 ];
 
@@ -404,6 +427,17 @@ export const demoProject = (
       ...(demo.world === undefined ? {} : { world: demo.world }),
       ...(demo.editable === undefined ? {} : { editable: demo.editable }),
       ...(demo.mesh === undefined ? {} : { mesh: demo.mesh }),
+      ...(demo.clouds === undefined ? {} : { clouds: demo.clouds }),
+      ...(demo.terrain === undefined ? {} : { terrain: demo.terrain }),
+      ...(demo.caves === undefined ? {} : { caves: demo.caves }),
+      ...(demo.lighting === undefined ? {} : { lighting: demo.lighting }),
+      ...(demo.playBounds === undefined ? {} : { playBounds: demo.playBounds }),
+      ...(demo.preloadPlayBounds === undefined
+        ? {}
+        : { preloadPlayBounds: demo.preloadPlayBounds }),
+      ...(demo.restrictPlayerToPlayBounds === undefined
+        ? {}
+        : { restrictPlayerToPlayBounds: demo.restrictPlayerToPlayBounds }),
       ...(options.spawn === undefined ? {} : { spawn: options.spawn }),
     },
     scripts,

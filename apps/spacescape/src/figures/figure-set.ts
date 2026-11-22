@@ -42,12 +42,20 @@
  * next is not something to depend on.
  */
 
-import { Group, Mesh, Vector3 } from "@random-mesh/rmsl/scene";
+import {
+  Group,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  Quaternion,
+  Vector3,
+} from "@random-mesh/rmsl/scene";
 import type { Material, Scene } from "@random-mesh/rmsl/scene";
 
 import type { Vec3 } from "@big-mesh-studios/core";
 
 import type { FigureModel } from "../places/model-library";
+import type { MeshMode } from "@big-mesh-studios/meshing";
 
 import {
   nearestFigureDistance,
@@ -85,6 +93,10 @@ export interface Figure {
   readonly name: string | undefined;
   /** The drawn mesh, or `undefined` for a model with no surface in its own box. */
   readonly mesh: Mesh | undefined;
+  /** True when this figure is rendered as part of a static instanced batch. */
+  readonly batched: boolean;
+  readonly meshResolution?: number;
+  readonly meshMode?: MeshMode;
 }
 
 /** What it takes to put a figure in the world. */
@@ -103,9 +115,13 @@ export interface FigureSpec {
    * mesh. Absent means the model's own default (`FigureModel.resolution`).
    */
   readonly meshResolution?: number;
+  /** Which mesher to use for this figure's model. Absent means the model's own default. */
+  readonly meshMode?: MeshMode;
   /** Solid by default, because the common case is furniture and a coin is the exception. */
   readonly solid?: boolean;
   readonly name?: string;
+  /** Static props can be instanced/batched for draw-call reduction. Defaults to props=true, npcs=false. */
+  readonly static?: boolean;
 }
 
 /**
@@ -115,6 +131,15 @@ export interface FigureSpec {
  * addressable by a name the script chose, which an array cannot do without a second structure
  * kept in step with it.
  */
+type FigureBatch = {
+  key: string;
+  model: FigureModel;
+  resolution?: number;
+  mode?: MeshMode;
+  mesh: InstancedMesh;
+  ids: string[];
+};
+
 export class FigureSet {
   private readonly byId = new Map<string, Figure>();
 
@@ -132,6 +157,10 @@ export class FigureSet {
   /** The one instance every aimed figure shares, so that the tint costs one material, not many. */
   private readonly highlighted: Material;
   private highlightedId: string | undefined;
+  private readonly batches = new Map<string, FigureBatch>();
+  private readonly batchOf = new Map<string, { key: string; index: number }>();
+  private highlightMesh: Mesh | undefined;
+  private hiddenBatchHighlight: { id: string; key: string; index: number } | undefined;
 
   /**
    * @param material what an ordinary figure is drawn with — normally the terrain's own.
@@ -156,6 +185,175 @@ export class FigureSet {
     scene.add(this.group);
   }
 
+  private batchKey(spec: FigureSpec): string {
+    const res = spec.meshResolution ?? spec.model.resolution;
+    const mode = spec.meshMode ?? spec.model.mode ?? "marching-cubes";
+    return `${spec.model.name}|${res}|${mode}`;
+  }
+
+  private isStatic(spec: FigureSpec): boolean {
+    return spec.static ?? spec.kind === "prop";
+  }
+
+  private matrixFor(transform: FigureTransform): Matrix4 {
+    const m = new Matrix4();
+    const q = transformYaw(transform.yaw);
+    m.compose(
+      new Vector3(transform.at.x, transform.at.y, transform.at.z),
+      new Quaternion(q.x, q.y, q.z, q.w),
+      new Vector3(transform.scale, transform.scale, transform.scale),
+    );
+    return m;
+  }
+
+  private ensureBatch(spec: FigureSpec): FigureBatch | undefined {
+    const key = this.batchKey(spec);
+    const existing = this.batches.get(key);
+    if (existing) return existing;
+    const base = spec.model.draw(
+      this.material,
+      spec.meshResolution,
+      spec.meshMode,
+    );
+    if (base === undefined) return undefined;
+    // Use InstancedMesh with count 0 initially; we'll grow by recreating? rmsl InstancedMesh has fixed count.
+    // We'll allocate in chunks.
+    const mesh = new InstancedMesh(base.geometry, this.material, 0);
+    mesh.count = 0;
+    this.group.add(mesh);
+    const batch: FigureBatch = {
+      key,
+      model: spec.model,
+      resolution: spec.meshResolution,
+      mode: spec.meshMode,
+      mesh,
+      ids: [],
+    };
+    this.batches.set(key, batch);
+    // base mesh was just a wrapper around shared geometry; remove it, don't dispose geometry
+    return batch;
+  }
+
+  private setBatchInstance(batch: FigureBatch, index: number, transform: FigureTransform): void {
+    batch.mesh.setMatrixAt(index, this.matrixFor(transform));
+    batch.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private rebuildBatchMesh(batch: FigureBatch): void {
+    // Recreate InstancedMesh with new count (rmsl count is fixed-ish; safest to recreate)
+    const old = batch.mesh;
+    this.group.remove(old);
+    const base = batch.model.draw(this.material, batch.resolution, batch.mode);
+    if (base === undefined) {
+      batch.ids = [];
+      batch.mesh = old;
+      return;
+    }
+    const mesh = new InstancedMesh(base.geometry, this.material, Math.max(1, batch.ids.length));
+    mesh.count = batch.ids.length;
+    for (let i = 0; i < batch.ids.length; i++) {
+      const fig = this.byId.get(batch.ids[i]!);
+      if (fig) mesh.setMatrixAt(i, this.matrixFor(fig.transform));
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    batch.mesh = mesh;
+    this.group.add(mesh);
+    // old mesh is gone; clear hidden highlight state so refresh doesn't restore into it
+    if (this.hiddenBatchHighlight?.key === batch.key) this.hiddenBatchHighlight = undefined;
+    this.refreshHighlight();
+  }
+
+  private addToBatch(spec: FigureSpec, figureId: string): boolean {
+    const batch = this.ensureBatch(spec);
+    if (!batch) return false;
+    batch.ids.push(figureId);
+    this.batchOf.set(figureId, { key: batch.key, index: batch.ids.length - 1 });
+    this.rebuildBatchMesh(batch);
+    return true;
+  }
+
+  private removeFromBatch(figureId: string): void {
+    const info = this.batchOf.get(figureId);
+    if (!info) return;
+    const batch = this.batches.get(info.key);
+    this.batchOf.delete(figureId);
+    if (!batch) return;
+    const idx = info.index;
+    const lastId = batch.ids.pop();
+    if (lastId && lastId !== figureId) {
+      batch.ids[idx] = lastId;
+      this.batchOf.set(lastId, { key: batch.key, index: idx });
+    }
+    // update indices for moved lastId already done
+    if (batch.ids.length === 0) {
+      this.group.remove(batch.mesh);
+      this.batches.delete(batch.key);
+    } else {
+      this.rebuildBatchMesh(batch);
+    }
+  }
+
+  private restoreHighlightState(): void {
+    if (this.highlightMesh) {
+      this.group.remove(this.highlightMesh);
+      this.highlightMesh = undefined;
+    }
+    if (this.hiddenBatchHighlight) {
+      const { id, key } = this.hiddenBatchHighlight;
+      const batch = this.batches.get(key);
+      const figure = this.byId.get(id);
+      const info = this.batchOf.get(id);
+      if (batch && figure && info && info.key === key) {
+        this.setBatchInstance(batch, info.index, figure.transform);
+      }
+      this.hiddenBatchHighlight = undefined;
+    }
+    // restore non-batched material
+    if (this.highlightedId) {
+      const prev = this.byId.get(this.highlightedId);
+      if (prev?.mesh && !prev.batched) prev.mesh.material = this.material;
+    }
+  }
+
+  private applyHighlightState(): void {
+    if (this.highlightedId === undefined) return;
+    const figure = this.byId.get(this.highlightedId);
+    if (!figure) return;
+    if (figure.batched) {
+      const info = this.batchOf.get(figure.id);
+      const batch = info ? this.batches.get(info.key) : undefined;
+      if (batch && info) {
+        // hide instance in batch and show overlay
+        const zero = new Matrix4().makeScale(0, 0, 0);
+        batch.mesh.setMatrixAt(info.index, zero);
+        batch.mesh.instanceMatrix.needsUpdate = true;
+        this.hiddenBatchHighlight = { id: figure.id, key: info.key, index: info.index };
+      }
+      const base = figure.model.draw(this.highlighted, figure.meshResolution, figure.meshMode);
+      if (base) {
+        base.material = this.highlighted;
+        this.applyTransform(base, {
+          ...figure.transform,
+          scale: figure.transform.scale * 1.002,
+        });
+        this.highlightMesh = base;
+        this.group.add(base);
+      }
+      return;
+    }
+    if (figure.mesh) {
+      figure.mesh.material = this.highlighted;
+    }
+  }
+
+  private refreshHighlight(): void {
+    // re-apply for current highlightedId (e.g. after move/rebuild)
+    const id = this.highlightedId;
+    this.restoreHighlightState();
+    this.highlightedId = id;
+    this.applyHighlightState();
+  }
+
   /**
    * Puts a figure in the world, or `undefined` when its id is taken.
    *
@@ -171,13 +369,44 @@ export class FigureSet {
       yaw: spec.yaw ?? 0,
       scale: spec.scale ?? 1,
     };
-    // **`draw` and not the geometry**, so that every placement of a model shares one set of
-    // buffers. See ADR 0047 — a readable `BufferGeometry` is a `BufferGeometry` somebody will
-    // clone, and a clone copies every buffer and undoes the entire mechanism quietly.
-    const mesh = spec.model.draw(this.material, spec.meshResolution);
-    if (mesh !== undefined) {
-      this.applyTransform(mesh, transform);
-      this.group.add(mesh);
+    const wantsBatch = this.isStatic(spec);
+    let mesh: Mesh | undefined;
+    let batched = false;
+
+    // Insert provisional figure so rebuildBatchMesh can find its transform.
+    const provisional: Figure = {
+      id: spec.id,
+      kind: spec.kind,
+      model: spec.model,
+      transform,
+      solid: spec.solid ?? true,
+      name: spec.name,
+      mesh: undefined,
+      batched: wantsBatch,
+      meshResolution: spec.meshResolution,
+      meshMode: spec.meshMode,
+    };
+    this.byId.set(spec.id, provisional);
+
+    if (wantsBatch) {
+      const ok = this.addToBatch(spec, spec.id);
+      if (ok) {
+        batched = true;
+      } else {
+        this.byId.delete(spec.id);
+        mesh = spec.model.draw(this.material, spec.meshResolution, spec.meshMode);
+        if (mesh !== undefined) {
+          this.applyTransform(mesh, transform);
+          this.group.add(mesh);
+        }
+      }
+    } else {
+      this.byId.delete(spec.id);
+      mesh = spec.model.draw(this.material, spec.meshResolution, spec.meshMode);
+      if (mesh !== undefined) {
+        this.applyTransform(mesh, transform);
+        this.group.add(mesh);
+      }
     }
 
     const figure: Figure = {
@@ -188,6 +417,9 @@ export class FigureSet {
       solid: spec.solid ?? true,
       name: spec.name,
       mesh,
+      batched,
+      meshResolution: spec.meshResolution,
+      meshMode: spec.meshMode,
     };
     this.byId.set(spec.id, figure);
     return figure;
@@ -197,12 +429,13 @@ export class FigureSet {
   remove(id: string): boolean {
     const figure = this.byId.get(id);
     if (figure === undefined) return false;
-    if (figure.mesh !== undefined) this.group.remove(figure.mesh);
+    if (figure.batched) this.removeFromBatch(id);
+    else if (figure.mesh !== undefined) this.group.remove(figure.mesh);
     this.byId.delete(id);
-    // **Cleared rather than left pointing at nothing**, because `aim` compares against this
-    // and a removed figure still sitting here would mean the next `aim` of the same id — which
-    // cannot happen, an id is never reused — short-circuits and leaves the tint on a dead mesh.
-    if (this.highlightedId === id) this.highlightedId = undefined;
+    if (this.highlightedId === id) {
+      this.highlightedId = undefined;
+      this.refreshHighlight();
+    }
     return true;
   }
 
@@ -219,8 +452,14 @@ export class FigureSet {
 
     figure.transform.at = { ...at };
     if (yaw !== undefined) figure.transform.yaw = yaw;
-    if (figure.mesh !== undefined)
+    if (figure.batched) {
+      const info = this.batchOf.get(id);
+      const batch = info ? this.batches.get(info.key) : undefined;
+      if (batch && info) this.setBatchInstance(batch, info.index, figure.transform);
+    } else if (figure.mesh !== undefined) {
       this.applyTransform(figure.mesh, figure.transform);
+    }
+    if (this.highlightedId === id) this.refreshHighlight();
     return true;
   }
 
@@ -249,13 +488,9 @@ export class FigureSet {
   aim(id: string | undefined): void {
     const next = id !== undefined && this.byId.has(id) ? id : undefined;
     if (next === this.highlightedId) return;
+    this.restoreHighlightState();
     this.highlightedId = next;
-
-    for (const figure of this.byId.values()) {
-      if (figure.mesh === undefined) continue;
-      figure.mesh.material =
-        figure.id === next ? this.highlighted : this.material;
-    }
+    this.applyHighlightState();
   }
 
   /** Every figure, in the order they were added. */
@@ -321,8 +556,54 @@ export class FigureSet {
     for (const figure of this.byId.values()) {
       if (figure.mesh !== undefined) this.group.remove(figure.mesh);
     }
+    for (const batch of this.batches.values()) this.group.remove(batch.mesh);
+    if (this.highlightMesh) this.group.remove(this.highlightMesh);
+    this.highlightMesh = undefined;
+    this.hiddenBatchHighlight = undefined;
+    this.batches.clear();
+    this.batchOf.clear();
     this.byId.clear();
     this.highlightedId = undefined;
+  }
+
+  /** Occludable meshes/batches for low-res occlusion pass. */
+  occludables(): Array<{
+    key: string;
+    min: [number, number, number];
+    max: [number, number, number];
+    mesh: Mesh;
+    setVisible(visible: boolean): void;
+  }> {
+    const out: Array<{ key: string; min: [number, number, number]; max: [number, number, number]; mesh: Mesh; setVisible(v: boolean): void }> = [];
+    const figBounds = (f: Figure) => {
+      const b = f.model.bounds;
+      const cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2, cz = (b.min.z + b.max.z) / 2;
+      const hx = (b.max.x - b.min.x) / 2, hy = (b.max.y - b.min.y) / 2, hz = (b.max.z - b.min.z) / 2;
+      const c = Math.cos(f.transform.yaw), s = Math.sin(f.transform.yaw);
+      const rcx = cx * c + cz * s, rcz = -cx * s + cz * c;
+      const rhx = Math.abs(c) * hx + Math.abs(s) * hz;
+      const rhz = Math.abs(s) * hx + Math.abs(c) * hz;
+      const sc = f.transform.scale;
+      const wx = f.transform.at.x + rcx * sc, wy = f.transform.at.y + cy * sc, wz = f.transform.at.z + rcz * sc;
+      return { min: [wx - rhx * sc, wy - hy * sc, wz - rhz * sc] as [number, number, number], max: [wx + rhx * sc, wy + hy * sc, wz + rhz * sc] as [number, number, number] };
+    };
+    for (const batch of this.batches.values()) {
+      let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
+      for (const id of batch.ids) {
+        const f = this.byId.get(id); if (!f) continue;
+        const b = figBounds(f);
+        if (b.min[0]<minX) minX=b.min[0]; if (b.min[1]<minY) minY=b.min[1]; if (b.min[2]<minZ) minZ=b.min[2];
+        if (b.max[0]>maxX) maxX=b.max[0]; if (b.max[1]>maxY) maxY=b.max[1]; if (b.max[2]>maxZ) maxZ=b.max[2];
+      }
+      if (minX===Infinity) continue;
+      out.push({ key: `batch:${batch.key}`, min: [minX,minY,minZ], max: [maxX,maxY,maxZ], mesh: batch.mesh as unknown as Mesh, setVisible: (v) => { batch.mesh.visible = v; } });
+    }
+    for (const f of this.byId.values()) {
+      if (f.batched || !f.mesh) continue;
+      const b = figBounds(f);
+      out.push({ key: `fig:${f.id}`, min: b.min, max: b.max, mesh: f.mesh, setVisible: (v) => { f.mesh!.visible = v; } });
+    }
+    return out;
   }
 
   /**
