@@ -102,9 +102,16 @@ export const createPlaceEffectVisuals = (scene: Scene): PlaceEffectVisuals => {
         });
         batch.geometry.setPositions(positions);
         batch.geometry.setColors(colors);
+        // A width that presently has no beams keeps its batch for the next effect, but an
+        // empty line geometry should not be drawn: see `createDrawLinesOverlay` for the
+        // missing `instanceStart`/`instanceEnd` warning this avoids.
+        batch.lines.visible = items.length > 0;
       }
       for (const [width, batch] of beamBatches) {
-        if (!byWidth.has(width)) batch.geometry.setPositions([]);
+        if (!byWidth.has(width)) {
+          batch.geometry.setPositions([]);
+          batch.lines.visible = false;
+        }
       }
 
       const requiredInstances = emitters.length * PARTICLES_PER_EMITTER;

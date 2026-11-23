@@ -55,6 +55,7 @@ const compile = (shape: WaterShape = sphericalWater) => {
   const vertex = compileGlsl.vertex(program.vertexRoot, { precision: "highp" });
   return {
     material,
+    program,
     vertex,
     fragment: compileGlsl.fragment(program.fragmentRoot, {
       precision: "highp",
@@ -88,7 +89,7 @@ const varyingWrittenBy = (vertex: string, nth = 0): string => {
  *
  * **`in` in a fragment stage is a varying and in a vertex stage is an attribute**, and that
  * difference is what the last assertion below turns on: the vertex stage reads the sea mesh's
- * position, normal and UV attributes, and the fragment reads one varying and nothing else.
+ * position and nothing else, and the fragment reads one varying and nothing else.
  */
 const inputsOf = (stage: string): readonly string[] =>
   [...stage.matchAll(/^in\s+\w+\s+(\w+);/gm)].map((m) => m[1]!);
@@ -114,19 +115,21 @@ describe("the sea material compiles", () => {
     // 1. the vertex stage fills a varying with the model-transformed position, so the varying
     //    the fragment normalises really is a world position;
     // 2. the fragment normalises that same varying;
-    // 3. the fragment takes in **that varying and nothing else** — so it cannot be reading the
-    //    sea mesh's octahedral normals, which the shared vertex layout supplies and no one uses.
-    //
-    //    The vertex stage reads three attributes and the fragment one, and the difference
-    //    between them *is* the claim: the sea's normal is computed here rather than carried.
-    const { fragment, vertex } = compile();
+    // 3. neither stage takes in anything else — and in particular the vertex stage reads
+    //    **only** the sea mesh's position. The shared chunk layout has no `normal` or `uv`
+    //    attribute for it to read, and asking for either is the missing-attribute warning the
+    //    default `NodeMaterial` vertex stage would have produced for every sea chunk.
+    const { fragment, vertex, program } = compile();
     expect(vertex).toMatch(/modelMatrix\s*\*\s*vec4\([^)]*,\s*1\.0\s*\)/);
     const worldPosition = varyingWrittenBy(vertex, 0);
     expect(fragment).toMatch(
       new RegExp(`normalize\\s*\\(\\s*vec3\\(${worldPosition}\\)`),
     );
     expect(inputsOf(fragment)).toEqual([worldPosition]);
-    expect(inputsOf(vertex).length).toBeGreaterThan(1);
+    expect(program.attributes.map((attribute) => attribute.name)).toEqual([
+      "position",
+    ]);
+    expect(inputsOf(vertex)).toHaveLength(1);
   });
 
   it("blends, and writes the fog and the sky's own colour", () => {

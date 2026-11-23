@@ -85,6 +85,10 @@ export const createZoneLines = (scene: Scene): ZoneLines => {
   material.depthWrite = false;
 
   const lines = new LineSegments2(geometry, material);
+  // Empty until a place supplies zones, and an empty line geometry has no
+  // `instanceStart`/`instanceEnd` to bind — see `createDrawLinesOverlay`. Hiding rather than
+  // drawing an empty batch also keeps a game with no place from issuing a draw for nothing.
+  lines.visible = false;
   scene.add(lines);
 
   let count = 0;
@@ -92,6 +96,7 @@ export const createZoneLines = (scene: Scene): ZoneLines => {
   return {
     update(zones: readonly Zone[]): void {
       count = zones.length;
+      lines.visible = count > 0;
       if (count === 0) {
         geometry.setPositions([]);
         return;

@@ -138,6 +138,18 @@ export class WaterMaterial extends NodeMaterial {
     );
   }
 
+  protected override buildVertexBody(b: Builder): Node<"vec4"> {
+    // **Only `position`, because that is all a sea chunk carries.** A `NodeMaterial`'s default
+    // vertex stage also pulls `normal` and `uv` into the program; a water mesh is meshed through
+    // the same `toChunkGeometry` as the ground, which has neither, so the default stage would
+    // make rmsl warn once per sea chunk about attributes nothing here reads. The surface's normal
+    // is the world's, computed per fragment (`normalAt`), and the colour crosses as the material
+    // uniform, so there is nothing in those attributes to want.
+    const world = b.modelMatrix.mul(vec4(b.position, 1));
+    b.positionWorld.assign(world.xyz);
+    return b.projectionMatrix.mul(b.viewMatrix.mul(world));
+  }
+
   protected override buildFragmentBody(b: Builder): Node<"vec4"> {
     const normal = this.shape.normalAt(b);
     const view = b.viewDirection.normalize();

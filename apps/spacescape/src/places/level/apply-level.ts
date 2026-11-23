@@ -57,11 +57,12 @@ import type { Operation, OperationShape } from "@big-mesh-studios/csg";
 import { placeOperation } from "../place-registry";
 import type { PlaceRegistry } from "../place-registry";
 import type { Bounds, Quat, Vec3 } from "@big-mesh-studios/core";
-import { Group, Mesh, MeshBasicMaterial } from "@random-mesh/rmsl/scene";
+import { Group, Mesh } from "@random-mesh/rmsl/scene";
 import type { Material } from "@random-mesh/rmsl/scene";
 import type { FigureSet } from "../../figures/figure-set";
 import type { FigureModel } from "../model-library";
 import { materialId } from "../../render/material-names";
+import { FlatMaterial } from "../../render/flat-material";
 
 import type {
   LevelFigure,
@@ -508,7 +509,10 @@ export const createLevelApplier = (target: LevelTarget) => {
           const result = meshModel([op], DEFAULT_BUDGET, "csg");
           const geo = result?.mesh === undefined ? undefined : toChunkGeometry(result.mesh);
           if (geo !== undefined) {
-            const mat = target.material ?? new MeshBasicMaterial();
+            // **`FlatMaterial` rather than `MeshBasicMaterial`.** A CSG visual is meshed into
+            // chunk geometry (`position`/`normalOct`/`colour`), and the basic material's default
+            // vertex stage would ask for a normal and a UV that the mesh does not have.
+            const mat = target.material ?? new FlatMaterial();
             const mesh = new Mesh(geo, mat);
             target.csgGroup.add(mesh);
             csgMeshes.push(mesh);

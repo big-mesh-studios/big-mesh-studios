@@ -53,7 +53,6 @@ import {
   Blending,
   Group,
   Mesh,
-  MeshBasicMaterial,
   type Material,
   type Scene,
 } from "@random-mesh/rmsl/scene";
@@ -62,6 +61,7 @@ import type { Quat, Vec3 } from "@big-mesh-studios/core";
 import { primitiveMesh } from "@big-mesh-studios/meshing";
 
 import { toChunkGeometry } from "../../render/chunk-geometry";
+import { FlatMaterial } from "../../render/flat-material";
 import { placeOperation } from "../../places/place-registry";
 import { FIGURE_MESH_BUDGET } from "../../places/model-library";
 import type { LevelShape } from "../../places/level/types";
@@ -119,7 +119,10 @@ export const createGhost = (scene: Scene): Ghost => {
   const group = new Group();
   scene.add(group);
 
-  const material = new MeshBasicMaterial({});
+  // **A flat material, not a `MeshBasicMaterial`.** The ghost's geometry is a meshed shape
+  // with `position`/`normalOct`/`colour` and no normal or UV, which a basic material's default
+  // vertex stage would ask for. See `render/flat-material.ts`.
+  const material = new FlatMaterial({});
   material.transparent = true;
   material.blending = Blending.NormalBlending;
   material.depthWrite = false;

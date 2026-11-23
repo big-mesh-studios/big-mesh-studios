@@ -201,6 +201,12 @@ export const createDrawLinesOverlay = (scene: Scene): DrawLinesOverlay => {
   material.depthWrite = false;
 
   const lines = new LineSegments2(geometry, material);
+  // **Hidden until the editor has something to draw, and that is a correctness rule rather
+  // than a nicety.** A `LineSegmentsGeometry` has no `instanceStart`/`instanceEnd` until
+  // `setPositions` is called, and rmsl warns once per geometry when a visible line mesh is
+  // drawn without them. The game never calls `render`, so without this line the empty draft
+  // is drawn for the whole of a game session and logs two warnings at startup.
+  lines.visible = false;
   // Over the world, in the scene's traversal order, for the same reason the handles and the
   // highlight are added last (ADR 0014).
   scene.add(lines);

@@ -99,6 +99,14 @@ describe("the spike material compiles", () => {
     // `position` is the one attribute every draw needs, supplied by the builder
     // rather than declared, and it arrives here having been resolved.
     expect(attributes).toContain("position");
+    // **The list, not just its members.** `toChunkGeometry` carries exactly
+    // `position`, `normalOct` and `colour`, and rmsl warns once per mesh about every
+    // attribute a material asks the geometry for and does not find. A `NodeMaterial`
+    // default vertex stage also pulls `normal` and `uv`, which no chunk has — so the
+    // absence of those two is as much a part of this material as the presence of the
+    // other three, and an assertion that only lists members would pass while every
+    // chunk in the world warned about two attributes nothing reads.
+    expect([...attributes].sort()).toEqual(["colour", "normalOct", "position"]);
     for (const attribute of program.attributes) {
       expect(attribute.stepMode).toBe("vertex");
     }
