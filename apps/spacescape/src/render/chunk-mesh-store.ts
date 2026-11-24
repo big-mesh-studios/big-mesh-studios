@@ -124,11 +124,54 @@ interface Superchunk {
   readonly members: Set<number>;
   mesh: SceneMesh | undefined;
   geometry: BufferGeometry | undefined;
+  /**
+   * World-space bounds of the merged geometry, computed when the mesh is rebuilt.
+   *
+   * **From the vertices, not from the cell's coordinates.** The mesher's region reaches a
+   * cell into a finer neighbour, so a chunk's geometry legitimately overhangs the chunk's
+   * own extent; and a superchunk's key is a cell *centre*, not a corner. Reading the bounds
+   * off the geometry is the only way both are right without a padding guess — and it is the
+   * same box the frustum and occlusion tests stand for.
+   */
+  bounds: { min: [number, number, number]; max: [number, number, number] } | undefined;
 }
 
 /** The cell coordinates of the superchunk a chunk cell belongs to. */
 const superKey = (cell: CellCoord): string =>
   `${Math.floor(cell.x / SUPERCHUNK_SPAN)},${Math.floor(cell.y / SUPERCHUNK_SPAN)},${Math.floor(cell.z / SUPERCHUNK_SPAN)}`;
+
+/**
+ * The world-space bounds of a run of positions, or `undefined` when there are none.
+ *
+ * **Read from the vertices rather than derived from the cell key.** The mesher's region
+ * reaches into finer neighbours, so the geometry can overhang the chunk's own extent, and a
+ * key's cell is a *centre* rather than a corner. A scan is the honest answer, and it runs
+ * once per rebuild — when the group's geometry is already being concatenated and uploaded —
+ * not per frame.
+ */
+const boundsOf = (
+  positions: Float32Array,
+): { min: [number, number, number]; max: [number, number, number] } | undefined => {
+  if (positions.length === 0) return undefined;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i]!;
+    const y = positions[i + 1]!;
+    const z = positions[i + 2]!;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+};
 
 export class ChunkMeshStore {
   private readonly ground: Surface;
@@ -460,13 +503,26 @@ export class ChunkMeshStore {
   }> {
     const out: Array<{ key: string; min: [number, number, number]; max: [number, number, number]; mesh: SceneMesh; setVisible(v: boolean): void }> = [];
     const span = SUPERCHUNK_SPAN * BLOCK_WORLD;
+    const half = BLOCK_WORLD / 2;
     for (const surface of this.surfaces) {
       for (const [key, sc] of surface.superchunks) {
         const mesh = sc.mesh;
         if (!mesh) continue;
-        const [sx, sy, sz] = key.split(",").map(Number) as [number, number, number];
-        const min: [number, number, number] = [sx * span, sy * span, sz * span];
-        const max: [number, number, number] = [min[0] + span, min[1] + span, min[2] + span];
+        let min: [number, number, number];
+        let max: [number, number, number];
+        if (sc.bounds !== undefined) {
+          // The geometry's own box, which accounts for the mesher reaching into finer
+          // neighbours as well as the cell-centre convention.
+          min = sc.bounds.min;
+          max = sc.bounds.max;
+        } else {
+          // A key's cell is the *centre* of a 2×2×2 group, so the group begins half a block
+          // before the key's origin and ends half a block before its end. This fallback only
+          // runs for a mesh built before the geometry scan landed; every rebuild sets bounds.
+          const [sx, sy, sz] = key.split(",").map(Number) as [number, number, number];
+          min = [sx * span - half, sy * span - half, sz * span - half];
+          max = [min[0] + span, min[1] + span, min[2] + span];
+        }
         out.push({ key, min, max, mesh, setVisible: (v) => { mesh.visible = v; } });
       }
     }
@@ -543,6 +599,7 @@ export class ChunkMeshStore {
       members: new Set(),
       mesh: undefined,
       geometry: undefined,
+      bounds: undefined,
     };
     surface.superchunks.set(key, made);
     return made;
@@ -581,6 +638,7 @@ export class ChunkMeshStore {
     }
     superchunk.geometry?.dispose();
     superchunk.geometry = undefined;
+    superchunk.bounds = undefined;
 
     const meshes: ChunkMesh[] = [];
     for (const member of superchunk.members) {
@@ -600,6 +658,7 @@ export class ChunkMeshStore {
     const mesh = new Mesh(geometry, surface.material);
     superchunk.geometry = geometry;
     superchunk.mesh = mesh;
+    superchunk.bounds = boundsOf(merged.positions);
     surface.group.add(mesh);
   }
 
@@ -610,6 +669,7 @@ export class ChunkMeshStore {
         if (superchunk.mesh !== undefined)
           surface.group.remove(superchunk.mesh);
         superchunk.geometry?.dispose();
+        superchunk.bounds = undefined;
         superchunk.members.clear();
       }
       surface.superchunks.clear();

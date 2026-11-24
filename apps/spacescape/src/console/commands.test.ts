@@ -39,6 +39,8 @@ interface Table {
   space: (number | undefined)[];
   /** Every visibility `/status` was called with, in order; `undefined` is a flip. */
   status: (boolean | undefined)[];
+  /** Every switch `/occlusion` was called with, in order; `undefined` is a flip. */
+  occlusion: (boolean | undefined)[];
   clock: ClockCalls[];
   cloud: CloudCalls[];
   /** What the fake layer reports, so a test can pretend it does not exist yet. */
@@ -54,6 +56,8 @@ const table = (): Table => {
   const noclip: (boolean | undefined)[] = [];
   const space: (number | undefined)[] = [];
   const status: (boolean | undefined)[] = [];
+  const occlusion: (boolean | undefined)[] = [];
+  let occlusionOn = false;
   let statusVisible = false;
   const clock: ClockCalls[] = [];
   const cloud: CloudCalls[] = [];
@@ -142,6 +146,13 @@ const table = (): Table => {
       statusVisible = value ?? !statusVisible;
       return statusVisible ? "status shown" : "status hidden";
     },
+    occlusion: {
+      enabled: (value) => {
+        occlusion.push(value);
+        occlusionOn = value ?? !occlusionOn;
+        return `occlusion ${occlusionOn ? "on" : "off"}`;
+      },
+    },
   });
   return {
     commander,
@@ -149,6 +160,7 @@ const table = (): Table => {
     noclip,
     space,
     status,
+    occlusion,
     clock,
     cloud,
     built,
@@ -197,6 +209,7 @@ describe("the command table", () => {
       "/window:yradius",
       "/window:state",
       "/status",
+      "/occlusion",
       "/player:fly",
       "/player:no-clip",
       "/player:space",
@@ -240,6 +253,23 @@ describe("/status", () => {
   it("refuses a word that is neither show nor hide", () => {
     expect(text(table(), "/status maybe")).toBe(
       "usage: /status [show|hide]  (no argument flips it)",
+    );
+  });
+});
+
+describe("/occlusion", () => {
+  it("flips when given no argument, and sets on on or off", () => {
+    const recorder = table();
+    expect(text(recorder, "/occlusion")).toBe("occlusion on");
+    expect(text(recorder, "/occlusion")).toBe("occlusion off");
+    expect(text(recorder, "/occlusion on")).toBe("occlusion on");
+    expect(text(recorder, "/occlusion off")).toBe("occlusion off");
+    expect(recorder.occlusion).toEqual([undefined, undefined, true, false]);
+  });
+
+  it("refuses a word that is neither on nor off", () => {
+    expect(text(table(), "/occlusion maybe")).toBe(
+      "usage: /occlusion [on|off]  (no argument flips it)",
     );
   });
 });

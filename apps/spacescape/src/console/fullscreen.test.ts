@@ -71,6 +71,9 @@ const commands = () =>
       state: () => "built",
     },
     setStatus: () => "status shown",
+    occlusion: {
+      enabled: () => "occlusion off",
+    },
   });
 
 const run = (line: string): string => {

@@ -17,6 +17,19 @@ const meshOf = (
   triangleCount: triangles,
 });
 
+/** A mesh whose two vertices sit at the box's corners, so its bounds are exactly the box. */
+const meshInBox = (
+  min: readonly [number, number, number],
+  max: readonly [number, number, number],
+): ChunkMesh => ({
+  positions: new Float32Array([...min, ...max]),
+  normalOct: new Int16Array(4),
+  colours: new Uint8Array(8),
+  indices: new Uint32Array(0),
+  vertexCount: 2,
+  triangleCount: 0,
+});
+
 const material = {} as Material;
 
 const newStore = (
@@ -818,6 +831,48 @@ describe("drawing a 2x2x2 group of chunks as one superchunk", () => {
     store.apply(0, { ground: meshOf(12, 4) }, store.revisionOf(0));
     expect(meshFor(store, 0)).toBeDefined();
     expect(surface(store, "ground").group.children).toHaveLength(1);
+  });
+});
+
+describe("occludable bounds", () => {
+  it("reads the box from the merged geometry, not from the cell key", () => {
+    // **The bug this guards.** A superchunk's key is a cell *centre*, so key-derived bounds
+    // land half a chunk away from the geometry — and the mesher reaches into finer
+    // neighbours, so even the centre convention cannot describe the vertices. These sit
+    // inside a key-derived box but are not the box, which is what a key cannot express.
+    const store = newStore(1);
+    const min: [number, number, number] = [-70, -60, -50];
+    const max: [number, number, number] = [60, 50, 40];
+    store.apply(0, { ground: meshInBox(min, max) }, store.revisionOf(0), {
+      x: 0,
+      y: 0,
+      z: 0,
+    });
+
+    const [occludable] = store.occludables();
+    expect(occludable).toBeDefined();
+    expect(occludable!.min).toEqual(min);
+    expect(occludable!.max).toEqual(max);
+  });
+
+  it("recomputes the box when a member's geometry changes", () => {
+    const store = newStore(1);
+    store.apply(
+      0,
+      { ground: meshInBox([-70, -60, -50], [60, 50, 40]) },
+      store.revisionOf(0),
+      { x: 0, y: 0, z: 0 },
+    );
+    store.apply(
+      0,
+      { ground: meshInBox([-10, -10, -10], [10, 10, 10]) },
+      store.revisionOf(0),
+      { x: 0, y: 0, z: 0 },
+    );
+
+    const [occludable] = store.occludables();
+    expect(occludable!.min).toEqual([-10, -10, -10]);
+    expect(occludable!.max).toEqual([10, 10, 10]);
   });
 });
 

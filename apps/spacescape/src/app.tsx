@@ -216,7 +216,7 @@ import { ModelLibrary } from "./places/model-library";
 import { FigureSet } from "./figures/figure-set";
 import { PlaceOverlay } from "./places/ui/PlaceOverlay";
 import { MAX_DRAWN_LIGHTS } from "./render/point-lights";
-import { OcclusionCuller } from "./render/occlusion";
+import { OcclusionCuller, type Occludable } from "./render/occlusion";
 import { demoPlace, demoProject, loadDemoModels } from "./places/demos";
 import { surfaceHeightAt } from "./world/surface-height";
 import { PLACE_MIME_TYPE, type PlaceSpawn } from "./places/place-file";
@@ -3284,6 +3284,15 @@ export default function App() {
           setStatusVisible(next);
           return next ? "status shown" : "status hidden";
         },
+        // The occlusion pass's switch. Off by default in the culler; the command flips it
+        // at runtime for a machine with headroom. The culler's `enabled` flag is the only
+        // state — the frustum culling runs either way, so this only controls the readback.
+        occlusion: {
+          enabled: (value) => {
+            occlusion.enabled = value ?? !occlusion.enabled;
+            return `occlusion ${occlusion.enabled ? "on" : "off"}`;
+          },
+        },
         // The two cloud knobs, adapted rather than passed as an object, because the
         // layer does not exist yet and only this scope knows that. `state()` says so
         // rather than reporting zeroes, which is what a null layer would otherwise look
@@ -4717,6 +4726,7 @@ export default function App() {
           }
         | undefined,
       hideSelf: boolean,
+      occludables: readonly Occludable[],
     ): void => {
       const aspect = target.width / Math.max(1, target.height);
       if (view === undefined) {
@@ -4752,6 +4762,11 @@ export default function App() {
       if (hideSelf && view !== undefined)
         screenLayer.hideShowing(view.id, true);
       try {
+        // **Culled for this feed's own eye, immediately before it draws.** The occludables' visible
+        // flags are shared with the main pass, so a feed that draws unculled would put the whole
+        // world through the vertex stage for a monitor a few dozen pixels wide. The main pass's
+        // `occlusion.update` runs after every feed and restores the main camera's answer.
+        occlusion.cullFor(feedCamera, occludables);
         viewport.renderer.render(viewport.scene, feedCamera, target);
       } finally {
         material.lights.lights = previousTerrain;
@@ -5003,7 +5018,9 @@ export default function App() {
         ...session.store.occludables().map((o) => ({ id: occlusionIdFor(o.key), min: o.min, max: o.max, mesh: (o as any).mesh, setVisible: o.setVisible })),
         ...figures.occludables().map((o) => ({ id: occlusionIdFor(o.key), min: o.min, max: o.max, mesh: (o as any).mesh, setVisible: o.setVisible })),
       ];
-      // Feed renders use their own cameras; occlusion is main-camera view dependent.
+      // **Every pass culls for its own eye.** The feeds below each call `occlusion.cullFor` with
+      // their own camera, so this reset is only the floor: the main pass's `update` at the end
+      // replaces it with the main camera's answer, frustum first and occlusion second.
       occlusion.showAll(occludables);
 
       // **One photo a frame.** The target is read back through a pixel-pack buffer, so there is no
@@ -5011,7 +5028,7 @@ export default function App() {
       // one is in flight.
       const job = photoLayer.next();
       if (job !== undefined) {
-        drawFeed(job.target, job.request.camera, false);
+        drawFeed(job.target, job.request.camera, false, occludables);
         void photoLayer
           .capture(job, viewport.renderer)
           // **The HUD redraws when the pixels land**, not when the id was allocated. A photo in
@@ -5036,7 +5053,7 @@ export default function App() {
         // into is the HUD image's own, and nothing in the scene samples it — a screen showing this
         // camera samples its own target. Hiding those for the length of this pass would churn two
         // meshes to prevent a feedback loop that cannot happen.
-        drawFeed(feed.target, feed.camera, false);
+        drawFeed(feed.target, feed.camera, false, occludables);
         void hudFeeds
           .capture(feed, viewport.renderer)
           .then(() => setHudRevision((revision) => revision + 1))
@@ -5050,7 +5067,7 @@ export default function App() {
       // its last picture rather than going black, which is what a room full of monitors should
       // look like when the player turns towards the one that matters.
       for (const feed of screenLayer.feeds(game.player.position)) {
-        drawFeed(feed.target, feed.camera, true);
+        drawFeed(feed.target, feed.camera, true, occludables);
         // **Only now may the screen name this target**, because the first pass into it is what
         // makes its contents defined.
         screenLayer.markRendered(feed.screen.id);

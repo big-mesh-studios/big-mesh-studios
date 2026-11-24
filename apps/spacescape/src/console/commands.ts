@@ -172,6 +172,8 @@ export interface CommandsParams {
   world: WorldCommands;
   /** The streaming window's reach, for `/window:`. See `WindowCommands`. */
   windowSize: WindowCommands;
+  /** The occlusion pass's switch, for `/occlusion`. See `OcclusionCommands`. */
+  occlusion: OcclusionCommands;
   /**
    * Shows or hides the on-screen status readout, toggling when `visible` is omitted.
    *
@@ -219,6 +221,20 @@ export interface WindowCommands {
   yRadius(value?: number): string;
   /** One line saying how far the window reaches. */
   state(): string;
+}
+
+/**
+ * The occlusion pass's switch, as `/occlusion` uses it.
+ *
+ * **The pass costs more than it saves on the hardware this project targets** — measured at
+ * roughly 8 FPS on the animal-hospital demo — so it is off by default. But the cost is
+ * hardware-dependent: a machine with headroom can turn it on and hide the geometry the
+ * frustum alone cannot prove is covered. The default lives in the culler; this is the
+ * runtime half of that choice.
+ */
+export interface OcclusionCommands {
+  /** Reports or sets whether the occlusion pass runs. */
+  enabled(value?: boolean): string;
 }
 
 /** The clock's surface, as `/clock:` uses it. See `CommandsParams.clock`. */
@@ -374,6 +390,7 @@ export const createCommands = ({
   cloud,
   world,
   windowSize,
+  occlusion,
   setStatus,
 }: CommandsParams): Commander => {
   return new Commander({
@@ -540,6 +557,14 @@ export const createCommands = ({
       run: (rest) => {
         const argument = readShowHide(rest[0], "/status");
         return typeof argument === "string" ? argument : setStatus(argument);
+      },
+    },
+    "/occlusion": {
+      description: "turn the occlusion pass on or off (off by default)",
+      args: "[on|off]",
+      run: (rest) => {
+        const argument = readToggle(rest[0], "/occlusion");
+        return typeof argument === "string" ? argument : occlusion.enabled(argument);
       },
     },
     "/player:fly": {
